@@ -1,8 +1,28 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionEventRecord, SessionRecord } from "@jarvis/shared";
+import type { SessionEventRecord, SessionRecord, TaskRecord } from "@jarvis/shared";
 import { api, globalEventsUrl, sessionStreamUrl } from "./api";
+
+export function useTasksList() {
+  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(() => {
+    return api.listTasks().then((t) => {
+      setTasks(t);
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  return { tasks, loading, refresh };
+}
 
 export function useSessionsList() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -38,6 +58,32 @@ export function useSessionsList() {
   }, []);
 
   return { sessions, loading };
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  time: string;
+  text: string;
+}
+
+export function useActivityLog(limit = 30) {
+  const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
+
+  useEffect(() => {
+    const source = new EventSource(globalEventsUrl());
+    source.addEventListener("session-updated", (evt) => {
+      const session = JSON.parse((evt as MessageEvent).data) as SessionRecord;
+      const entry: ActivityLogEntry = {
+        id: `${session.id}-${session.updatedAt}`,
+        time: new Date(session.updatedAt).toLocaleTimeString([], { hour12: false }),
+        text: `${session.title.slice(0, 40)} → ${session.status.toUpperCase()}`,
+      };
+      setEntries((prev) => [entry, ...prev].slice(0, limit));
+    });
+    return () => source.close();
+  }, [limit]);
+
+  return entries;
 }
 
 export function useSessionStream(sessionId: string) {

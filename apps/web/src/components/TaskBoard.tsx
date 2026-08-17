@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { TaskRecord, TaskStatus } from "@jarvis/shared";
 import { api } from "@/lib/api";
+import { useTasksList } from "@/lib/hooks";
+import { Panel } from "@/components/hud/Panel";
 
 const COLUMNS: { status: TaskStatus; label: string }[] = [
   { status: "todo", label: "To Do" },
@@ -11,14 +13,8 @@ const COLUMNS: { status: TaskStatus; label: string }[] = [
 ];
 
 export function TaskBoard() {
-  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const { tasks, refresh } = useTasksList();
   const [newTitle, setNewTitle] = useState("");
-
-  const refresh = () => api.listTasks().then(setTasks);
-
-  useEffect(() => {
-    refresh();
-  }, []);
 
   async function addTask() {
     const title = newTitle.trim();
@@ -39,13 +35,10 @@ export function TaskBoard() {
   }
 
   return (
-    <div className="rounded-lg border border-black/10 dark:border-white/15 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold">Tasks</h2>
-      </div>
+    <Panel title="TASK-LOG">
       <div className="flex gap-2 mb-4">
         <input
-          className="flex-1 rounded border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm"
+          className="flex-1 rounded-sm border border-cyan-500/25 bg-black/30 px-2 py-1.5 text-sm text-cyan-100 outline-none focus:border-cyan-400/60"
           placeholder="Add a task…"
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
@@ -53,16 +46,19 @@ export function TaskBoard() {
         />
         <button
           onClick={addTask}
-          className="rounded bg-foreground text-background px-3 py-1 text-sm"
+          className="rounded-sm border border-cyan-400/50 bg-cyan-500/10 px-3 py-1 text-xs tracking-widest uppercase text-cyan-200 hover:bg-cyan-500/20"
         >
           Add
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {COLUMNS.map((col) => (
-          <div key={col.status} className="min-h-[120px]">
-            <div className="text-xs font-medium text-black/60 dark:text-white/60 mb-2">
+          <div key={col.status} className="min-h-[100px]">
+            <div className="text-[10px] font-medium text-cyan-400/60 uppercase tracking-[0.2em] mb-2 pb-1 border-b border-cyan-500/10">
               {col.label}
+              <span className="ml-1 text-cyan-500/30">
+                [{tasks.filter((t) => t.status === col.status).length}]
+              </span>
             </div>
             <div className="flex flex-col gap-2">
               {tasks
@@ -70,20 +66,20 @@ export function TaskBoard() {
                 .map((task) => (
                   <div
                     key={task.id}
-                    className="rounded border border-black/10 dark:border-white/15 p-2 text-sm"
+                    className="rounded-sm border border-cyan-500/15 bg-black/20 p-2 text-sm text-cyan-100"
                   >
                     <div>{task.title}</div>
-                    <div className="flex gap-2 mt-2 text-xs text-black/50 dark:text-white/50">
+                    <div className="flex gap-2 mt-2 text-[10px] uppercase tracking-wider text-cyan-500/50">
                       {COLUMNS.filter((c) => c.status !== col.status).map((c) => (
                         <button
                           key={c.status}
                           onClick={() => move(task, c.status)}
-                          className="underline"
+                          className="hover:text-cyan-300"
                         >
                           → {c.label}
                         </button>
                       ))}
-                      <button onClick={() => remove(task)} className="underline ml-auto">
+                      <button onClick={() => remove(task)} className="ml-auto hover:text-red-400">
                         delete
                       </button>
                     </div>
@@ -93,6 +89,6 @@ export function TaskBoard() {
           </div>
         ))}
       </div>
-    </div>
+    </Panel>
   );
 }

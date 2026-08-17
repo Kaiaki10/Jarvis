@@ -1,3 +1,4 @@
+import { Header } from "@/components/hud/Header";
 import { SessionDetail } from "@/components/SessionDetail";
 
 export default async function SessionPage({
@@ -7,8 +8,11 @@ export default async function SessionPage({
 }) {
   const { id } = await params;
   return (
-    <main className="p-6">
-      <SessionDetail sessionId={id} />
-    </main>
+    <>
+      <Header />
+      <main className="p-6">
+        <SessionDetail sessionId={id} />
+      </main>
+    </>
   );
 }
