@@ -1,0 +1,27 @@
+{
+  "name": "@jarvis/orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/http/server.ts",
+    "smoke:session": "tsx src/sessions/smokeTest.ts",
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/db/schema.sql','dist/db/schema.sql')\"",
+    "start": "node dist/http/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@jarvis/shared": "*",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^24.0.0",
+    "@types/uuid": "^9.0.8",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
