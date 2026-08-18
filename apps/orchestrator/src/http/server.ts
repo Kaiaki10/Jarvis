@@ -417,6 +417,12 @@ app.post("/scheduled-tasks", (req: Request, res: Response) => {
       .json({ error: "prompt, cwd, timeOfDay, and at least one day of week are required" });
     return;
   }
+  // Checked at save time, not at 6am. A mistyped path here is otherwise invisible
+  // until the run fails unattended, and the whole day's work is lost with it.
+  if (!existsSync(body.cwd) || !statSync(body.cwd).isDirectory()) {
+    res.status(400).json({ error: `Working directory does not exist: ${body.cwd}` });
+    return;
+  }
   const next = computeNextRun(body.timeOfDay, body.daysOfWeek, new Date());
   const task = createScheduledTask({
     prompt: body.prompt,
@@ -435,6 +441,10 @@ app.patch("/scheduled-tasks/:id", (req: Request, res: Response) => {
   const existing = getScheduledTask(req.params.id);
   if (!existing) {
     res.status(404).json({ error: "not found" });
+    return;
+  }
+  if (body.cwd !== undefined && (!existsSync(body.cwd) || !statSync(body.cwd).isDirectory())) {
+    res.status(400).json({ error: `Working directory does not exist: ${body.cwd}` });
     return;
   }
   // Reschedule whenever the timing itself, or the enabled flag, changes.
