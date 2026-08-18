@@ -28,6 +28,30 @@ npm run dev:web            # frontend on http://localhost:3000
 
 Open http://localhost:3000.
 
+## Running automatically at login
+
+Scheduled automations only fire while the orchestrator is running. To have Jarvis
+start on its own after a reboot:
+
+```
+.\scripts\install-service.ps1
+```
+
+This builds both apps and registers two hidden logon tasks (`Jarvis Orchestrator` and
+`Jarvis Dashboard`), with logs in `scripts/logs`. Remove them with
+`.\scripts\uninstall-service.ps1` — your database and credentials are left alone.
+
+## Connections
+
+The Connections page walks you through linking a platform: what to create, where to click,
+which values to copy, then a live test that confirms the credentials actually work.
+Credentials are encrypted at rest with a key generated on first run (`jarvis.key`, never
+committed) and are never returned to the browser.
+
+Once a platform is connected and passing its test, sessions get tools for it
+(`post_to_x`, `post_to_slack`, `post_to_discord`, `send_email`). Every outbound action
+pauses for your approval first, where you can edit the draft before it sends.
+
 ## Configuration
 
 - `apps/orchestrator`: `PORT` (default `4317`), `WEB_ORIGIN` (default `http://localhost:3000`,

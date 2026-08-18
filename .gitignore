@@ -9,3 +9,4 @@ dist/
 *.key
 .env
 .env.local
+scripts/logs/

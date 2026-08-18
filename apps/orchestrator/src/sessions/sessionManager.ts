@@ -11,9 +11,12 @@ import { appendSessionEvent, getSettings, updateSession } from "../db/repo.js";
 import type { SessionEventRecord } from "@jarvis/shared";
 import { createPushable, type Pushable } from "./pushableIterable.js";
 import { globalBus } from "../events/globalBus.js";
+import { buildPlatformToolset } from "../platforms/actions.js";
 
 interface PendingPermission {
   resolve: (result: PermissionResult) => void;
+  /** Falling back to this on approve matters — `{}` would run the tool with no arguments. */
+  originalInput: Record<string, unknown>;
 }
 
 interface SessionHandle {
@@ -90,7 +93,10 @@ export function resolvePermission(
   if (!handle || !pending) return false;
   handle.pendingPermissions.delete(requestId);
   if (decision === "allow") {
-    pending.resolve({ behavior: "allow", updatedInput: updatedInput ?? {} });
+    pending.resolve({
+      behavior: "allow",
+      updatedInput: updatedInput ?? pending.originalInput,
+    });
   } else {
     pending.resolve({ behavior: "deny", message: "Denied by user via dashboard" });
   }
@@ -150,7 +156,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
     globalBus.emit("session_updated", params.id);
     emitter.emit("event", event);
     return new Promise<PermissionResult>((resolve) => {
-      pendingPermissions.set(requestId, { resolve });
+      pendingPermissions.set(requestId, { resolve, originalInput: toolInput });
     });
   };
 
@@ -166,6 +172,10 @@ export async function startSession(params: StartSessionParams): Promise<void> {
   globalBus.emit("session_updated", params.id);
 
   const { businessContext } = getSettings();
+  const toolset = buildPlatformToolset();
+  const systemPromptAppend = [businessContext.trim(), toolset.capabilitySummary]
+    .filter(Boolean)
+    .join("\n\n");
 
   try {
     const q = query({
@@ -176,16 +186,18 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         allowedTools: params.allowedTools,
         includePartialMessages: true,
         canUseTool,
-        // Durable business knowledge — without this every session starts amnesiac.
-        ...(businessContext.trim()
+        // Durable business knowledge plus what this session can actually act on —
+        // without these every session starts amnesiac and unaware of its tools.
+        ...(systemPromptAppend
           ? {
               systemPrompt: {
                 type: "preset" as const,
                 preset: "claude_code" as const,
-                append: businessContext,
+                append: systemPromptAppend,
               },
             }
           : {}),
+        ...(toolset.mcpServers ? { mcpServers: toolset.mcpServers } : {}),
         stderr: (data) => {
           process.stderr.write(`[claude-cli stderr] ${data}`);
         },

@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowUp, Check, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, Send, X } from "lucide-react";
 import type { SessionEventRecord } from "@jarvis/shared";
 import { useSessionStream } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
+import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 
@@ -33,6 +33,28 @@ interface PermissionRequestPayload {
   requestId: string;
   toolName: string;
   input: Record<string, unknown>;
+}
+
+const OUTBOUND_TOOL_LABELS: Record<string, string> = {
+  post_to_x: "Post to X",
+  post_to_slack: "Send a Slack message",
+  post_to_discord: "Send a Discord message",
+  send_email: "Send an email",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  text: "Message",
+  body: "Body",
+  subject: "Subject",
+  to: "To",
+  channel: "Channel",
+  channelId: "Channel ID",
+};
+
+/** Outbound actions get a readable, editable review instead of raw JSON. */
+function outboundAction(toolName: string): string | null {
+  const bare = toolName.replace(/^mcp__jarvis__/, "");
+  return bare === toolName ? null : (OUTBOUND_TOOL_LABELS[bare] ?? bare);
 }
 
 export function SessionDetail({ sessionId }: { sessionId: string }) {
@@ -96,11 +118,12 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     }
   }
 
-  async function respond(decision: "allow" | "deny") {
+  async function respond(decision: "allow" | "deny", updatedInput?: Record<string, unknown>) {
     if (!pendingPermission) return;
     await api.respondToPermission(sessionId, {
       requestId: pendingPermission.requestId,
       decision,
+      updatedInput,
     });
     refreshSession();
   }
@@ -136,29 +159,11 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
           )}
 
           {pendingPermission && (
-            <Card className="border-warning/30 bg-warning/5">
-              <div className="px-4 pt-3.5 pb-1 text-sm font-medium text-warning">
-                Permission requested
-              </div>
-              <div className="px-4 pb-4">
-                <div className="mb-2 text-sm text-foreground">
-                  Tool <code className="font-mono text-xs">{pendingPermission.toolName}</code>
-                </div>
-                <pre className="mb-3 overflow-x-auto rounded-lg bg-black/30 p-2.5 text-xs text-foreground/70">
-                  {JSON.stringify(pendingPermission.input, null, 2)}
-                </pre>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => respond("allow")}>
-                    <Check className="h-3.5 w-3.5 text-success" />
-                    Allow
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => respond("deny")}>
-                    <X className="h-3.5 w-3.5" />
-                    Deny
-                  </Button>
-                </div>
-              </div>
-            </Card>
+            <PermissionCard
+              key={pendingPermission.requestId}
+              request={pendingPermission}
+              onRespond={respond}
+            />
           )}
         </div>
       </div>
@@ -178,6 +183,128 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function PermissionCard({
+  request,
+  onRespond,
+}: {
+  request: PermissionRequestPayload;
+  onRespond: (
+    decision: "allow" | "deny",
+    updatedInput?: Record<string, unknown>
+  ) => Promise<void>;
+}) {
+  const action = outboundAction(request.toolName);
+  const [draft, setDraft] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    for (const [k, v] of Object.entries(request.input)) {
+      if (typeof v === "string") initial[k] = v;
+    }
+    return initial;
+  });
+  const [busy, setBusy] = useState(false);
+
+  const edited = Object.entries(draft).some(([k, v]) => request.input[k] !== v);
+
+  async function approve() {
+    setBusy(true);
+    // Only override when the user actually changed something; otherwise let the
+    // orchestrator fall back to the original input.
+    await onRespond("allow", edited ? { ...request.input, ...draft } : undefined);
+  }
+
+  if (!action) {
+    return (
+      <Card className="border-warning/30 bg-warning/5">
+        <div className="px-4 pt-3.5 pb-1 text-sm font-medium text-warning">
+          Permission requested
+        </div>
+        <div className="px-4 pb-4">
+          <div className="mb-2 text-sm text-foreground">
+            Tool <code className="font-mono text-xs">{request.toolName}</code>
+          </div>
+          <pre className="mb-3 overflow-x-auto rounded-lg bg-black/30 p-2.5 text-xs text-foreground/70">
+            {JSON.stringify(request.input, null, 2)}
+          </pre>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => onRespond("allow")}>
+              <Check className="h-3.5 w-3.5 text-success" />
+              Allow
+            </Button>
+            <Button size="sm" variant="destructive" disabled={busy} onClick={() => onRespond("deny")}>
+              <X className="h-3.5 w-3.5" />
+              Deny
+            </Button>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-warning/40 bg-warning/5">
+      <div className="flex items-center gap-2 px-4 pt-3.5 pb-1">
+        <Send className="h-3.5 w-3.5 text-warning" />
+        <span className="text-sm font-medium text-warning">{action}</span>
+      </div>
+      <div className="px-4 pb-4">
+        <p className="mb-3 text-xs text-muted">
+          Nothing has been sent yet. Review it, edit if you want, then approve.
+        </p>
+        <div className="flex flex-col gap-3">
+          {Object.entries(draft).map(([key, value]) => {
+            const multiline = key === "text" || key === "body";
+            return (
+              <div key={key}>
+                <label className="text-[11px] font-medium text-muted">
+                  {FIELD_LABELS[key] ?? key}
+                </label>
+                {multiline ? (
+                  <Textarea
+                    className="mt-1 w-full text-sm"
+                    rows={Math.min(8, Math.max(3, value.split("\n").length + 1))}
+                    value={value}
+                    onChange={(e) => setDraft((p) => ({ ...p, [key]: e.target.value }))}
+                  />
+                ) : (
+                  <Input
+                    className="mt-1 w-full text-sm"
+                    value={value}
+                    onChange={(e) => setDraft((p) => ({ ...p, [key]: e.target.value }))}
+                  />
+                )}
+                {key === "text" && (
+                  <div className="mt-1 text-right text-[11px] text-muted">
+                    {value.length} characters
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-4 flex items-center gap-2">
+          <Button size="sm" disabled={busy} onClick={approve}>
+            <Check className="h-3.5 w-3.5" />
+            {edited ? "Approve edited" : "Approve and send"}
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              onRespond("deny");
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+            Reject
+          </Button>
+          {edited && <span className="text-[11px] text-muted">Edited</span>}
+        </div>
+      </div>
+    </Card>
   );
 }
 
