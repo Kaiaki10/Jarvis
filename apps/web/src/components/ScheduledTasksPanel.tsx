@@ -11,7 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useScheduledTasksList, useSettings } from "@/lib/hooks";
+import { useScheduledTasksList, useSettings, useSessionsList } from "@/lib/hooks";
 import { DAY_LABELS, daysLabel } from "@/lib/runStatus";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input, Select, Textarea } from "@/components/ui/Input";
@@ -94,6 +94,7 @@ export function ScheduledTasksPanel() {
   }
 
   const activeCount = tasks.filter((t) => t.enabled).length;
+  const { sessionById } = useSessionsList();
 
   return (
     <Card>
@@ -117,7 +118,14 @@ export function ScheduledTasksPanel() {
       )}
 
       <div className="flex flex-col gap-1.5 px-5 pb-5">
-        {tasks.map((task) => (
+        {tasks.map((task) => {
+          const lastRun = task.lastSessionId
+            ? sessionById.get(task.lastSessionId)
+            : undefined;
+          const running =
+            lastRun && ["running", "starting", "waiting_permission"].includes(lastRun.status);
+
+          return (
           <details
             key={task.id}
             className="group rounded-lg border border-border bg-white/[0.02]"
@@ -125,12 +133,25 @@ export function ScheduledTasksPanel() {
             <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
               <ChevronRight className={CHEVRON} strokeWidth={2} />
 
-              <span
-                className={`min-w-0 flex-1 truncate text-sm ${
-                  task.enabled ? "text-foreground" : "text-muted line-through"
-                }`}
-              >
-                {summarize(task.prompt)}
+              <span className="min-w-0 flex-1">
+                <span
+                  className={`block truncate text-sm ${
+                    task.enabled ? "text-foreground" : "text-muted line-through"
+                  }`}
+                >
+                  {summarize(task.prompt)}
+                </span>
+                {/* What it is doing now, or what it did last time. */}
+                {running && lastRun?.currentActivity ? (
+                  <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-accent-foreground">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent animate-pulse-soft" />
+                    <span className="truncate">{lastRun.currentActivity}</span>
+                  </span>
+                ) : lastRun?.summary ? (
+                  <span className="mt-0.5 block truncate text-[11px] text-muted">
+                    {lastRun.summary}
+                  </span>
+                ) : null}
               </span>
 
               <span className="hidden shrink-0 items-center gap-1.5 sm:flex">
@@ -186,12 +207,21 @@ export function ScheduledTasksPanel() {
                   </Link>
                 )}
               </div>
+              {lastRun?.summary && (
+                <div className="mb-2 rounded-md border border-border bg-black/20 p-2.5 text-xs text-foreground">
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted">
+                    Last run
+                  </div>
+                  {lastRun.summary}
+                </div>
+              )}
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2.5 font-mono text-[11px] leading-relaxed text-muted">
                 {task.prompt}
               </pre>
             </div>
           </details>
-        ))}
+          );
+        })}
 
         {tasks.length === 0 && (
           <div className="flex items-center gap-2.5 py-2 text-sm text-muted">

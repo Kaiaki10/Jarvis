@@ -16,6 +16,7 @@ import {
 import type { SessionEventRecord } from "@jarvis/shared";
 import { createPushable, type Pushable } from "./pushableIterable.js";
 import { createDeferredWithTimeout } from "./deferredWithTimeout.js";
+import { describeActivity, extractSummary } from "./describeActivity.js";
 import { globalBus } from "../events/globalBus.js";
 import { buildPlatformToolset } from "../platforms/actions.js";
 import { estimateActionCost } from "../platforms/spendGuard.js";
@@ -334,6 +335,15 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       );
       emitter.emit("event", event);
 
+      // Derived from messages already flowing through, so a live progress line
+      // costs nothing extra. Only meaningful steps update it, so the last real
+      // action stays on screen rather than flickering on every token.
+      const activity = describeActivity(message);
+      if (activity) {
+        updateSession(params.id, { currentActivity: activity });
+        globalBus.emit("session_updated", params.id);
+      }
+
       if (message.type === "result") {
         // Streaming-input sessions stay alive after a result, ready for a follow-up —
         // "idle" reflects that; "completed" is reserved for an explicitly closed session.
@@ -352,6 +362,10 @@ export async function startSession(params: StartSessionParams): Promise<void> {
           claudeSessionId: handle.claudeSessionId ?? undefined,
           costUsd: message.total_cost_usd,
           turns: message.num_turns,
+          // The run's own closing account of what it did.
+          summary:
+            ("result" in message ? extractSummary(message.result) : null) ?? undefined,
+          currentActivity: null,
           errorMessage:
             message.is_error && "errors" in message
               ? message.errors.join("; ")

@@ -22,6 +22,8 @@ interface SessionRow {
   task_id: string | null;
   cost_usd: number | null;
   turns: number | null;
+  summary: string | null;
+  current_activity: string | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;
@@ -39,6 +41,8 @@ function mapSession(row: SessionRow): SessionRecord {
     taskId: row.task_id,
     costUsd: row.cost_usd,
     turns: row.turns,
+    summary: row.summary ?? null,
+    currentActivity: row.current_activity ?? null,
     errorMessage: row.error_message,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -92,19 +96,24 @@ export function updateSession(
     costUsd: number;
     turns: number;
     errorMessage: string;
+    summary: string;
+    /** Pass null to clear it, e.g. once a run has finished. */
+    currentActivity: string | null;
   }>
 ): void {
   const current = getSession(id);
   if (!current) return;
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE sessions SET claude_session_id = ?, status = ?, cost_usd = ?, turns = ?, error_message = ?, updated_at = ? WHERE id = ?`
+    `UPDATE sessions SET claude_session_id = ?, status = ?, cost_usd = ?, turns = ?, error_message = ?, summary = ?, current_activity = ?, updated_at = ? WHERE id = ?`
   ).run(
     patch.claudeSessionId ?? current.claudeSessionId,
     patch.status ?? current.status,
     patch.costUsd ?? current.costUsd,
     patch.turns ?? current.turns,
     patch.errorMessage ?? current.errorMessage,
+    patch.summary ?? current.summary,
+    patch.currentActivity !== undefined ? patch.currentActivity : current.currentActivity,
     now,
     id
   );

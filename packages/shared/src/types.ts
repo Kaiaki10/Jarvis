@@ -19,6 +19,10 @@ export interface SessionRecord {
   taskId: string | null;
   costUsd: number | null;
   turns: number | null;
+  /** The run's own one-line account of what it did, from its final message. */
+  summary: string | null;
+  /** What it is doing right now, while running. */
+  currentActivity: string | null;
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;

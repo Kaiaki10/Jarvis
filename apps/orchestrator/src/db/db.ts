@@ -18,6 +18,8 @@ db.exec(readFileSync(join(__dirname, "schema.sql"), "utf-8"));
  */
 for (const statement of [
   "ALTER TABLE platform_actions ADD COLUMN content_hash TEXT",
+  "ALTER TABLE sessions ADD COLUMN summary TEXT",
+  "ALTER TABLE sessions ADD COLUMN current_activity TEXT",
 ]) {
   try {
     db.exec(statement);
