@@ -237,7 +237,12 @@ const resend: Platform = {
         `Resend rejected the API key: ${data?.message ?? "unauthorized"}. Check it was copied in full.`
       );
     }
-    if (status !== 200) return failure(`Resend returned HTTP ${status}.`);
+    if (status !== 200) {
+      // Echo what Resend actually said — a bare status code gives the user
+      // nothing to act on, which is how a malformed key looks like a mystery.
+      const detail = data?.message ?? data?.name ?? JSON.stringify(body);
+      return failure(`Resend returned HTTP ${status}: ${detail}`);
+    }
     if (senderProblem) return failure(senderProblem);
     return { ok: true, detail: `Key valid — sending as ${creds.fromAddress}` };
   },

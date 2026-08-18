@@ -375,7 +375,11 @@ app.put("/connections/:platformId", (req: Request, res: Response) => {
     ...(getConnectionCredentials(platform.definition.id) ?? {}),
   };
   for (const [key, value] of Object.entries(submitted)) {
-    if (String(value ?? "").trim()) merged[key] = String(value);
+    // Store the trimmed value, not the raw one. Credentials are pasted, and a
+    // trailing newline or space from the clipboard is invisible in a password
+    // field but makes the key fail with a confusing "invalid key" from the API.
+    const trimmed = String(value ?? "").trim();
+    if (trimmed) merged[key] = trimmed;
   }
 
   const missing = platform.definition.fields
