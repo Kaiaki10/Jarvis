@@ -67,3 +67,10 @@ from an API route** — responses carry masked hints only.
 - PowerShell is the shell here. `&&` and `||` are unavailable; backticks are escape
   characters, so pass multi-line git messages via `git commit -F <file>`.
 - Ports 3000 and 4317 are owned by the live service. Don't bind them from a worktree.
+
+## Scheduled automations
+
+Automations run unattended from a git worktree at `../jarvis-lab` on branch
+`jarvis/auto`. They all follow `AUTOMATION_RULES.md` — read it before doing
+automated work. The live service runs compiled output from this directory, so
+nothing an automation commits affects it until a human merges and rebuilds.

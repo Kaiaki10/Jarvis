@@ -294,6 +294,10 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         permissionMode: params.permissionMode as PermissionMode,
         allowedTools: [...(params.allowedTools ?? []), ...toolset.autoAllowTools],
         includePartialMessages: true,
+        // Loads the working directory's CLAUDE.md automatically. Without this the
+        // SDK runs in isolation mode and a session only sees the conventions if a
+        // prompt happens to tell it to go and read them.
+        settingSources: ["project"],
         canUseTool,
         ...(params.resumeClaudeSessionId
           ? { resume: params.resumeClaudeSessionId }
