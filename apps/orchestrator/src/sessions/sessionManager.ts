@@ -286,7 +286,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       options: {
         cwd: params.cwd,
         permissionMode: params.permissionMode as PermissionMode,
-        allowedTools: params.allowedTools,
+        allowedTools: [...(params.allowedTools ?? []), ...toolset.autoAllowTools],
         includePartialMessages: true,
         canUseTool,
         ...(params.resumeClaudeSessionId

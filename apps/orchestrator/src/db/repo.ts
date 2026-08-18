@@ -317,6 +317,7 @@ const SETTING_DEFAULTS: SettingsRecord = {
   approvalTimeoutMinutes: 240,
   eventRetentionDays: 30,
   dailyPlatformActionCap: 25,
+  imagesFolder: "",
 };
 
 function readSetting(key: string): string | undefined {
@@ -371,6 +372,7 @@ export function getSettings(): SettingsRecord {
         ? parsed
         : SETTING_DEFAULTS.dailyPlatformActionCap;
     })(),
+    imagesFolder: readSetting("images_folder") ?? SETTING_DEFAULTS.imagesFolder,
   };
 }
 
@@ -400,6 +402,9 @@ export function updateSettings(
   }
   if (patch.dailyPlatformActionCap !== undefined) {
     writeSetting("daily_platform_action_cap", String(patch.dailyPlatformActionCap));
+  }
+  if (patch.imagesFolder !== undefined) {
+    writeSetting("images_folder", patch.imagesFolder.trim());
   }
   return getSettings();
 }

@@ -48,6 +48,7 @@ import {
 } from "../security/portableBackup.js";
 import { getPlatform, platformDefinitions } from "../platforms/definitions.js";
 import { getUsageToday } from "../platforms/spendGuard.js";
+import { listImages, imagesFolder, ensureImagesFolder } from "../platforms/media.js";
 import {
   listNotifications,
   unreadCount,
@@ -444,6 +445,10 @@ app.get("/platform-usage", (_req: Request, res: Response) => {
   res.json(getUsageToday());
 });
 
+app.get("/images", (_req: Request, res: Response) => {
+  res.json({ folder: imagesFolder(), images: listImages() });
+});
+
 // ---- Storage ----
 
 app.get("/storage", (_req: Request, res: Response) => {
@@ -547,6 +552,8 @@ const server = app.listen(PORT, () => {
   startScheduler();
   startIdleReaper();
   startMaintenance();
+  // Create it up front so the folder exists to drop files into.
+  console.log(`Images folder: ${ensureImagesFolder()}`);
 });
 
 function shutdown() {

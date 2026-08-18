@@ -245,6 +245,31 @@ export function SettingsPanel() {
         </CardBody>
       </Card>
 
+      <Card>
+        <CardHeader
+          title="Images"
+          description="Drop images here and Jarvis can attach them to posts"
+        />
+        <CardBody>
+          <p className="text-xs leading-relaxed text-muted">
+            Generate images however you like — including in ChatGPT under a subscription
+            you already pay for — then save them to this folder. Jarvis lists what&apos;s
+            there and attaches one when you ask it to. Nothing outside this folder is
+            readable, and you still approve every post before it goes out.
+          </p>
+          <Input
+            className="mt-2 w-full font-mono text-xs"
+            placeholder="Leave blank to use the default folder in your home directory"
+            defaultValue={settings.imagesFolder}
+            onBlur={(e) => {
+              if (e.target.value !== settings.imagesFolder) {
+                saveSettings({ imagesFolder: e.target.value });
+              }
+            }}
+          />
+        </CardBody>
+      </Card>
+
       <StoragePanel />
 
       <BackupPanel />

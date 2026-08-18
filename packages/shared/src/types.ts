@@ -162,6 +162,8 @@ export interface SettingsRecord {
   eventRetentionDays: number;
   /** Max billable actions per platform per day. 0 disables the guardrail. */
   dailyPlatformActionCap: number;
+  /** Folder Jarvis reads images from when attaching them to posts. */
+  imagesFolder: string;
 }
 
 export interface PlatformUsage {
@@ -194,6 +196,7 @@ export interface UpdateSettingsRequest {
   approvalTimeoutMinutes?: number;
   eventRetentionDays?: number;
   dailyPlatformActionCap?: number;
+  imagesFolder?: string;
 }
 
 export interface ScheduledTaskRecord {

@@ -13,13 +13,10 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 
 ## Open
 
-### high — Jarvis cannot post images anywhere
-`post_to_x` sends only `{ text }`, and the Slack and Discord tools are text-only too.
-Image posts are the norm for social media and X does not charge extra for them
-($0.015, same as text), so this is a pure capability gap rather than a cost one.
-Needs the two-step X flow — upload to media/upload for a media_id, then attach it —
-plus a decision about where images come from: generated, or a local folder the user
-drops files into.
+### medium — Slack and Discord tools are still text-only
+`post_to_slack` and `post_to_discord` send text only. X now supports attaching an
+image from the watched folder; the same could be offered for the other platforms,
+which use simpler single-request uploads.
 
 ### medium — The web app has no tests
 The orchestrator has coverage. `apps/web` has none — no component tests, no test for
@@ -60,6 +57,12 @@ disconnected until they refresh manually.
 
 ## Closed
 
+- **2026-08-18** Jarvis could not post images — closed by a watched images folder
+  plus the X v2 chunked upload (initialize/append/finalize). Verified live: INIT and
+  APPEND both succeeded against the real API and only FINALIZE stopped, on account
+  credits. The v1.1 endpoint used first was deprecated in March 2025 and answers a
+  correct request with "media type unrecognized", which reads like a bad file.
+  Path traversal is blocked by construction and covered by tests.
 - **2026-08-18** No outbound action had ever succeeded end to end — CLOSED. Jarvis
   composed and sent a real email to the user via Resend through the whole chain:
   session, MCP tool, encrypted vault credentials, spend guard, approval gate, live
