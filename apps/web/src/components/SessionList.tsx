@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Play } from "lucide-react";
 import { useSessionsList } from "@/lib/hooks";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -58,8 +58,12 @@ export function SessionList({
       <div className="flex flex-col px-2 pb-2">
         {loading && <div className="px-3 py-4 text-sm text-muted">Loading…</div>}
         {!loading && visible.length === 0 && (
-          <div className="px-3 py-4 text-sm text-muted">
-            No sessions yet — launch one to get started.
+          <div className="flex items-center gap-2.5 px-3 py-4 text-sm text-muted">
+            <Play className="h-4 w-4" strokeWidth={1.75} />
+            No sessions yet.
+            <Link href="/" className="text-foreground hover:underline">
+              Launch one
+            </Link>
           </div>
         )}
         {visible.map((session) => (

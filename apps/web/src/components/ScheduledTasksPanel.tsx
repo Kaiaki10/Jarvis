@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CalendarPlus, Pause, Play, Trash2 } from "lucide-react";
+import { CalendarPlus, CalendarClock, Pause, Play, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useScheduledTasksList, useSettings } from "@/lib/hooks";
 import { DAY_LABELS, daysLabel } from "@/lib/runStatus";
@@ -146,7 +146,10 @@ export function ScheduledTasksPanel() {
 
       <div className="flex flex-col gap-2 px-5 pb-5">
         {tasks.length === 0 && (
-          <div className="text-sm text-muted">No automations scheduled yet.</div>
+          <div className="flex items-center gap-2.5 text-sm text-muted">
+            <CalendarClock className="h-4 w-4" strokeWidth={1.75} />
+            No automations scheduled yet — use the form above to create one.
+          </div>
         )}
         {tasks.map((task) => (
           <div
