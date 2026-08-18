@@ -17,6 +17,14 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 Tool registration, gating, editing and rejection are all verified, but no real post or
 email has been sent through any platform. Until one is, the send path is unproven.
 
+### high — No spend guardrail on paid platform APIs
+X bills per action ($0.015 a post, $0.20 if it contains a URL) and other platforms
+will too. Jarvis can post autonomously on a schedule with no cap of its own, so a
+looping or over-eager automation spends real money with nothing to stop it. The
+approval gate helps only while a human is watching; unattended runs have no limit.
+Needs a per-platform daily action cap enforced in `platforms/actions.ts`, and ideally
+a running count surfaced in the dashboard.
+
 ### medium — The web app has no tests
 The orchestrator has coverage. `apps/web` has none — no component tests, no test for
 the store's single-EventSource invariant, which is easy to regress by accident.

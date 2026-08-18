@@ -54,6 +54,26 @@ function buildXTools(creds: Creds): AnyTool[] {
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
         const body = await res.text();
+
+        // X bills per post and stops at zero rather than overdrawing. Without
+        // naming the cause this surfaces as a bare 402 that looks like a bug.
+        if (res.status === 402) {
+          return fail(
+            "X rejected the post: your API credits are depleted. X charges per post " +
+              "($0.015, or $0.20 if the text contains a URL). Buy credits in the X " +
+              "Developer Console under Billing, and set a spending cap while you are there."
+          );
+        }
+        if (res.status === 403) {
+          return fail(
+            "X accepted the credentials but refused to post (403). The access token is " +
+              "probably read-only — set App permissions to Read and write, then regenerate " +
+              "the access token and secret, since tokens keep the permission they were born with."
+          );
+        }
+        if (res.status === 429) {
+          return fail("X rate limit reached. Wait for the window to reset and try again.");
+        }
         if (!res.ok) return fail(`X refused the post (HTTP ${res.status}): ${body}`);
         try {
           const parsed = JSON.parse(body) as { data?: { id?: string } };
