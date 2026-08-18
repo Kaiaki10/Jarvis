@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Clock } from "lucide-react";
+import { Clock, Calendar } from "lucide-react";
 import { useScheduledTasksList, useSessionsList } from "@/lib/hooks";
 import { formatTime, isToday, lastRunOutcome } from "@/lib/runStatus";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -73,8 +73,12 @@ export function TodaySchedule() {
       />
       <div className="flex flex-col px-2 pb-3">
         {entries.length === 0 && (
-          <div className="px-3 py-3 text-sm text-muted">
+          <div className="flex items-center gap-2.5 px-3 py-3 text-sm text-muted">
+            <Calendar className="h-4 w-4" strokeWidth={1.75} />
             Nothing scheduled for today.
+            <Link href="/automations" className="text-foreground hover:underline">
+              Schedule one
+            </Link>
           </div>
         )}
         {entries.map((entry) => {

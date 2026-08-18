@@ -11,8 +11,6 @@ Each run picks **one** item, completes it properly, and records the outcome here
 
 ## Up next
 
-- [ ] Empty states: several panels show bare text ("Nothing scheduled for today.").
-      Give them a small icon plus a suggested next action, consistent across panels.
 - [ ] Loading states: lists render "Loading…" as plain text. Add skeleton rows so the
       layout doesn't jump when data arrives.
 - [ ] The session transcript renders tool calls as nothing at all — tool_use blocks are
@@ -24,7 +22,7 @@ Each run picks **one** item, completes it properly, and records the outcome here
 
 ## Done
 
-_(nothing yet)_
+- [x] **2026-08-17** Empty states: Added icons and action links to TodaySchedule, SessionList, and ScheduledTasksPanel. All empty states now follow the pattern from AutomationHealth (icon + message + clickable action).
 
 ## Notes
 
