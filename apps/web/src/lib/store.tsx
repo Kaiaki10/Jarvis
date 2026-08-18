@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  ConnectionRecord,
+  PlatformDefinition,
   ScheduledTaskRecord,
   SessionRecord,
   SettingsRecord,
@@ -35,6 +37,9 @@ interface StoreValue {
   refreshScheduledTasks: () => Promise<void>;
   settings: SettingsRecord | null;
   saveSettings: (patch: UpdateSettingsRequest) => Promise<void>;
+  platforms: PlatformDefinition[];
+  connections: ConnectionRecord[];
+  refreshConnections: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -61,6 +66,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTaskRecord[]>([]);
   const [settings, setSettings] = useState<SettingsRecord | null>(null);
+  const [platforms, setPlatforms] = useState<PlatformDefinition[]>([]);
+  const [connections, setConnections] = useState<ConnectionRecord[]>([]);
 
   const refreshTasks = useCallback(async () => {
     setTasks(await api.listTasks());
@@ -74,9 +81,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSettings(await api.updateSettings(patch));
   }, []);
 
+  const refreshConnections = useCallback(async () => {
+    setConnections(await api.listConnections());
+  }, []);
+
   useEffect(() => {
     api.getSettings().then(setSettings).catch(() => {});
-  }, []);
+    api.listPlatforms().then(setPlatforms).catch(() => {});
+    refreshConnections().catch(() => {});
+  }, [refreshConnections]);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +161,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshScheduledTasks,
       settings,
       saveSettings,
+      platforms,
+      connections,
+      refreshConnections,
     }),
     [
       sessions,
@@ -160,6 +176,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshScheduledTasks,
       settings,
       saveSettings,
+      platforms,
+      connections,
+      refreshConnections,
     ]
   );
 
@@ -194,4 +213,9 @@ export function useScheduledTasksList() {
 export function useSettings() {
   const { settings, saveSettings } = useStore();
   return { settings, saveSettings };
+}
+
+export function useConnections() {
+  const { platforms, connections, refreshConnections } = useStore();
+  return { platforms, connections, refresh: refreshConnections };
 }

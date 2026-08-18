@@ -9,6 +9,7 @@ import {
   Terminal,
   CalendarClock,
   ListChecks,
+  Plug,
   Settings,
 } from "lucide-react";
 import { StoreProvider } from "@/lib/store";
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { href: "/sessions", label: "Sessions", icon: Terminal },
   { href: "/automations", label: "Automations", icon: CalendarClock },
   { href: "/tasks", label: "Tasks", icon: ListChecks },
+  { href: "/connections", label: "Connections", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

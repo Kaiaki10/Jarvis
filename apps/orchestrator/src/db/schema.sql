@@ -26,6 +26,17 @@ CREATE TABLE IF NOT EXISTS session_events (
 CREATE INDEX IF NOT EXISTS idx_session_events_session_seq
   ON session_events(session_id, seq);
 
+CREATE TABLE IF NOT EXISTS connections (
+  platform_id TEXT PRIMARY KEY,
+  credentials TEXT NOT NULL,
+  status TEXT NOT NULL,
+  detail TEXT,
+  error_message TEXT,
+  last_tested_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,

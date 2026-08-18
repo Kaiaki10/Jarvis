@@ -1,6 +1,9 @@
 import type {
+  ConnectionRecord,
   CreateScheduledTaskRequest,
   CreateSessionRequest,
+  PlatformDefinition,
+  TestConnectionResult,
   PermissionResponseRequest,
   ScheduledTaskRecord,
   SessionEventRecord,
@@ -80,6 +83,21 @@ export const api = {
     }),
   deleteScheduledTask: (id: string) =>
     request<void>(`/scheduled-tasks/${id}`, { method: "DELETE" }),
+
+  listPlatforms: () => request<PlatformDefinition[]>("/platforms"),
+  listConnections: () => request<ConnectionRecord[]>("/connections"),
+  saveConnection: (platformId: string, values: Record<string, string>) =>
+    request<ConnectionRecord>(`/connections/${platformId}`, {
+      method: "PUT",
+      body: JSON.stringify({ values }),
+    }),
+  testConnection: (platformId: string) =>
+    request<{ result: TestConnectionResult; connection: ConnectionRecord }>(
+      `/connections/${platformId}/test`,
+      { method: "POST" }
+    ),
+  deleteConnection: (platformId: string) =>
+    request<void>(`/connections/${platformId}`, { method: "DELETE" }),
 
   getSettings: () => request<SettingsRecord>("/settings"),
   updateSettings: (patch: UpdateSettingsRequest) =>

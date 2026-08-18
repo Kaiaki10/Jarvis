@@ -30,6 +30,15 @@ import {
   atConcurrencyLimit,
   startIdleReaper,
 } from "../sessions/sessionManager.js";
+import {
+  listConnections,
+  getConnection,
+  getConnectionCredentials,
+  saveConnection,
+  recordTestResult,
+  deleteConnection,
+} from "../db/connectionsRepo.js";
+import { getPlatform, platformDefinitions } from "../platforms/definitions.js";
 import { computeNextRun, startScheduler } from "../scheduler/scheduler.js";
 import { globalBus } from "../events/globalBus.js";
 import type {
@@ -38,6 +47,7 @@ import type {
   UpdateScheduledTaskRequest,
   UpdateSettingsRequest,
   PermissionResponseRequest,
+  SaveConnectionRequest,
 } from "@jarvis/shared";
 
 const PORT = Number(process.env.PORT ?? 4317);
@@ -277,6 +287,77 @@ app.patch("/scheduled-tasks/:id", (req: Request, res: Response) => {
 
 app.delete("/scheduled-tasks/:id", (req: Request, res: Response) => {
   deleteScheduledTask(req.params.id);
+  res.status(204).send();
+});
+
+// ---- Platform connections ----
+
+app.get("/platforms", (_req: Request, res: Response) => {
+  res.json(platformDefinitions());
+});
+
+app.get("/connections", (_req: Request, res: Response) => {
+  res.json(listConnections());
+});
+
+app.put("/connections/:platformId", (req: Request, res: Response) => {
+  const platform = getPlatform(req.params.platformId);
+  if (!platform) {
+    res.status(404).json({ error: "unknown platform" });
+    return;
+  }
+  const submitted = (req.body as SaveConnectionRequest).values ?? {};
+  // Blank fields mean "leave as-is" so re-editing doesn't wipe secrets the user
+  // no longer has a copy of (most platforms show them exactly once).
+  const merged: Record<string, string> = {
+    ...(getConnectionCredentials(platform.definition.id) ?? {}),
+  };
+  for (const [key, value] of Object.entries(submitted)) {
+    if (String(value ?? "").trim()) merged[key] = String(value);
+  }
+
+  const missing = platform.definition.fields
+    .filter((f) => !f.optional && !String(merged[f.key] ?? "").trim())
+    .map((f) => f.label);
+  if (missing.length) {
+    res.status(400).json({ error: `Missing required field(s): ${missing.join(", ")}` });
+    return;
+  }
+  res.json(saveConnection(platform.definition.id, merged));
+});
+
+app.post("/connections/:platformId/test", async (req: Request, res: Response) => {
+  const platform = getPlatform(req.params.platformId);
+  if (!platform) {
+    res.status(404).json({ error: "unknown platform" });
+    return;
+  }
+  const creds = getConnectionCredentials(platform.definition.id);
+  if (!creds) {
+    res.status(400).json({ error: "no credentials saved for this platform yet" });
+    return;
+  }
+  let result;
+  try {
+    result = await platform.test(creds);
+  } catch (err) {
+    // Network failures and timeouts are connection problems, not crashes.
+    result = {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+  const connection = recordTestResult(
+    platform.definition.id,
+    result.ok,
+    result.detail ?? null,
+    result.ok ? null : (result.message ?? "Connection test failed")
+  );
+  res.json({ result, connection });
+});
+
+app.delete("/connections/:platformId", (req: Request, res: Response) => {
+  deleteConnection(req.params.platformId);
   res.status(204).send();
 });
 

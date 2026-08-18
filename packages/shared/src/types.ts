@@ -72,6 +72,59 @@ export interface PermissionResponseRequest {
   updatedInput?: unknown;
 }
 
+export interface CredentialFieldDefinition {
+  key: string;
+  label: string;
+  help: string;
+  placeholder?: string;
+  /** Masked in the UI and never returned by the API once saved. */
+  secret: boolean;
+  optional?: boolean;
+}
+
+export interface SetupStepDefinition {
+  title: string;
+  body: string[];
+  linkUrl?: string;
+  linkLabel?: string;
+  /** Called out in the UI as an easy-to-miss gotcha. */
+  warning?: string;
+}
+
+export interface PlatformDefinition {
+  id: string;
+  name: string;
+  tagline: string;
+  category: "social" | "messaging" | "email";
+  docsUrl: string;
+  steps: SetupStepDefinition[];
+  fields: CredentialFieldDefinition[];
+}
+
+export type ConnectionStatus = "not_connected" | "connected" | "error";
+
+export interface ConnectionRecord {
+  platformId: string;
+  status: ConnectionStatus;
+  /** Human-readable proof of who we connected as, e.g. "Connected as @acme". */
+  detail: string | null;
+  errorMessage: string | null;
+  /** Masked previews only — real values never leave the orchestrator. */
+  fieldHints: Record<string, string>;
+  lastTestedAt: string | null;
+  updatedAt: string;
+}
+
+export interface SaveConnectionRequest {
+  values: Record<string, string>;
+}
+
+export interface TestConnectionResult {
+  ok: boolean;
+  detail?: string;
+  message?: string;
+}
+
 export interface SettingsRecord {
   /** Durable business context appended to every session's system prompt. */
   businessContext: string;

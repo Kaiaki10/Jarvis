@@ -1,0 +1,282 @@
+import type { PlatformDefinition, TestConnectionResult } from "@jarvis/shared";
+import { oauth1Header } from "./oauth1.js";
+
+type Creds = Record<string, string>;
+
+export interface Platform {
+  definition: PlatformDefinition;
+  /** Proves the credentials actually work, rather than just that they're stored. */
+  test: (creds: Creds) => Promise<TestConnectionResult>;
+}
+
+const TIMEOUT_MS = 15_000;
+
+async function fetchJson(
+  url: string,
+  init: RequestInit
+): Promise<{ status: number; body: unknown }> {
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+  return { status: res.status, body };
+}
+
+function failure(message: string): TestConnectionResult {
+  return { ok: false, message };
+}
+
+const slack: Platform = {
+  definition: {
+    id: "slack",
+    name: "Slack",
+    tagline: "Post updates and route customer messages through a workspace.",
+    category: "messaging",
+    docsUrl: "https://api.slack.com/apps",
+    fields: [
+      {
+        key: "botToken",
+        label: "Bot User OAuth Token",
+        help: "Starts with xoxb-. Found under OAuth & Permissions after you install the app to your workspace.",
+        placeholder: "xoxb-…",
+        secret: true,
+      },
+    ],
+    steps: [
+      {
+        title: "Create a Slack app",
+        body: [
+          "Open Slack's app dashboard and choose Create New App → From scratch.",
+          "Give it a name (Jarvis works) and pick the workspace you want it to act in.",
+        ],
+        linkUrl: "https://api.slack.com/apps",
+        linkLabel: "Open Slack app dashboard",
+      },
+      {
+        title: "Add permissions",
+        body: [
+          "In the sidebar choose OAuth & Permissions, scroll to Scopes, and add the Bot Token Scopes you need.",
+          "chat:write lets Jarvis post messages. Add channels:read if you want it to list channels, and users:read to look up people.",
+        ],
+        warning:
+          "Scopes must be added before installing. If you install first and add scopes later, you have to reinstall the app.",
+      },
+      {
+        title: "Install and copy the token",
+        body: [
+          "Still under OAuth & Permissions, click Install to Workspace and approve.",
+          "Copy the Bot User OAuth Token that appears — it begins with xoxb-.",
+        ],
+      },
+    ],
+  },
+  async test(creds) {
+    const { status, body } = await fetchJson("https://slack.com/api/auth.test", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.botToken}` },
+    });
+    const data = body as { ok?: boolean; error?: string; team?: string; user?: string };
+    if (status !== 200) return failure(`Slack returned HTTP ${status}.`);
+    if (!data?.ok) return failure(`Slack rejected the token: ${data?.error ?? "unknown error"}`);
+    return { ok: true, detail: `Connected to ${data.team} as ${data.user}` };
+  },
+};
+
+const discord: Platform = {
+  definition: {
+    id: "discord",
+    name: "Discord",
+    tagline: "Run a community server or support channel with a bot account.",
+    category: "messaging",
+    docsUrl: "https://discord.com/developers/applications",
+    fields: [
+      {
+        key: "botToken",
+        label: "Bot Token",
+        help: "From your application's Bot tab. Shown only once when you reset it, so copy it immediately.",
+        placeholder: "MTIz…",
+        secret: true,
+      },
+    ],
+    steps: [
+      {
+        title: "Create an application",
+        body: [
+          "Go to the Discord developer portal and click New Application.",
+          "Name it, then open the Bot tab in the sidebar.",
+        ],
+        linkUrl: "https://discord.com/developers/applications",
+        linkLabel: "Open Discord developer portal",
+      },
+      {
+        title: "Get the bot token",
+        body: [
+          "On the Bot tab click Reset Token, confirm, then copy the value it shows you.",
+        ],
+        warning:
+          "Discord shows the token exactly once. If you navigate away without copying it, reset it again.",
+      },
+      {
+        title: "Invite the bot to your server",
+        body: [
+          "Open OAuth2 → URL Generator, tick the bot scope, choose the permissions it needs (Send Messages at minimum), then open the generated URL and pick your server.",
+          "The bot has to be in the server before it can post there.",
+        ],
+      },
+    ],
+  },
+  async test(creds) {
+    const { status, body } = await fetchJson("https://discord.com/api/v10/users/@me", {
+      headers: { Authorization: `Bot ${creds.botToken}` },
+    });
+    if (status === 401) return failure("Discord rejected the token (401 Unauthorized).");
+    if (status !== 200) return failure(`Discord returned HTTP ${status}.`);
+    const data = body as { username?: string; discriminator?: string };
+    return { ok: true, detail: `Connected as ${data.username ?? "bot"}` };
+  },
+};
+
+const resend: Platform = {
+  definition: {
+    id: "resend",
+    name: "Resend",
+    tagline: "Send customer emails and replies from your own domain.",
+    category: "email",
+    docsUrl: "https://resend.com/api-keys",
+    fields: [
+      {
+        key: "apiKey",
+        label: "API Key",
+        help: "Starts with re_. Create one under API Keys in the Resend dashboard.",
+        placeholder: "re_…",
+        secret: true,
+      },
+      {
+        key: "fromAddress",
+        label: "From address",
+        help: "The address Jarvis sends as, e.g. hello@yourdomain.com. Its domain must be verified in Resend.",
+        placeholder: "hello@yourdomain.com",
+        secret: false,
+      },
+    ],
+    steps: [
+      {
+        title: "Verify your sending domain",
+        body: [
+          "In Resend open Domains → Add Domain and follow the DNS records it gives you.",
+          "Until a domain is verified you can only send to your own address, which is fine for testing.",
+        ],
+        linkUrl: "https://resend.com/domains",
+        linkLabel: "Open Resend domains",
+      },
+      {
+        title: "Create an API key",
+        body: [
+          "Open API Keys → Create API Key. Sending permission is enough.",
+          "Copy the key immediately — it's shown once.",
+        ],
+        linkUrl: "https://resend.com/api-keys",
+        linkLabel: "Open Resend API keys",
+      },
+    ],
+  },
+  async test(creds) {
+    const { status } = await fetchJson("https://api.resend.com/domains", {
+      headers: { Authorization: `Bearer ${creds.apiKey}` },
+    });
+    if (status === 401) return failure("Resend rejected the API key (401 Unauthorized).");
+    if (status !== 200) return failure(`Resend returned HTTP ${status}.`);
+    return { ok: true, detail: `API key valid, sending as ${creds.fromAddress}` };
+  },
+};
+
+const x: Platform = {
+  definition: {
+    id: "x",
+    name: "X (Twitter)",
+    tagline: "Draft and publish posts to an X account.",
+    category: "social",
+    docsUrl: "https://developer.x.com/en/portal/dashboard",
+    fields: [
+      { key: "apiKey", label: "API Key", help: "Also labelled Consumer Key.", secret: true },
+      {
+        key: "apiSecret",
+        label: "API Key Secret",
+        help: "Also labelled Consumer Secret.",
+        secret: true,
+      },
+      {
+        key: "accessToken",
+        label: "Access Token",
+        help: "The user-context token for the account that will post.",
+        secret: true,
+      },
+      {
+        key: "accessTokenSecret",
+        label: "Access Token Secret",
+        help: "Shown alongside the access token.",
+        secret: true,
+      },
+    ],
+    steps: [
+      {
+        title: "Create a developer project",
+        body: [
+          "Sign in to the X developer portal and create a Project, then an App inside it.",
+          "The Free tier allows posting but has a low monthly cap, so treat it as a trial.",
+        ],
+        linkUrl: "https://developer.x.com/en/portal/dashboard",
+        linkLabel: "Open X developer portal",
+      },
+      {
+        title: "Set app permissions to Read and write",
+        body: [
+          "In your app's settings open User authentication settings and set App permissions to Read and write.",
+        ],
+        warning:
+          "Do this BEFORE generating access tokens. Tokens carry whatever permission the app had when they were created — if you generate them while the app is read-only, posting fails with a 403 and you must regenerate them.",
+      },
+      {
+        title: "Generate keys and tokens",
+        body: [
+          "Open the Keys and tokens tab. Copy the API Key and Secret, then generate the Access Token and Secret.",
+          "Paste all four below.",
+        ],
+      },
+    ],
+  },
+  async test(creds) {
+    const url = "https://api.x.com/2/users/me";
+    const header = oauth1Header("GET", url, {
+      apiKey: creds.apiKey,
+      apiSecret: creds.apiSecret,
+      accessToken: creds.accessToken,
+      accessTokenSecret: creds.accessTokenSecret,
+    });
+    const { status, body } = await fetchJson(url, { headers: { Authorization: header } });
+    if (status === 401) {
+      return failure("X rejected the credentials (401). Check all four values are correct.");
+    }
+    if (status === 403) {
+      return failure(
+        "X accepted the credentials but refused the request (403). Usually means app permissions are read-only — set Read and write, then regenerate your access tokens."
+      );
+    }
+    if (status !== 200) return failure(`X returned HTTP ${status}.`);
+    const data = body as { data?: { username?: string } };
+    return { ok: true, detail: `Connected as @${data?.data?.username ?? "unknown"}` };
+  },
+};
+
+export const PLATFORMS: Platform[] = [x, slack, discord, resend];
+
+export function getPlatform(id: string): Platform | undefined {
+  return PLATFORMS.find((p) => p.definition.id === id);
+}
+
+export function platformDefinitions(): PlatformDefinition[] {
+  return PLATFORMS.map((p) => p.definition);
+}

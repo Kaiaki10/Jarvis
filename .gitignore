@@ -5,5 +5,7 @@ dist/
 *.db-journal
 *.db-wal
 *.db-shm
+# Local encryption key for stored platform credentials — must never be committed.
+*.key
 .env
 .env.local
