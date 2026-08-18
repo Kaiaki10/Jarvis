@@ -327,6 +327,7 @@ const SETTING_DEFAULTS: SettingsRecord = {
   eventRetentionDays: 30,
   dailyPlatformActionCap: 25,
   imagesFolder: "",
+  chatWorkingDirectory: "",
 };
 
 function readSetting(key: string): string | undefined {
@@ -382,6 +383,8 @@ export function getSettings(): SettingsRecord {
         : SETTING_DEFAULTS.dailyPlatformActionCap;
     })(),
     imagesFolder: readSetting("images_folder") ?? SETTING_DEFAULTS.imagesFolder,
+    chatWorkingDirectory:
+      readSetting("chat_working_directory") ?? SETTING_DEFAULTS.chatWorkingDirectory,
   };
 }
 
@@ -414,6 +417,9 @@ export function updateSettings(
   }
   if (patch.imagesFolder !== undefined) {
     writeSetting("images_folder", patch.imagesFolder.trim());
+  }
+  if (patch.chatWorkingDirectory !== undefined) {
+    writeSetting("chat_working_directory", patch.chatWorkingDirectory.trim());
   }
   return getSettings();
 }
@@ -547,4 +553,35 @@ export function updateScheduledTask(
 
 export function deleteScheduledTask(id: string): void {
   db.prepare(`DELETE FROM scheduled_tasks WHERE id = ?`).run(id);
+}
+
+/**
+ * The one ongoing conversation with Jarvis.
+ *
+ * Every launch used to create a new session, so talking to Jarvis twice produced
+ * two unrelated threads and the list filled with disposable rows. The chat has a
+ * single durable session that is resumed rather than replaced; automation runs
+ * stay separate because each really is its own execution.
+ */
+export function getPrimarySessionId(): string | null {
+  return readSetting("primary_session_id") ?? null;
+}
+
+export function setPrimarySessionId(id: string): void {
+  writeSetting("primary_session_id", id);
+}
+
+/** Removes a session and its transcript. Refuses nothing — callers check status. */
+export function deleteSession(id: string): void {
+  db.prepare(`DELETE FROM session_events WHERE session_id = ?`).run(id);
+  // Anything still pointing at this row would otherwise link to a 404. Foreign
+  // keys aren't enforced yet, so clear the references by hand.
+  db.prepare(
+    `UPDATE scheduled_tasks SET last_session_id = NULL WHERE last_session_id = ?`
+  ).run(id);
+  db.prepare(`UPDATE tasks SET session_id = NULL WHERE session_id = ?`).run(id);
+  db.prepare(`DELETE FROM notifications WHERE session_id = ?`).run(id);
+  db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
+  // If the conversation itself was deleted, stop pointing at it.
+  if (getPrimarySessionId() === id) writeSetting("primary_session_id", "");
 }

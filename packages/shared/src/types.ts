@@ -168,6 +168,8 @@ export interface SettingsRecord {
   dailyPlatformActionCap: number;
   /** Folder Jarvis reads images from when attaching them to posts. */
   imagesFolder: string;
+  /** Where the ongoing conversation with Jarvis runs. */
+  chatWorkingDirectory: string;
 }
 
 export interface PlatformUsage {
@@ -201,6 +203,7 @@ export interface UpdateSettingsRequest {
   eventRetentionDays?: number;
   dailyPlatformActionCap?: number;
   imagesFolder?: string;
+  chatWorkingDirectory?: string;
 }
 
 export interface ScheduledTaskRecord {

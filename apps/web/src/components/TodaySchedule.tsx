@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Clock, Calendar } from "lucide-react";
 import { useScheduledTasksList, useSessionsList } from "@/lib/hooks";
 import { formatTime, isToday, lastRunOutcome } from "@/lib/runStatus";
+import { automationKind } from "@/lib/automationKind";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 
@@ -26,7 +27,7 @@ export function TodaySchedule() {
     const rows: TimelineEntry[] = [];
 
     for (const task of tasks) {
-      const label = task.prompt.slice(0, 70);
+      const label = automationKind(task.prompt).label;
 
       if (task.lastRunAt && isToday(task.lastRunAt)) {
         const outcome = lastRunOutcome(task, sessionById);

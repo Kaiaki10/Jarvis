@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CalendarClock } from "lucide-react";
 import { useScheduledTasksList, useSessionsList } from "@/lib/hooks";
 import { daysLabel, lastRunOutcome } from "@/lib/runStatus";
+import { automationKind } from "@/lib/automationKind";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 
@@ -48,6 +49,10 @@ export function AutomationHealth() {
         )}
         {tasks.map((task) => {
           const outcome = lastRunOutcome(task, sessionById);
+          // Every automation shares the same preamble, so the raw prompt makes
+          // them all look identical — the derived kind is what distinguishes them.
+          const kind = automationKind(task.prompt);
+          const Icon = kind.icon;
           return (
             <div
               key={task.id}
@@ -55,8 +60,9 @@ export function AutomationHealth() {
                 task.enabled ? "" : "opacity-50"
               }`}
             >
+              <Icon className={`h-4 w-4 shrink-0 ${kind.color}`} strokeWidth={1.75} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-foreground">{task.prompt}</div>
+                <div className="truncate text-foreground">{kind.label}</div>
                 <div className="mt-0.5 text-[11px] text-muted">
                   {task.timeOfDay} · {daysLabel(task.daysOfWeek)}
                   {task.lastRunAt && ` · last run ${relativeDay(task.lastRunAt)}`}

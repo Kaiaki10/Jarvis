@@ -16,8 +16,8 @@ import {
 import { StoreProvider, useNotifications } from "@/lib/store";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/sessions", label: "Sessions", icon: Terminal },
+  { href: "/", label: "Jarvis", icon: LayoutDashboard },
+  { href: "/sessions", label: "Runs", icon: Terminal },
   { href: "/automations", label: "Automations", icon: CalendarClock },
   { href: "/tasks", label: "Tasks", icon: ListChecks },
   { href: "/notifications", label: "Notifications", icon: Bell },

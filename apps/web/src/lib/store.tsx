@@ -30,6 +30,9 @@ export interface ActivityLogEntry {
 interface StoreValue {
   sessions: SessionRecord[];
   sessionsLoading: boolean;
+  /** The ongoing conversation with Jarvis — kept out of the run history. */
+  primarySessionId: string | null;
+  removeSession: (id: string) => Promise<void>;
   sessionById: Map<string, SessionRecord>;
   activity: ActivityLogEntry[];
   tasks: TaskRecord[];
@@ -66,6 +69,7 @@ function toActivityEntry(session: SessionRecord): ActivityLogEntry {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [primarySessionId, setPrimarySessionId] = useState<string | null>(null);
   const [activity, setActivity] = useState<ActivityLogEntry[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTaskRecord[]>([]);
@@ -187,6 +191,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [refreshScheduledTasks]);
 
+  // Which session is the conversation, so the run history can leave it out.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      api
+        .getChat()
+        .then(({ session }) => {
+          if (!cancelled) setPrimarySessionId(session?.id ?? null);
+        })
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  const removeSession = useCallback(async (id: string) => {
+    await api.deleteSession(id);
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
   const sessionById = useMemo(
     () => new Map(sessions.map((s) => [s.id, s])),
     [sessions]
@@ -196,6 +223,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       sessions,
       sessionsLoading,
+      primarySessionId,
+      removeSession,
       sessionById,
       activity,
       tasks,
@@ -214,6 +243,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [
       sessions,
       sessionsLoading,
+      primarySessionId,
+      removeSession,
       sessionById,
       activity,
       tasks,
@@ -241,8 +272,15 @@ function useStore(): StoreValue {
 }
 
 export function useSessionsList() {
-  const { sessions, sessionsLoading, sessionById } = useStore();
-  return { sessions, loading: sessionsLoading, sessionById };
+  const { sessions, sessionsLoading, sessionById, primarySessionId, removeSession } =
+    useStore();
+  return {
+    sessions,
+    loading: sessionsLoading,
+    sessionById,
+    primarySessionId,
+    removeSession,
+  };
 }
 
 export function useActivityLog() {

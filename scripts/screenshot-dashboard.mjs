@@ -12,8 +12,8 @@ const BASE = process.env.JARVIS_WEB_URL ?? "http://localhost:3000";
 const outDir = process.argv[2] ?? ".screenshots";
 
 const PAGES = [
-  { path: "/", name: "overview", waitFor: "text=Overview" },
-  { path: "/sessions", name: "sessions", waitFor: "text=Sessions" },
+  { path: "/", name: "overview", waitFor: "text=Jarvis" },
+  { path: "/sessions", name: "sessions", waitFor: "text=Runs" },
   { path: "/automations", name: "automations", waitFor: "text=Automations" },
   { path: "/tasks", name: "tasks", waitFor: "text=Tasks" },
   { path: "/connections", name: "connections", waitFor: "text=Connections" },

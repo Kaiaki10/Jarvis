@@ -45,6 +45,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listSessions: () => request<SessionRecord[]>("/sessions"),
+  deleteSession: (id: string) =>
+    request<void>(`/sessions/${id}`, { method: "DELETE" }),
+
+  getChat: () => request<{ session: SessionRecord | null }>("/chat"),
+  sendChat: (text: string) =>
+    request<{ sessionId: string; resumed: boolean }>("/chat", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
   getSession: (id: string) => request<SessionRecord>(`/sessions/${id}`),
   createSession: (body: CreateSessionRequest) =>
     request<SessionRecord>("/sessions", {

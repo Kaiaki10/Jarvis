@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/Badge";
 const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export function AttentionQueue() {
-  const { sessions, loading } = useSessionsList();
+  const { sessions, loading, primarySessionId } = useSessionsList();
 
   const items = useMemo(() => {
     const now = Date.now();
@@ -25,6 +25,10 @@ export function AttentionQueue() {
         const outcome = outcomeForStatus(session.status);
         if (!outcome.needsAttention) return false;
         if (session.status === "waiting_permission") return true;
+        // The conversation ends up "interrupted" every time the service
+        // restarts. That isn't a failure — the next message resumes it — so
+        // only a genuine block is worth surfacing for it.
+        if (session.id === primarySessionId) return false;
         return now - new Date(session.updatedAt).getTime() < RECENT_WINDOW_MS;
       })
       .sort((a, b) => {
@@ -33,7 +37,7 @@ export function AttentionQueue() {
         if (aBlocked !== bBlocked) return aBlocked - bBlocked;
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       });
-  }, [sessions]);
+  }, [sessions, primarySessionId]);
 
   if (loading) return null;
 

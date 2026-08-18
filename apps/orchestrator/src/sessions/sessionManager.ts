@@ -83,6 +83,20 @@ export type FollowUpOutcome =
   | { ok: false; reason: "unknown_session" | "not_resumable" | "at_capacity" };
 
 /**
+ * Writes what the person actually typed into the transcript.
+ *
+ * The SDK streams back its own messages and echoes tool results as "user"
+ * events, but the prompt text itself only ever travels inbound — so without
+ * this the stored conversation is one-sided.
+ */
+function recordUserTurn(sessionId: string, text: string): void {
+  const event = appendSessionEvent(sessionId, "user", {
+    message: { role: "user", content: text },
+  });
+  sessions.get(sessionId)?.emitter.emit("event", event);
+}
+
+/**
  * Continues a conversation, transparently reviving it if the session was reaped.
  *
  * Reaping frees the Claude Code subprocess after 30 minutes idle, which used to
@@ -102,6 +116,9 @@ export function sendFollowUp(sessionId: string, text: string): FollowUpOutcome {
       parent_tool_use_id: null,
       session_id: handle.claudeSessionId ?? "",
     });
+    // The SDK echoes back tool results as "user" messages but never the text a
+    // person typed, so record it here or the transcript shows only one side.
+    recordUserTurn(sessionId, text);
     return { ok: true, resumed: false };
   }
 
@@ -277,6 +294,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
     parent_tool_use_id: null,
     session_id: "",
   });
+  recordUserTurn(params.id, params.prompt);
 
   updateSession(params.id, { status: "running" });
   globalBus.emit("session_updated", params.id);

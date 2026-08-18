@@ -20,6 +20,9 @@ import {
   deleteScheduledTask,
   getSettings,
   updateSettings,
+  getPrimarySessionId,
+  setPrimarySessionId,
+  deleteSession,
 } from "../db/repo.js";
 import {
   startSession,
@@ -160,6 +163,93 @@ app.post("/sessions", (req: Request, res: Response) => {
 
 app.get("/sessions", (_req: Request, res: Response) => {
   res.json(listSessions());
+});
+
+/**
+ * The single ongoing conversation with Jarvis.
+ *
+ * Resumes the existing thread rather than starting another one, so talking to
+ * Jarvis on Monday and Thursday is one conversation with memory instead of two
+ * strangers. Automation runs deliberately keep their own sessions — each really
+ * is a separate execution.
+ */
+app.get("/chat", (_req: Request, res: Response) => {
+  const id = getPrimarySessionId();
+  const session = id ? getSession(id) : undefined;
+  res.json({ session: session ?? null });
+});
+
+app.post("/chat", (req: Request, res: Response) => {
+  const { text } = req.body as { text?: string };
+  if (!text?.trim()) {
+    res.status(400).json({ error: "text is required" });
+    return;
+  }
+
+  const existingId = getPrimarySessionId();
+  const existing = existingId ? getSession(existingId) : undefined;
+
+  if (existing) {
+    const outcome = sendFollowUp(existing.id, text);
+    if (outcome.ok) {
+      res.status(202).json({ sessionId: existing.id, resumed: outcome.resumed });
+      return;
+    }
+    if (outcome.reason === "at_capacity") {
+      res.status(429).json({
+        error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}). Wait for one to finish.`,
+      });
+      return;
+    }
+    // unknown_session or not_resumable falls through to starting a fresh thread.
+  }
+
+  const cwd = getSettings().chatWorkingDirectory.trim() || process.cwd();
+  if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
+    res.status(400).json({
+      error: `Chat working directory does not exist: ${cwd}. Set it in Settings.`,
+    });
+    return;
+  }
+  if (atConcurrencyLimit()) {
+    res.status(429).json({
+      error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}).`,
+    });
+    return;
+  }
+
+  const session = createSession({
+    title: "Jarvis",
+    cwd,
+    permissionMode: "default",
+  });
+  setPrimarySessionId(session.id);
+  globalBus.emit("session_updated", session.id);
+
+  void startSession({
+    id: session.id,
+    prompt: text,
+    cwd,
+    permissionMode: "default",
+    title: "Jarvis",
+  });
+
+  res.status(201).json({ sessionId: session.id, resumed: false });
+});
+
+app.delete("/sessions/:id", (req: Request, res: Response) => {
+  const session = getSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: "no such session" });
+    return;
+  }
+  if (["running", "starting", "waiting_permission"].includes(session.status)) {
+    res.status(409).json({ error: "Session is still running. Interrupt it first." });
+    return;
+  }
+  deleteSession(req.params.id);
+  globalBus.emit("session_updated", req.params.id);
+  res.status(204).send();
 });
 
 app.get("/sessions/:id", (req: Request, res: Response) => {
