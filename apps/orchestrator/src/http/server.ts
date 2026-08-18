@@ -78,6 +78,18 @@ const PORT = Number(process.env.PORT ?? 4317);
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
 
 /**
+ * A second origin for verifying a build without disturbing the running one.
+ *
+ * The design automation builds its own changes and screenshots them on this
+ * port. Without it the preview loads but every fetch is blocked by CORS, so the
+ * automation sees a wall of console errors that have nothing to do with its
+ * work. Both entries are loopback-only, so this widens nothing beyond the
+ * machine itself.
+ */
+const PREVIEW_ORIGIN = process.env.PREVIEW_ORIGIN ?? "http://localhost:3100";
+const ALLOWED_ORIGINS = [WEB_ORIGIN, PREVIEW_ORIGIN];
+
+/**
  * A single bad session must never take down the service.
  *
  * The Agent SDK surfaces some failures on promise chains nothing awaits — an
@@ -99,7 +111,7 @@ process.on("uncaughtException", (err) => {
 markInterruptedIfActive();
 
 const app = express();
-app.use(cors({ origin: WEB_ORIGIN }));
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json());
 
 function sseHeaders(res: Response) {

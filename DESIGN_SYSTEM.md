@@ -120,3 +120,22 @@ more of them.
   doesn't conform, or improve something that is genuinely hard to use.
 - Screenshot before and after. `node scripts/screenshot-dashboard.mjs` captures
   every page at desktop and narrow widths and reports console errors.
+- To see *your* build rather than the running one, start it on port 3100 and set
+  `JARVIS_WEB_URL=http://localhost:3100` before running that script. The
+  orchestrator allows that origin through CORS for exactly this reason
+  (`PREVIEW_ORIGIN` in `apps/orchestrator/src/http/server.ts`). Never restart the
+  live service to preview a change — port 4317 is the orchestrator that runs the
+  automations, including the one doing the previewing.
+
+## Who maintains this
+
+Two automations work against this document, both from the `jarvis-lab` worktree:
+
+- **Critique** (05:30 Mon/Thu) reviews the live dashboard against this file and
+  files findings under `## Design` in `AUTOMATION_BACKLOG.md`. It does not
+  implement.
+- **Polish** (06:30 daily) takes the most severe open finding, or rotates through
+  the app when the queue is empty, and implements exactly one improvement.
+
+They commit to `jarvis/auto`. Nothing they do reaches `master` without a human
+merging it.
