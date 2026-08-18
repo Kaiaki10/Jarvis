@@ -55,9 +55,16 @@ function Register-JarvisTask {
   $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"$inner`""
 
-  $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+  # Boot trigger as well as logon: this machine signs the user out automatically,
+  # and a logon-only task dies with the session, taking every automation with it.
+  $triggers = @(
+    New-ScheduledTaskTrigger -AtStartup
+    New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+  )
+
+  # S4U = "run whether the user is logged on or not" without storing a password.
   $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
-    -LogonType Interactive -RunLevel Limited
+    -LogonType S4U -RunLevel Limited
 
   $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
@@ -65,13 +72,17 @@ function Register-JarvisTask {
     -DontStopOnIdleEnd `
     -RestartCount 3 `
     -RestartInterval (New-TimeSpan -Minutes 1) `
-    -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+    -ExecutionTimeLimit (New-TimeSpan -Seconds 0) `
+    -MultipleInstances IgnoreNew
+
+  # Both triggers can fire in one session; without IgnoreNew the second instance
+  # would race the first for port 4317 and crash.
 
   if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
   }
 
-  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers `
     -Principal $principal -Settings $settings | Out-Null
 
   Write-Host "  registered: $TaskName" -ForegroundColor Green
