@@ -125,6 +125,24 @@ export interface TestConnectionResult {
   message?: string;
 }
 
+export type NotificationType =
+  | "approval_needed"
+  | "session_failed"
+  | "automation_failed";
+
+export type NotificationSeverity = "info" | "warning" | "error";
+
+export interface NotificationRecord {
+  id: string;
+  type: NotificationType;
+  severity: NotificationSeverity;
+  title: string;
+  body: string;
+  sessionId: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
 export interface SettingsRecord {
   /** Durable business context appended to every session's system prompt. */
   businessContext: string;
@@ -132,12 +150,18 @@ export interface SettingsRecord {
   automationsEnabled: boolean;
   /** Guardrail against burning through subscription rate limits. */
   maxConcurrentSessions: number;
+  /** Windows toast when something needs a human. Requires a signed-in desktop. */
+  notifyOnDesktop: boolean;
+  /** Where to email alerts. Only used once an email platform is connected. */
+  notifyEmail: string;
 }
 
 export interface UpdateSettingsRequest {
   businessContext?: string;
   automationsEnabled?: boolean;
   maxConcurrentSessions?: number;
+  notifyOnDesktop?: boolean;
+  notifyEmail?: string;
 }
 
 export interface ScheduledTaskRecord {

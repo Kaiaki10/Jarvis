@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { useSettings } from "@/lib/hooks";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
-import { Textarea, Select } from "@/components/ui/Input";
+import { Textarea, Select, Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { BackupPanel } from "@/components/BackupPanel";
 
@@ -125,6 +125,58 @@ export function SettingsPanel() {
                 </option>
               ))}
             </Select>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Notifications"
+          description="How Jarvis reaches you when an unattended run needs a decision"
+        />
+        <CardBody className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm text-foreground">Desktop notifications</div>
+              <div className="text-xs text-muted">
+                Windows toast when something needs approval or a run fails. Only appears
+                while you&apos;re signed in — Jarvis keeps running either way.
+              </div>
+            </div>
+            <button
+              onClick={() => saveSettings({ notifyOnDesktop: !settings.notifyOnDesktop })}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                settings.notifyOnDesktop ? "bg-accent" : "bg-white/15"
+              }`}
+              role="switch"
+              aria-checked={settings.notifyOnDesktop}
+              aria-label="Desktop notifications"
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                  settings.notifyOnDesktop ? "translate-x-[22px]" : "translate-x-[2px]"
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <div className="text-sm text-foreground">Email alerts</div>
+            <div className="text-xs text-muted">
+              Reaches you away from this machine. Requires an email platform connected on
+              the Connections page; until then this is stored but unused.
+            </div>
+            <Input
+              className="mt-2 w-full max-w-sm"
+              type="email"
+              placeholder="you@example.com"
+              defaultValue={settings.notifyEmail}
+              onBlur={(e) => {
+                if (e.target.value !== settings.notifyEmail) {
+                  saveSettings({ notifyEmail: e.target.value });
+                }
+              }}
+            />
           </div>
         </CardBody>
       </Card>

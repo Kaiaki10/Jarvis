@@ -45,6 +45,7 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
     cwd: task.cwd,
     permissionMode: task.permissionMode,
     allowedTools: task.allowedTools ?? undefined,
+    title: `Automation "${task.prompt.split("\n")[0].slice(0, 60)}"`,
   });
 
   const now = new Date();

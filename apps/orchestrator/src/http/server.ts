@@ -46,6 +46,12 @@ import {
   type BackupBundle,
 } from "../security/portableBackup.js";
 import { getPlatform, platformDefinitions } from "../platforms/definitions.js";
+import {
+  listNotifications,
+  unreadCount,
+  markRead,
+  markAllRead,
+} from "../notifications/notifier.js";
 import { computeNextRun, startScheduler } from "../scheduler/scheduler.js";
 import { globalBus } from "../events/globalBus.js";
 import type {
@@ -113,6 +119,7 @@ app.post("/sessions", (req: Request, res: Response) => {
     cwd: body.cwd,
     permissionMode: body.permissionMode ?? "default",
     allowedTools: body.allowedTools,
+    title: session.title,
   });
 
   res.status(201).json(session);
@@ -167,11 +174,15 @@ app.get("/events", (req: Request, res: Response) => {
   };
   globalBus.on("session_updated", onUpdate);
 
+  const onNotifications = () => sseSend(res, "notifications-changed", { unread: unreadCount() });
+  globalBus.on("notifications_changed", onNotifications);
+
   const heartbeat = setInterval(() => res.write(": ping\n\n"), 15000);
 
   req.on("close", () => {
     clearInterval(heartbeat);
     globalBus.off("session_updated", onUpdate);
+    globalBus.off("notifications_changed", onNotifications);
   });
 });
 
@@ -366,6 +377,22 @@ app.post("/connections/:platformId/test", async (req: Request, res: Response) =>
 app.delete("/connections/:platformId", (req: Request, res: Response) => {
   deleteConnection(req.params.platformId);
   res.status(204).send();
+});
+
+// ---- Notifications ----
+
+app.get("/notifications", (_req: Request, res: Response) => {
+  res.json({ items: listNotifications(), unread: unreadCount() });
+});
+
+app.post("/notifications/:id/read", (req: Request, res: Response) => {
+  markRead(req.params.id);
+  res.status(202).json({ ok: true });
+});
+
+app.post("/notifications/read-all", (_req: Request, res: Response) => {
+  markAllRead();
+  res.status(202).json({ ok: true });
 });
 
 // ---- Credential backup and recovery ----

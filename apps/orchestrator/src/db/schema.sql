@@ -26,6 +26,20 @@ CREATE TABLE IF NOT EXISTS session_events (
 CREATE INDEX IF NOT EXISTS idx_session_events_session_seq
   ON session_events(session_id, seq);
 
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  session_id TEXT,
+  read INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_created
+  ON notifications(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS connections (
   platform_id TEXT PRIMARY KEY,
   credentials TEXT NOT NULL,

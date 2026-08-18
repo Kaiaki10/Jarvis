@@ -11,6 +11,7 @@ import {
 } from "react";
 import type {
   ConnectionRecord,
+  NotificationRecord,
   PlatformDefinition,
   ScheduledTaskRecord,
   SessionRecord,
@@ -40,6 +41,9 @@ interface StoreValue {
   platforms: PlatformDefinition[];
   connections: ConnectionRecord[];
   refreshConnections: () => Promise<void>;
+  notifications: NotificationRecord[];
+  unreadNotifications: number;
+  refreshNotifications: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -68,6 +72,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SettingsRecord | null>(null);
   const [platforms, setPlatforms] = useState<PlatformDefinition[]>([]);
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const refreshTasks = useCallback(async () => {
     setTasks(await api.listTasks());
@@ -85,11 +91,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setConnections(await api.listConnections());
   }, []);
 
+  const refreshNotifications = useCallback(async () => {
+    const { items, unread } = await api.listNotifications();
+    setNotifications(items);
+    setUnreadNotifications(unread);
+  }, []);
+
   useEffect(() => {
     api.getSettings().then(setSettings).catch(() => {});
     api.listPlatforms().then(setPlatforms).catch(() => {});
     refreshConnections().catch(() => {});
-  }, [refreshConnections]);
+    refreshNotifications().catch(() => {});
+  }, [refreshConnections, refreshNotifications]);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,11 +139,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
     });
 
+    source.addEventListener("notifications-changed", () => {
+      refreshNotifications().catch(() => {});
+    });
+
     return () => {
       cancelled = true;
       source.close();
     };
-  }, []);
+  }, [refreshNotifications]);
 
   useEffect(() => {
     refreshTasks();
@@ -164,6 +181,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       platforms,
       connections,
       refreshConnections,
+      notifications,
+      unreadNotifications,
+      refreshNotifications,
     }),
     [
       sessions,
@@ -179,6 +199,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       platforms,
       connections,
       refreshConnections,
+      notifications,
+      unreadNotifications,
+      refreshNotifications,
     ]
   );
 
@@ -218,4 +241,9 @@ export function useSettings() {
 export function useConnections() {
   const { platforms, connections, refreshConnections } = useStore();
   return { platforms, connections, refresh: refreshConnections };
+}
+
+export function useNotifications() {
+  const { notifications, unreadNotifications, refreshNotifications } = useStore();
+  return { notifications, unread: unreadNotifications, refresh: refreshNotifications };
 }

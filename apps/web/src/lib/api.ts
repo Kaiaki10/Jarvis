@@ -2,6 +2,7 @@ import type {
   ConnectionRecord,
   CreateScheduledTaskRequest,
   CreateSessionRequest,
+  NotificationRecord,
   PlatformDefinition,
   TestConnectionResult,
   PermissionResponseRequest,
@@ -98,6 +99,13 @@ export const api = {
     ),
   deleteConnection: (platformId: string) =>
     request<void>(`/connections/${platformId}`, { method: "DELETE" }),
+
+  listNotifications: () =>
+    request<{ items: NotificationRecord[]; unread: number }>("/notifications"),
+  markNotificationRead: (id: string) =>
+    request<{ ok: boolean }>(`/notifications/${id}/read`, { method: "POST" }),
+  markAllNotificationsRead: () =>
+    request<{ ok: boolean }>("/notifications/read-all", { method: "POST" }),
 
   exportBackup: (passphrase: string) =>
     request<Record<string, unknown>>("/backup/export", {

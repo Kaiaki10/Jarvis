@@ -13,11 +13,6 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 
 ## Open
 
-### high — No notification when something needs a human
-An automation that blocks for approval at 07:00 sits untouched until someone opens
-the dashboard. Unattended operation is only real if it can reach you — email via the
-Resend connection, or a desktop notification.
-
 ### high — Approvals wait forever
 `canUseTool` returns a promise with no timeout (`sessionManager.ts`). A blocked
 session holds its slot indefinitely against the concurrency cap, and an unattended run
@@ -74,6 +69,12 @@ shows stale data and never reconnects. User has no indication the dashboard is
 disconnected until they refresh manually.
 
 ## Closed
+
+- **2026-08-17** Nothing reached the user when a run needed them — closed by
+  `notifications/notifier.ts`: an in-app inbox with an unread badge, plus a Windows
+  toast, fired on approval-needed and on failure. Verified by blocking a real session
+  and watching the notification, badge, and toast appear. Email delivery is wired but
+  unverified until an email platform is connected.
 
 - **2026-08-17** Losing `jarvis.key` destroyed every credential — closed by
   passphrase-protected export/restore (`security/portableBackup.ts`, Settings →

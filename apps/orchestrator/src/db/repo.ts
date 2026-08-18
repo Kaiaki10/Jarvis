@@ -281,6 +281,8 @@ const SETTING_DEFAULTS: SettingsRecord = {
   businessContext: "",
   automationsEnabled: true,
   maxConcurrentSessions: 3,
+  notifyOnDesktop: true,
+  notifyEmail: "",
 };
 
 function readSetting(key: string): string | undefined {
@@ -308,6 +310,8 @@ export function getSettings(): SettingsRecord {
       Number.isFinite(parsedMax) && parsedMax > 0
         ? parsedMax
         : SETTING_DEFAULTS.maxConcurrentSessions,
+    notifyOnDesktop: (readSetting("notify_on_desktop") ?? "true") === "true",
+    notifyEmail: readSetting("notify_email") ?? SETTING_DEFAULTS.notifyEmail,
   };
 }
 
@@ -322,6 +326,12 @@ export function updateSettings(
   }
   if (patch.maxConcurrentSessions !== undefined) {
     writeSetting("max_concurrent_sessions", String(patch.maxConcurrentSessions));
+  }
+  if (patch.notifyOnDesktop !== undefined) {
+    writeSetting("notify_on_desktop", patch.notifyOnDesktop ? "true" : "false");
+  }
+  if (patch.notifyEmail !== undefined) {
+    writeSetting("notify_email", patch.notifyEmail);
   }
   return getSettings();
 }

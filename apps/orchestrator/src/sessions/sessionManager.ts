@@ -12,6 +12,7 @@ import type { SessionEventRecord } from "@jarvis/shared";
 import { createPushable, type Pushable } from "./pushableIterable.js";
 import { globalBus } from "../events/globalBus.js";
 import { buildPlatformToolset } from "../platforms/actions.js";
+import { notify } from "../notifications/notifier.js";
 
 interface PendingPermission {
   resolve: (result: PermissionResult) => void;
@@ -125,6 +126,8 @@ export interface StartSessionParams {
   cwd: string;
   permissionMode: string;
   allowedTools?: string[];
+  /** Human-readable label used in notifications. */
+  title?: string;
 }
 
 // Kicked off fire-and-forget from the HTTP layer; runs for the lifetime of the session.
@@ -155,6 +158,16 @@ export async function startSession(params: StartSessionParams): Promise<void> {
     updateSession(params.id, { status: "waiting_permission" });
     globalBus.emit("session_updated", params.id);
     emitter.emit("event", event);
+
+    // Reach the user out of band — an unattended run blocking here is invisible
+    // until someone happens to open the dashboard.
+    notify({
+      type: "approval_needed",
+      severity: "warning",
+      title: "Approval needed",
+      body: `${params.title ?? "A session"} is waiting on you to approve ${toolName.replace(/^mcp__jarvis__/, "")}.`,
+      sessionId: params.id,
+    });
     return new Promise<PermissionResult>((resolve) => {
       pendingPermissions.set(requestId, { resolve, originalInput: toolInput });
     });
@@ -222,6 +235,15 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         // Streaming-input sessions stay alive after a result, ready for a follow-up —
         // "idle" reflects that; "completed" is reserved for an explicitly closed session.
         handle.working = false;
+        if (message.is_error) {
+          notify({
+            type: "session_failed",
+            severity: "error",
+            title: "Session failed",
+            body: `${params.title ?? "A session"} ended with an error.`,
+            sessionId: params.id,
+          });
+        }
         updateSession(params.id, {
           status: message.is_error ? "error" : "idle",
           claudeSessionId: handle.claudeSessionId ?? undefined,
@@ -241,9 +263,14 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       globalBus.emit("session_updated", params.id);
     }
   } catch (err) {
-    updateSession(params.id, {
-      status: "error",
-      errorMessage: err instanceof Error ? err.message : String(err),
+    const detail = err instanceof Error ? err.message : String(err);
+    updateSession(params.id, { status: "error", errorMessage: detail });
+    notify({
+      type: "session_failed",
+      severity: "error",
+      title: "Session failed to run",
+      body: `${params.title ?? "A session"} could not start or crashed: ${detail}`,
+      sessionId: params.id,
     });
     globalBus.emit("session_updated", params.id);
     emitter.emit(
