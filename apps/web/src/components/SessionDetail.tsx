@@ -82,6 +82,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const { session, events, refreshSession } = useSessionStream(sessionId);
   const [followUp, setFollowUp] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const resolvedRequestIds = useMemo(() => {
     const ids = new Set<string>();
@@ -131,9 +133,15 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     const text = followUp.trim();
     if (!text) return;
     setSending(true);
+    setSendError(null);
     setFollowUp("");
     try {
-      await api.sendMessage(sessionId, text);
+      const { resumed } = await api.sendMessage(sessionId, text);
+      if (resumed) setNotice("Session had gone idle — resuming it.");
+    } catch (err) {
+      // Put the text back rather than losing what they typed.
+      setFollowUp(text);
+      setSendError(err instanceof Error ? err.message : String(err));
     } finally {
       setSending(false);
     }
@@ -190,6 +198,15 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       </div>
 
       <div className="border-t border-border px-8 py-4">
+        {(sendError || notice) && (
+          <div className="mx-auto mb-2 max-w-2xl text-xs">
+            {sendError ? (
+              <span className="text-danger">{sendError}</span>
+            ) : (
+              <span className="text-muted">{notice}</span>
+            )}
+          </div>
+        )}
         <div className="mx-auto flex max-w-2xl items-center gap-2">
           <Input
             className="flex-1"

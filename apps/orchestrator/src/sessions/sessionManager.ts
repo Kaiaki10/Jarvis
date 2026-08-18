@@ -7,7 +7,12 @@ import type {
   PermissionResult,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { appendSessionEvent, getSettings, updateSession } from "../db/repo.js";
+import {
+  appendSessionEvent,
+  getSession,
+  getSettings,
+  updateSession,
+} from "../db/repo.js";
 import type { SessionEventRecord } from "@jarvis/shared";
 import { createPushable, type Pushable } from "./pushableIterable.js";
 import { createDeferredWithTimeout } from "./deferredWithTimeout.js";
@@ -71,18 +76,53 @@ export function startIdleReaper(): void {
   }, REAP_INTERVAL_MS);
 }
 
-export function sendFollowUp(sessionId: string, text: string): boolean {
+export type FollowUpOutcome =
+  | { ok: true; resumed: boolean }
+  | { ok: false; reason: "unknown_session" | "not_resumable" | "at_capacity" };
+
+/**
+ * Continues a conversation, transparently reviving it if the session was reaped.
+ *
+ * Reaping frees the Claude Code subprocess after 30 minutes idle, which used to
+ * make follow-ups fail outright. The SDK can resume from the stored
+ * claudeSessionId, so from the caller's side the conversation just continues —
+ * the transcript keeps appending to the same session row either way.
+ */
+export function sendFollowUp(sessionId: string, text: string): FollowUpOutcome {
   const handle = sessions.get(sessionId);
-  if (!handle) return false;
-  handle.working = true;
-  handle.lastActivityAt = Date.now();
-  handle.input.push({
-    type: "user",
-    message: { role: "user", content: text },
-    parent_tool_use_id: null,
-    session_id: handle.claudeSessionId ?? "",
+
+  if (handle) {
+    handle.working = true;
+    handle.lastActivityAt = Date.now();
+    handle.input.push({
+      type: "user",
+      message: { role: "user", content: text },
+      parent_tool_use_id: null,
+      session_id: handle.claudeSessionId ?? "",
+    });
+    return { ok: true, resumed: false };
+  }
+
+  const record = getSession(sessionId);
+  if (!record) return { ok: false, reason: "unknown_session" };
+  if (!record.claudeSessionId) {
+    // Never reached the SDK — usually a session that failed before starting, so
+    // there is no conversation to pick back up.
+    return { ok: false, reason: "not_resumable" };
+  }
+  if (atConcurrencyLimit()) return { ok: false, reason: "at_capacity" };
+
+  void startSession({
+    id: record.id,
+    prompt: text,
+    cwd: record.cwd,
+    permissionMode: record.permissionMode,
+    allowedTools: record.allowedTools ?? undefined,
+    title: record.title,
+    resumeClaudeSessionId: record.claudeSessionId,
   });
-  return true;
+
+  return { ok: true, resumed: true };
 }
 
 export function resolvePermission(
@@ -139,6 +179,8 @@ export interface StartSessionParams {
   allowedTools?: string[];
   /** Human-readable label used in notifications. */
   title?: string;
+  /** Continue a prior Claude conversation rather than starting fresh. */
+  resumeClaudeSessionId?: string;
 }
 
 // Kicked off fire-and-forget from the HTTP layer; runs for the lifetime of the session.
@@ -247,6 +289,9 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         allowedTools: params.allowedTools,
         includePartialMessages: true,
         canUseTool,
+        ...(params.resumeClaudeSessionId
+          ? { resume: params.resumeClaudeSessionId }
+          : {}),
         // Durable business knowledge plus what this session can actually act on —
         // without these every session starts amnesiac and unaware of its tools.
         ...(systemPromptAppend

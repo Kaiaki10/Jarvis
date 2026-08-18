@@ -17,11 +17,6 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 Tool registration, gating, editing and rejection are all verified, but no real post or
 email has been sent through any platform. Until one is, the send path is unproven.
 
-### medium — Reaped sessions cannot be resumed
-Idle sessions are closed after 30 minutes to free their subprocess, after which
-follow-ups fail with "session not active". `claudeSessionId` is stored, so `resume`
-is feasible but unimplemented.
-
 ### medium — `session_events` grows without bound
 Every stream event is persisted in full, including large tool outputs. Nothing prunes
 it. Fine now; a problem after months of daily automations.
@@ -64,6 +59,17 @@ shows stale data and never reconnects. User has no indication the dashboard is
 disconnected until they refresh manually.
 
 ## Closed
+
+- **2026-08-17** A bad working directory crashed the whole orchestrator — the SDK
+  rejects asynchronously inside ProcessTransport, which Node turns into a process
+  exit, taking every other session and automation with it. Closed by validating cwd
+  at launch plus `unhandledRejection`/`uncaughtException` guards. Found by accident
+  while testing resume error paths.
+- **2026-08-17** Reaped sessions could not be resumed — closed by transparently
+  resuming from the stored `claudeSessionId` on follow-up. Verified by teaching a
+  session a number, restarting the orchestrator so it left memory entirely, then
+  asking for the number back: it answered correctly and the transcript continued in
+  the same session row.
 
 - **2026-08-17** Approvals waited forever — closed by a configurable deadline
   (default 4h, `deferredWithTimeout.ts`) that auto-denies with `interrupt`, notifies,

@@ -25,8 +25,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!res.ok) {
+    // The orchestrator returns { error } with a message written for a person;
+    // prefer that over dumping status codes and raw bodies into the UI.
     const body = await res.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status} ${body}`);
+    let message = body;
+    try {
+      const parsed = JSON.parse(body) as { error?: string };
+      if (parsed.error) message = parsed.error;
+    } catch {
+      // Not JSON — fall back to the raw body.
+    }
+    throw new Error(message || `Request failed (${res.status})`);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -43,7 +52,7 @@ export const api = {
   getSessionEvents: (id: string, since = 0) =>
     request<SessionEventRecord[]>(`/sessions/${id}/events?since=${since}`),
   sendMessage: (id: string, text: string) =>
-    request<{ ok: boolean }>(`/sessions/${id}/messages`, {
+    request<{ ok: boolean; resumed: boolean }>(`/sessions/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({ text }),
     }),

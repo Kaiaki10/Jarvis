@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { existsSync, statSync } from "node:fs";
 import type { Request, Response } from "express";
 import {
   createSession,
@@ -66,6 +67,23 @@ import type {
 const PORT = Number(process.env.PORT ?? 4317);
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
 
+/**
+ * A single bad session must never take down the service.
+ *
+ * The Agent SDK surfaces some failures on promise chains nothing awaits — an
+ * unusable cwd rejects inside ProcessTransport.write, for one — and Node's
+ * default for an unhandled rejection is to exit. That killed every other running
+ * session and every scheduled automation until someone noticed. These handlers
+ * log and keep serving instead.
+ */
+process.on("unhandledRejection", (reason) => {
+  console.error("[orchestrator] unhandled rejection (continuing):", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[orchestrator] uncaught exception (continuing):", err);
+});
+
 // A previous orchestrator process may have died mid-session; those sessions
 // can't be reattached, so surface them as interrupted rather than stuck "running".
 markInterruptedIfActive();
@@ -92,6 +110,14 @@ app.post("/sessions", (req: Request, res: Response) => {
   const body = req.body as CreateSessionRequest;
   if (!body.prompt || !body.cwd) {
     res.status(400).json({ error: "prompt and cwd are required" });
+    return;
+  }
+  // Caught here rather than at launch: an unusable cwd surfaces deep inside the
+  // SDK's transport as an async failure, which is far harder to attribute.
+  if (!existsSync(body.cwd) || !statSync(body.cwd).isDirectory()) {
+    res.status(400).json({
+      error: `Working directory does not exist: ${body.cwd}`,
+    });
     return;
   }
   if (atConcurrencyLimit()) {
@@ -192,12 +218,24 @@ app.post("/sessions/:id/messages", (req: Request, res: Response) => {
     res.status(400).json({ error: "text is required" });
     return;
   }
-  const ok = sendFollowUp(req.params.id, text);
-  if (!ok) {
-    res.status(404).json({ error: "session not active" });
+  const outcome = sendFollowUp(req.params.id, text);
+  if (outcome.ok) {
+    res.status(202).json({ ok: true, resumed: outcome.resumed });
     return;
   }
-  res.status(202).json({ ok: true });
+
+  if (outcome.reason === "unknown_session") {
+    res.status(404).json({ error: "no such session" });
+  } else if (outcome.reason === "not_resumable") {
+    res.status(409).json({
+      error:
+        "This session never got far enough to be resumed. Launch a new one instead.",
+    });
+  } else {
+    res.status(429).json({
+      error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}). Wait for one to finish, then try again.`,
+    });
+  }
 });
 
 app.post("/sessions/:id/permission-response", (req: Request, res: Response) => {
