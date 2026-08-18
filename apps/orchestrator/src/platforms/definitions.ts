@@ -139,6 +139,31 @@ const discord: Platform = {
   },
 };
 
+/**
+ * Resend only sends from a domain you have verified by DNS, so a consumer mailbox
+ * can never be a valid sender no matter how good the API key is. Catching it here
+ * turns a confusing bounce at send time into a clear message at setup time.
+ */
+const CONSUMER_MAIL_DOMAINS = [
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "yahoo.com",
+  "icloud.com",
+  "me.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+];
+
+function consumerDomainWarning(fromAddress: string): string | null {
+  const domain = fromAddress.split("@")[1]?.toLowerCase().trim();
+  if (!domain || !CONSUMER_MAIL_DOMAINS.includes(domain)) return null;
+  return `The API key works, but "${fromAddress}" cannot be used as the sender: Resend requires a domain you have verified by DNS, and ${domain} is not one you control. Use an address on your own domain, or onboarding@resend.dev for testing.`;
+}
+
 const resend: Platform = {
   definition: {
     id: "resend",
@@ -150,7 +175,7 @@ const resend: Platform = {
       {
         key: "apiKey",
         label: "API Key",
-        help: "Starts with re_. Create one under API Keys in the Resend dashboard.",
+        help: "Starts with re_. A key with Sending access is all Jarvis needs — it does not require full access.",
         placeholder: "re_…",
         secret: true,
       },
@@ -175,21 +200,46 @@ const resend: Platform = {
       {
         title: "Create an API key",
         body: [
-          "Open API Keys → Create API Key. Sending permission is enough.",
-          "Copy the key immediately — it's shown once.",
+          "Open API Keys → Create API Key. Choose Sending access — that is all Jarvis needs.",
+          "Copy the key immediately; Resend shows it once.",
         ],
         linkUrl: "https://resend.com/api-keys",
         linkLabel: "Open Resend API keys",
+        warning:
+          "A sending-only key cannot read your domain list, so the connection test confirms the key authenticates rather than listing domains. That is expected and not a failure.",
       },
     ],
   },
   async test(creds) {
-    const { status } = await fetchJson("https://api.resend.com/domains", {
+    const { status, body } = await fetchJson("https://api.resend.com/domains", {
       headers: { Authorization: `Bearer ${creds.apiKey}` },
     });
-    if (status === 401) return failure("Resend rejected the API key (401 Unauthorized).");
+    const data = body as { name?: string; message?: string } | null;
+
+    // Check the sender before reporting success — a valid key with an unusable
+    // from-address still cannot deliver a single email.
+    const senderProblem = consumerDomainWarning(creds.fromAddress);
+
+    // A sending-only key is the right key for this integration, but it cannot read
+    // /domains. Resend distinguishes "valid key, wrong scope" (restricted_api_key)
+    // from a bad key, and the former is itself proof that authentication worked —
+    // so treat it as success rather than telling the user their key is broken.
+    if (data?.name === "restricted_api_key") {
+      return senderProblem
+        ? failure(senderProblem)
+        : {
+            ok: true,
+            detail: `Sending-only key accepted — sending as ${creds.fromAddress}`,
+          };
+    }
+    if (status === 401 || status === 403) {
+      return failure(
+        `Resend rejected the API key: ${data?.message ?? "unauthorized"}. Check it was copied in full.`
+      );
+    }
     if (status !== 200) return failure(`Resend returned HTTP ${status}.`);
-    return { ok: true, detail: `API key valid, sending as ${creds.fromAddress}` };
+    if (senderProblem) return failure(senderProblem);
+    return { ok: true, detail: `Key valid — sending as ${creds.fromAddress}` };
   },
 };
 
