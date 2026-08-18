@@ -1,3 +1,50 @@
+export type AgentStatus = "active" | "archived";
+
+/**
+ * An agent's identity. Before v2 every field here was a global `settings` row,
+ * which is why there could only ever be one.
+ */
+export interface AgentRecord {
+  id: string;
+  name: string;
+  role: string;
+  /** Appended to the system prompt of every run this agent owns. */
+  systemPrompt: string;
+  cwd: string;
+  avatar: string;
+  color: string;
+  permissionMode: string;
+  allowedTools: string[] | null;
+  /** The agent's one ongoing conversation, continued rather than restarted. */
+  chatSessionId: string | null;
+  status: AgentStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAgentRequest {
+  name: string;
+  role?: string;
+  systemPrompt?: string;
+  cwd?: string;
+  avatar?: string;
+  color?: string;
+  permissionMode?: string;
+  allowedTools?: string[];
+}
+
+export interface UpdateAgentRequest {
+  name?: string;
+  role?: string;
+  systemPrompt?: string;
+  cwd?: string;
+  avatar?: string;
+  color?: string;
+  permissionMode?: string;
+  allowedTools?: string[] | null;
+  status?: AgentStatus;
+}
+
 export type SessionStatus =
   | "starting"
   | "running"

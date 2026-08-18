@@ -1,4 +1,7 @@
 import type {
+  AgentRecord,
+  CreateAgentRequest,
+  UpdateAgentRequest,
   ConnectionRecord,
   CreateScheduledTaskRequest,
   CreateSessionRequest,
@@ -97,6 +100,16 @@ async function requestBlob(path: string): Promise<Blob> {
 }
 
 export const api = {
+  listAgents: (status?: "active" | "archived") =>
+    request<AgentRecord[]>(`/agents${status ? `?status=${status}` : ""}`),
+  getAgent: (id: string) => request<AgentRecord>(`/agents/${id}`),
+  createAgent: (body: CreateAgentRequest) =>
+    request<AgentRecord>("/agents", { method: "POST", body: JSON.stringify(body) }),
+  updateAgent: (id: string, patch: UpdateAgentRequest) =>
+    request<AgentRecord>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  /** Archives rather than deletes, so the agent's history stays attributable. */
+  archiveAgent: (id: string) => request<AgentRecord>(`/agents/${id}`, { method: "DELETE" }),
+
   listMemories: (status?: "active" | "archived") =>
     request<MemoryRecord[]>(`/memories${status ? `?status=${status}` : ""}`),
   listMemoryReflections: () => request<MemoryReflectionRecord[]>("/memory-reflections"),

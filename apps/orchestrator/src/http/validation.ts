@@ -29,6 +29,36 @@ export const createSessionSchema = z
 
 export const messageSchema = z.object({ text: z.string().trim().min(1).max(100_000) }).strict();
 
+export const createAgentSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    role: z.string().trim().max(200).optional(),
+    systemPrompt: z.string().max(100_000).optional(),
+    cwd: z.string().trim().max(2_000).optional(),
+    // One or two characters: a letter or a single emoji, sized for the sidebar
+    // badge. Anything longer overflows it rather than shrinking.
+    avatar: z.string().trim().min(1).max(2).optional(),
+    color: z.string().trim().max(40).optional(),
+    permissionMode: permissionMode.optional(),
+    allowedTools: allowedTools.optional(),
+  })
+  .strict();
+
+export const updateAgentSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    role: z.string().trim().max(200).optional(),
+    systemPrompt: z.string().max(100_000).optional(),
+    cwd: z.string().trim().max(2_000).optional(),
+    avatar: z.string().trim().min(1).max(2).optional(),
+    color: z.string().trim().max(40).optional(),
+    permissionMode: permissionMode.optional(),
+    allowedTools: allowedTools.nullable().optional(),
+    status: z.enum(["active", "archived"]).optional(),
+  })
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0, "at least one field is required");
+
 const memoryKind = z.enum(["preference", "business", "relationship", "decision", "fact"]);
 export const createMemorySchema = z.object({
   kind: memoryKind,

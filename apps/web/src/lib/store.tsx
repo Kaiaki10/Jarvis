@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  AgentRecord,
   ConnectionRecord,
   NotificationRecord,
   PlatformDefinition,
@@ -38,6 +39,8 @@ export interface ActivityLogEntry {
 
 interface StoreValue {
   connectionStatus: "connecting" | "connected" | "offline";
+  agents: AgentRecord[];
+  refreshAgents: () => Promise<void>;
   memories: MemoryRecord[];
   memoryReflections: MemoryReflectionRecord[];
   refreshMemories: () => Promise<void>;
@@ -95,6 +98,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [connectionStatus, setConnectionStatus] = useState<
     "connecting" | "connected" | "offline"
   >("connecting");
+  const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
   const [memoryReflections, setMemoryReflections] = useState<MemoryReflectionRecord[]>([]);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -122,6 +126,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const refreshScheduledTasks = useCallback(async () => {
     setScheduledTasks(await api.listScheduledTasks());
+  }, []);
+
+  const refreshAgents = useCallback(async () => {
+    setAgents(await api.listAgents());
   }, []);
 
   const refreshMemories = useCallback(async () => {
@@ -229,6 +237,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshMemories().catch(() => {});
       });
 
+      source.addEventListener("agents-changed", () => {
+        refreshAgents().catch(() => {});
+      });
+
       source.addEventListener("automations-changed", () => {
         refreshScheduledTasks().catch(() => {});
       });
@@ -274,6 +286,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           refreshEvolution(),
           refreshCampaigns(),
           refreshMemories(),
+          refreshAgents(),
           refreshPrimaryChat(),
           refreshCustomerOperations(),
           refreshPaidGrowth(),
@@ -306,6 +319,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refreshPaidGrowth,
     refreshConnections,
     refreshEvolution,
+    refreshAgents,
     refreshMemories,
     refreshMissions,
     refreshNotifications,
@@ -327,6 +341,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<StoreValue>(
     () => ({
       connectionStatus,
+      agents,
+      refreshAgents,
       memories,
       memoryReflections,
       refreshMemories,
@@ -363,6 +379,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       connectionStatus,
+      agents,
+      refreshAgents,
       memories,
       memoryReflections,
       refreshMemories,
@@ -476,6 +494,11 @@ export function usePaidGrowth() {
 
 export function useConnectionStatus() {
   return useStore().connectionStatus;
+}
+
+export function useAgents() {
+  const { agents, refreshAgents } = useStore();
+  return { agents, refresh: refreshAgents };
 }
 
 export function useMemories() {

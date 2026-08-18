@@ -113,6 +113,8 @@ import {
   createContentItemSchema,
   updateContentItemSchema,
   generateCampaignContentSchema,
+  createAgentSchema,
+  updateAgentSchema,
   createMemorySchema,
   updateMemorySchema,
   createCustomerConversationSchema,
@@ -142,6 +144,13 @@ import {
 } from "../paidGrowth/service.js";
 import { startPaidGrowthMonitor } from "../paidGrowth/monitor.js";
 import { listMemories, listMemoryReflections, remember, updateMemory } from "../db/memoryRepo.js";
+import {
+  archiveAgent,
+  createAgent,
+  getAgent,
+  listAgents,
+  updateAgent,
+} from "../db/agentRepo.js";
 import {
   ensureEvolutionBootstrap,
   evolutionReadiness,
@@ -487,6 +496,76 @@ app.get("/sessions/:id/stream", (req: Request, res: Response) => {
   });
 });
 
+// ---- Agents ----
+
+app.get("/agents", (req: Request, res: Response) => {
+  const status = req.query.status;
+  if (status !== undefined && status !== "active" && status !== "archived") {
+    res.status(400).json({ error: "status must be active or archived" });
+    return;
+  }
+  res.json(listAgents(status as "active" | "archived" | undefined));
+});
+
+app.get("/agents/:id", (req: Request, res: Response) => {
+  const agent = getAgent(req.params.id);
+  if (!agent) {
+    res.status(404).json({ error: "agent not found" });
+    return;
+  }
+  res.json(agent);
+});
+
+app.post("/agents", (req: Request, res: Response) => {
+  const body = validatedBody(createAgentSchema, req, res);
+  if (!body) return;
+  // Same check the session launcher makes, and for the same reason: an unusable
+  // cwd surfaces deep inside the SDK transport where it is hard to attribute.
+  if (body.cwd && (!existsSync(body.cwd) || !statSync(body.cwd).isDirectory())) {
+    res.status(400).json({ error: `Working directory does not exist: ${body.cwd}` });
+    return;
+  }
+  const agent = createAgent(body);
+  globalBus.emit("agents_changed");
+  res.status(201).json(agent);
+});
+
+app.patch("/agents/:id", (req: Request, res: Response) => {
+  const body = validatedBody(updateAgentSchema, req, res);
+  if (!body) return;
+  if (body.cwd && (!existsSync(body.cwd) || !statSync(body.cwd).isDirectory())) {
+    res.status(400).json({ error: `Working directory does not exist: ${body.cwd}` });
+    return;
+  }
+  const agent = updateAgent(req.params.id, body);
+  if (!agent) {
+    res.status(404).json({ error: "agent not found" });
+    return;
+  }
+  globalBus.emit("agents_changed");
+  res.json(agent);
+});
+
+/**
+ * Archives rather than deletes — an agent's runs, missions, and customers point
+ * at it, and removing the row would leave that history owned by nobody.
+ */
+app.delete("/agents/:id", (req: Request, res: Response) => {
+  const outcome = archiveAgent(req.params.id);
+  if (!outcome.ok) {
+    if (outcome.reason === "unknown_agent") {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    res.status(409).json({
+      error: "This is the only active agent. Create another before archiving it.",
+    });
+    return;
+  }
+  globalBus.emit("agents_changed");
+  res.json(outcome.agent);
+});
+
 // ---- Durable memory ----
 
 app.get("/memories", (req: Request, res: Response) => {
@@ -794,6 +873,8 @@ app.get("/events", (req: Request, res: Response) => {
   globalBus.on("customers_changed", onCustomers);
   const onPaidGrowth = () => sseSend(res, "paid-growth-changed", {});
   globalBus.on("paid_growth_changed", onPaidGrowth);
+  const onAgents = () => sseSend(res, "agents-changed", {});
+  globalBus.on("agents_changed", onAgents);
 
   const heartbeat = setInterval(() => res.write(": ping\n\n"), 15000);
 
@@ -809,6 +890,7 @@ app.get("/events", (req: Request, res: Response) => {
     globalBus.off("chat_changed", onChat);
     globalBus.off("customers_changed", onCustomers);
     globalBus.off("paid_growth_changed", onPaidGrowth);
+    globalBus.off("agents_changed", onAgents);
   });
 });
 

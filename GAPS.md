@@ -32,10 +32,19 @@ published state, but only X has confirmed automatic dispatch today.
 image from the watched folder; the same could be offered for the other platforms,
 which use simpler single-request uploads.
 
-### low — Orchestrator API is unauthenticated
+### high — Orchestrator API is unauthenticated
 Anything running locally can launch sessions and read transcripts. Both services now bind
 explicitly to `127.0.0.1`, which closes accidental LAN exposure, but authentication is still
 required before remote access can ever be supported.
+
+Raised from low to high on 2026-08-18 by the v2 multi-agent plan (`V2_PLAN.md`). One agent
+behind an unauthenticated local API is a bounded risk: everything it can reach, the single
+user could already reach. Several agents, each holding a distinct grant over shared platform
+credentials, is a different shape — the API becomes the only thing standing between a local
+caller and *any* agent's authority, and it is currently standing there with nothing. Agent
+isolation enforced only in the UI is not isolation. This should be closed before increment 2
+of v2 threads `agent_id` through the routes, because retrofitting authorization onto routes
+that already assume a trusted caller is materially harder than building it in.
 
 ### low — Dashboard is desktop-only
 The sidebar is a fixed 240px with no responsive collapse, so the UI is unusable on a

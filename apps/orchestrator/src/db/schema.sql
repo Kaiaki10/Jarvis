@@ -1,3 +1,27 @@
+-- An agent is the identity a run belongs to: its persona, working directory, and
+-- the chat thread that continues across days. Before v2 all of this lived in
+-- single `settings` rows, which is why there could only ever be one Jarvis.
+CREATE TABLE IF NOT EXISTS agents (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT '',
+  -- Appended to the system prompt. Replaces settings.business_context.
+  system_prompt TEXT NOT NULL DEFAULT '',
+  -- Replaces settings.chat_working_directory.
+  cwd TEXT NOT NULL DEFAULT '',
+  avatar TEXT NOT NULL DEFAULT 'A',
+  color TEXT NOT NULL DEFAULT 'accent',
+  permission_mode TEXT NOT NULL DEFAULT 'default',
+  allowed_tools TEXT,
+  -- Replaces settings.primary_session_id: one ongoing conversation per agent.
+  chat_session_id TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status, name);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   claude_session_id TEXT,

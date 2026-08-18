@@ -24,6 +24,31 @@ function hasColumn(table: string, column: string): boolean {
   return rows.some((row) => row.name === column);
 }
 
+/**
+ * The agent every pre-v2 row belongs to.
+ *
+ * A fixed id rather than a generated one, so the backfill is deterministic and
+ * re-running it on an already-migrated database is a no-op rather than a second
+ * Jarvis.
+ */
+export const DEFAULT_AGENT_ID = "00000000-0000-4000-8000-000000000001";
+
+/**
+ * Root tables that carry `agent_id`. Children reach their agent through an
+ * existing foreign key and are deliberately not listed.
+ */
+export const AGENT_SCOPED_TABLES = [
+  "sessions",
+  "scheduled_tasks",
+  "tasks",
+  "missions",
+  "campaigns",
+  "paid_growth_campaigns",
+  "customers",
+  "evolution_proposals",
+  "notifications",
+] as const;
+
 for (const migration of [
   { table: "platform_actions", column: "content_hash", sql: "ALTER TABLE platform_actions ADD COLUMN content_hash TEXT" },
   { table: "sessions", column: "summary", sql: "ALTER TABLE sessions ADD COLUMN summary TEXT" },
@@ -35,8 +60,61 @@ for (const migration of [
   { table: "customer_reply_drafts", column: "escalation_reason", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN escalation_reason TEXT" },
   { table: "customer_reply_drafts", column: "auto_send", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN auto_send INTEGER NOT NULL DEFAULT 0" },
   { table: "paid_growth_campaigns", column: "external_budget_entity_id", sql: "ALTER TABLE paid_growth_campaigns ADD COLUMN external_budget_entity_id TEXT" },
+  // v2: which agent owns the row. Only root tables carry it — everything else
+  // (deliverables, content_items, customer_messages, …) reaches its agent
+  // through an existing foreign key, so ten columns cover full isolation.
+  // `memories` is deliberately absent: splitting it needs a table rebuild to
+  // change a UNIQUE constraint, which is sequenced separately (see V2_PLAN.md).
+  ...AGENT_SCOPED_TABLES.map((table) => ({
+    table,
+    column: "agent_id",
+    sql: `ALTER TABLE ${table} ADD COLUMN agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL`,
+  })),
 ]) {
   if (!hasColumn(migration.table, migration.column)) db.exec(migration.sql);
+}
+
+/**
+ * Turns the pre-v2 database into a single-agent v2 database.
+ *
+ * Everything that made Jarvis "Jarvis" was a global setting, so agent one is
+ * assembled from those rows rather than invented: the business context becomes
+ * its system prompt, the chat working directory its cwd, and the primary
+ * session its ongoing conversation. Nothing is deleted and no behaviour changes
+ * until a second agent exists.
+ *
+ * Guarded on the agents table being empty, not on a version flag — a database
+ * that already has agents is already migrated, and re-running must not mint a
+ * duplicate Jarvis.
+ */
+db.exec(`
+  INSERT INTO agents (
+    id, name, role, system_prompt, cwd, avatar, color,
+    permission_mode, allowed_tools, chat_session_id, status, created_at, updated_at
+  )
+  SELECT
+    '${DEFAULT_AGENT_ID}',
+    'Jarvis',
+    'Autonomous business system',
+    COALESCE((SELECT value FROM settings WHERE key = 'business_context'), ''),
+    COALESCE((SELECT value FROM settings WHERE key = 'chat_working_directory'), ''),
+    'J',
+    'accent',
+    'default',
+    NULL,
+    -- Stored as '' rather than removed when a chat session is deleted, so an
+    -- empty string here means "no thread", not a session id of "".
+    NULLIF((SELECT value FROM settings WHERE key = 'primary_session_id'), ''),
+    'active',
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  WHERE NOT EXISTS (SELECT 1 FROM agents);
+`);
+
+// Adopt every pre-v2 row. Scoped to NULL so a row later reassigned to another
+// agent is never dragged back to Jarvis on the next restart.
+for (const table of AGENT_SCOPED_TABLES) {
+  db.prepare(`UPDATE ${table} SET agent_id = ? WHERE agent_id IS NULL`).run(DEFAULT_AGENT_ID);
 }
 
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_session_events_session_seq_unique ON session_events(session_id, seq);");
