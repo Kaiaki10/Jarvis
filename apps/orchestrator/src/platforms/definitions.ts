@@ -286,7 +286,8 @@ const x: Platform = {
         body: [
           "In your app open Settings → User authentication settings → Set up.",
           "Set App permissions to Read and write, and Type of App to Automated App or Bot.",
-          "X then demands a Callback URI and a Website URL before it will save. Jarvis never uses them — it signs each request with tokens you generate by hand, so no browser redirect ever happens. Put http://localhost:3000/callback and http://localhost:3000 to get past the form (any URL you control works).",
+          "X then demands a Callback URI and a Website URL before it will save. Jarvis never uses either — it signs each request with tokens you generate by hand, so no browser redirect ever happens.",
+          "Use https://example.com/callback and https://example.com. X rejects localhost with 'Only valid HTTP(S) urls are allowed', and example.com is the reserved placeholder domain, so it is a valid HTTPS URL that belongs to nobody. Any HTTPS URL you own works too.",
         ],
         linkUrl: "https://developer.x.com/en/portal/dashboard",
         linkLabel: "Open X developer portal",
