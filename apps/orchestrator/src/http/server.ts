@@ -47,6 +47,7 @@ import {
   type BackupBundle,
 } from "../security/portableBackup.js";
 import { getPlatform, platformDefinitions } from "../platforms/definitions.js";
+import { getUsageToday } from "../platforms/spendGuard.js";
 import {
   listNotifications,
   unreadCount,
@@ -420,6 +421,10 @@ app.post("/connections/:platformId/test", async (req: Request, res: Response) =>
 app.delete("/connections/:platformId", (req: Request, res: Response) => {
   deleteConnection(req.params.platformId);
   res.status(204).send();
+});
+
+app.get("/platform-usage", (_req: Request, res: Response) => {
+  res.json(getUsageToday());
 });
 
 // ---- Storage ----

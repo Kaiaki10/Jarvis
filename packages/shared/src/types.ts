@@ -158,6 +158,15 @@ export interface SettingsRecord {
   approvalTimeoutMinutes: number;
   /** Drop session transcripts older than this many days. 0 keeps everything. */
   eventRetentionDays: number;
+  /** Max billable actions per platform per day. 0 disables the guardrail. */
+  dailyPlatformActionCap: number;
+}
+
+export interface PlatformUsage {
+  platformId: string;
+  usedToday: number;
+  cap: number;
+  estimatedSpendToday: number;
 }
 
 export interface StorageStats {
@@ -182,6 +191,7 @@ export interface UpdateSettingsRequest {
   notifyEmail?: string;
   approvalTimeoutMinutes?: number;
   eventRetentionDays?: number;
+  dailyPlatformActionCap?: number;
 }
 
 export interface ScheduledTaskRecord {

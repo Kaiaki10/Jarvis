@@ -84,3 +84,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TEXT NOT NULL,
   completed_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS platform_actions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  platform_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  session_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_platform_actions_lookup
+  ON platform_actions(platform_id, created_at);

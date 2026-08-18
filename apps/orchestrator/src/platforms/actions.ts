@@ -7,6 +7,8 @@ import type {
 import { oauth1Header } from "./oauth1.js";
 import { listConnections, getConnectionCredentials } from "../db/connectionsRepo.js";
 import { getPlatform } from "./definitions.js";
+import { checkDailyCap, recordAction } from "./spendGuard.js";
+import { notify } from "../notifications/notifier.js";
 
 type Creds = Record<string, string>;
 
@@ -31,6 +33,32 @@ function fail(text: string) {
   return { content: [{ type: "text" as const, text }], isError: true };
 }
 
+/**
+ * Wraps an outbound action with the daily cap. The check runs before the call so a
+ * blocked action costs nothing, and the ledger is written only on success — a
+ * failed request should not consume the day's budget.
+ */
+async function guarded(
+  platformId: string,
+  toolName: string,
+  send: () => Promise<{ content: { type: "text"; text: string }[]; isError?: boolean }>
+) {
+  const check = checkDailyCap(platformId);
+  if (!check.allowed) {
+    notify({
+      type: "session_failed",
+      severity: "warning",
+      title: "Daily platform limit reached",
+      body: check.message ?? `Daily limit reached for ${platformId}.`,
+    });
+    return fail(check.message ?? "Daily limit reached.");
+  }
+
+  const result = await send();
+  if (!result.isError) recordAction(platformId, toolName);
+  return result;
+}
+
 const TIMEOUT_MS = 20_000;
 
 function buildXTools(creds: Creds): AnyTool[] {
@@ -39,7 +67,7 @@ function buildXTools(creds: Creds): AnyTool[] {
       "post_to_x",
       "Publish a post to the connected X (Twitter) account. Use only when the user has asked for something to be posted publicly.",
       { text: z.string().max(280).describe("The post body. Max 280 characters.") },
-      async (args) => {
+      async (args) => guarded("x", "post_to_x", async () => {
         const url = "https://api.x.com/2/tweets";
         const header = oauth1Header("POST", url, {
           apiKey: creds.apiKey,
@@ -81,7 +109,7 @@ function buildXTools(creds: Creds): AnyTool[] {
         } catch {
           return ok("Posted to X.");
         }
-      }
+      })
     ),
   ]);
 }
@@ -95,7 +123,7 @@ function buildSlackTools(creds: Creds): AnyTool[] {
         channel: z.string().describe("Channel name (e.g. #general) or channel ID."),
         text: z.string().describe("Message body. Slack markdown is supported."),
       },
-      async (args) => {
+      async (args) => guarded("slack", "post_to_slack", async () => {
         const res = await fetch("https://slack.com/api/chat.postMessage", {
           method: "POST",
           headers: {
@@ -108,7 +136,7 @@ function buildSlackTools(creds: Creds): AnyTool[] {
         const data = (await res.json()) as { ok?: boolean; error?: string; ts?: string };
         if (!data.ok) return fail(`Slack refused the message: ${data.error ?? "unknown error"}`);
         return ok(`Message sent to ${args.channel}.`);
-      }
+      })
     ),
   ]);
 }
@@ -122,7 +150,7 @@ function buildDiscordTools(creds: Creds): AnyTool[] {
         channelId: z.string().describe("Numeric Discord channel ID."),
         text: z.string().describe("Message body."),
       },
-      async (args) => {
+      async (args) => guarded("discord", "post_to_discord", async () => {
         const res = await fetch(
           `https://discord.com/api/v10/channels/${encodeURIComponent(args.channelId)}/messages`,
           {
@@ -139,7 +167,7 @@ function buildDiscordTools(creds: Creds): AnyTool[] {
           return fail(`Discord refused the message (HTTP ${res.status}): ${await res.text()}`);
         }
         return ok(`Message sent to Discord channel ${args.channelId}.`);
-      }
+      })
     ),
   ]);
 }
@@ -154,7 +182,7 @@ function buildResendTools(creds: Creds): AnyTool[] {
         subject: z.string().describe("Subject line."),
         body: z.string().describe("Plain-text email body."),
       },
-      async (args) => {
+      async (args) => guarded("resend", "send_email", async () => {
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
@@ -173,7 +201,7 @@ function buildResendTools(creds: Creds): AnyTool[] {
           return fail(`Resend refused the email (HTTP ${res.status}): ${await res.text()}`);
         }
         return ok(`Email sent to ${args.to}.`);
-      }
+      })
     ),
   ]);
 }

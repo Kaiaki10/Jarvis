@@ -130,6 +130,38 @@ export function SettingsPanel() {
 
           <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
             <div>
+              <div className="text-sm text-foreground">Daily platform action limit</div>
+              <div className="text-xs text-muted">
+                Caps posts and emails per platform per day. These cost real money — X
+                charges $0.015 a post, or $0.20 if it contains a link — and automations
+                run unattended, so this stops a looping job spending overnight. The
+                platform&apos;s own spending cap is a backstop; this fails first.
+              </div>
+            </div>
+            <Select
+              className="h-8 w-auto shrink-0 text-xs"
+              value={String(settings.dailyPlatformActionCap)}
+              onChange={(e) =>
+                saveSettings({ dailyPlatformActionCap: Number(e.target.value) })
+              }
+            >
+              {[
+                [5, "5 per day"],
+                [10, "10 per day"],
+                [25, "25 per day"],
+                [50, "50 per day"],
+                [100, "100 per day"],
+                [0, "No limit"],
+              ].map(([value, label]) => (
+                <option key={value} value={value} className="bg-surface">
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+            <div>
               <div className="text-sm text-foreground">Approval timeout</div>
               <div className="text-xs text-muted">
                 How long an unattended run waits for you before denying itself and

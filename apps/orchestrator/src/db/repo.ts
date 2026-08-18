@@ -316,6 +316,7 @@ const SETTING_DEFAULTS: SettingsRecord = {
   notifyEmail: "",
   approvalTimeoutMinutes: 240,
   eventRetentionDays: 30,
+  dailyPlatformActionCap: 25,
 };
 
 function readSetting(key: string): string | undefined {
@@ -362,6 +363,14 @@ export function getSettings(): SettingsRecord {
         ? parsed
         : SETTING_DEFAULTS.eventRetentionDays;
     })(),
+    dailyPlatformActionCap: (() => {
+      const raw = readSetting("daily_platform_action_cap");
+      if (raw === undefined) return SETTING_DEFAULTS.dailyPlatformActionCap;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 0
+        ? parsed
+        : SETTING_DEFAULTS.dailyPlatformActionCap;
+    })(),
   };
 }
 
@@ -388,6 +397,9 @@ export function updateSettings(
   }
   if (patch.eventRetentionDays !== undefined) {
     writeSetting("event_retention_days", String(patch.eventRetentionDays));
+  }
+  if (patch.dailyPlatformActionCap !== undefined) {
+    writeSetting("daily_platform_action_cap", String(patch.dailyPlatformActionCap));
   }
   return getSettings();
 }

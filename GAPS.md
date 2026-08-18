@@ -14,16 +14,11 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 ## Open
 
 ### high — No outbound action has ever succeeded end to end
-Tool registration, gating, editing and rejection are all verified, but no real post or
-email has been sent through any platform. Until one is, the send path is unproven.
-
-### high — No spend guardrail on paid platform APIs
-X bills per action ($0.015 a post, $0.20 if it contains a URL) and other platforms
-will too. Jarvis can post autonomously on a schedule with no cap of its own, so a
-looping or over-eager automation spends real money with nothing to stop it. The
-approval gate helps only while a human is watching; unattended runs have no limit.
-Needs a per-platform daily action cap enforced in `platforms/actions.ts`, and ideally
-a running count surfaced in the dashboard.
+Everything up to the API call is now verified against live X credentials: OAuth 1.0a
+signing, write permission, tool registration, the approval gate, and edit-before-send.
+The real post returned HTTP 402 `credits depleted` — not 401 or 403, which is what
+proves the rest of the chain is correct. Blocked solely on buying X credits. Nothing
+has actually been published yet, so the path stays unproven until one lands.
 
 ### high — Jarvis cannot post images anywhere
 `post_to_x` sends only `{ text }`, and the Slack and Discord tools are text-only too.
@@ -72,6 +67,11 @@ disconnected until they refresh manually.
 
 ## Closed
 
+- **2026-08-18** No spend guardrail on paid platform APIs — closed by a per-platform
+  daily action cap (`platforms/spendGuard.ts`, default 25) checked before the outbound
+  call, so a blocked action costs nothing, and recorded only on success, so a failed
+  request does not consume the budget. Verified live: at a cap of 1 the second Slack
+  send was refused before Slack was contacted, and a notification explained why.
 - **2026-08-18** `session_events` grew without bound — measured at 96% of rows and
   73% of bytes being redundant `stream_event` deltas. Closed by hourly compaction
   (`db/maintenance.ts`), a 64 KB per-event cap, and configurable retention. Real
