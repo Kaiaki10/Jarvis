@@ -1,116 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  ScheduledTaskRecord,
-  SessionEventRecord,
-  SessionRecord,
-  TaskRecord,
-} from "@jarvis/shared";
-import { api, globalEventsUrl, sessionStreamUrl } from "./api";
+import type { SessionEventRecord, SessionRecord } from "@jarvis/shared";
+import { api, sessionStreamUrl } from "./api";
 
-export function useTasksList() {
-  const [tasks, setTasks] = useState<TaskRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+export {
+  useSessionsList,
+  useActivityLog,
+  useTasksList,
+  useScheduledTasksList,
+} from "./store";
+export type { ActivityLogEntry } from "./store";
 
-  const refresh = useCallback(() => {
-    return api.listTasks().then((t) => {
-      setTasks(t);
-      setLoading(false);
-    });
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 5000);
-    return () => clearInterval(id);
-  }, [refresh]);
-
-  return { tasks, loading, refresh };
-}
-
-export function useSessionsList() {
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.listSessions().then((initial) => {
-      if (!cancelled) {
-        setSessions(initial);
-        setLoading(false);
-      }
-    });
-
-    const source = new EventSource(globalEventsUrl());
-    source.addEventListener("session-updated", (evt) => {
-      const updated = JSON.parse((evt as MessageEvent).data) as SessionRecord;
-      setSessions((prev) => {
-        const idx = prev.findIndex((s) => s.id === updated.id);
-        if (idx === -1) return [updated, ...prev];
-        const next = [...prev];
-        next[idx] = updated;
-        return next.sort(
-          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        );
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      source.close();
-    };
-  }, []);
-
-  return { sessions, loading };
-}
-
-export function useScheduledTasksList() {
-  const [tasks, setTasks] = useState<ScheduledTaskRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(() => {
-    return api.listScheduledTasks().then((t) => {
-      setTasks(t);
-      setLoading(false);
-    });
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 15000);
-    return () => clearInterval(id);
-  }, [refresh]);
-
-  return { tasks, loading, refresh };
-}
-
-export interface ActivityLogEntry {
-  id: string;
-  time: string;
-  text: string;
-}
-
-export function useActivityLog(limit = 30) {
-  const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
-
-  useEffect(() => {
-    const source = new EventSource(globalEventsUrl());
-    source.addEventListener("session-updated", (evt) => {
-      const session = JSON.parse((evt as MessageEvent).data) as SessionRecord;
-      const entry: ActivityLogEntry = {
-        id: `${session.id}-${session.updatedAt}`,
-        time: new Date(session.updatedAt).toLocaleTimeString([], { hour12: false }),
-        text: `${session.title.slice(0, 40)} → ${session.status.toUpperCase()}`,
-      };
-      setEntries((prev) => [entry, ...prev].slice(0, limit));
-    });
-    return () => source.close();
-  }, [limit]);
-
-  return entries;
-}
-
+/**
+ * Per-session live transcript. Unlike the app-wide store this opens its own
+ * EventSource, which is fine because only one session detail view is mounted
+ * at a time.
+ */
 export function useSessionStream(sessionId: string) {
   const [events, setEvents] = useState<SessionEventRecord[]>([]);
   const [session, setSession] = useState<SessionRecord | null>(null);

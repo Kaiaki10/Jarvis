@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Terminal, CalendarClock, ListChecks } from "lucide-react";
+import { StoreProvider } from "@/lib/store";
 
 const NAV_ITEMS = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
@@ -33,6 +34,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   return (
+    <StoreProvider>
     <div className="flex min-h-screen">
       <aside className="w-60 shrink-0 border-r border-border flex flex-col">
         <div className="px-5 py-5">
@@ -73,5 +75,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
       <main className="flex-1 min-w-0">{children}</main>
     </div>
+    </StoreProvider>
   );
 }

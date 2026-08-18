@@ -1,0 +1,80 @@
+"use client";
+
+import Link from "next/link";
+import { CalendarClock } from "lucide-react";
+import { useScheduledTasksList, useSessionsList } from "@/lib/hooks";
+import { daysLabel, lastRunOutcome } from "@/lib/runStatus";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+
+function relativeDay(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (date.toDateString() === now.toDateString()) return `today ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `yesterday ${time}`;
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+export function AutomationHealth() {
+  const { tasks } = useScheduledTasksList();
+  const { sessionById } = useSessionsList();
+
+  return (
+    <Card>
+      <CardHeader
+        title="Automation health"
+        description="How each automation's last run went"
+        action={
+          <Link
+            href="/automations"
+            className="text-xs font-medium text-muted hover:text-foreground"
+          >
+            Manage
+          </Link>
+        }
+      />
+      <div className="flex flex-col px-2 pb-3">
+        {tasks.length === 0 && (
+          <div className="flex items-center gap-2.5 px-3 py-3 text-sm text-muted">
+            <CalendarClock className="h-4 w-4" strokeWidth={1.75} />
+            No automations yet.
+            <Link href="/automations" className="text-foreground hover:underline">
+              Create one
+            </Link>
+          </div>
+        )}
+        {tasks.map((task) => {
+          const outcome = lastRunOutcome(task, sessionById);
+          return (
+            <div
+              key={task.id}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${
+                task.enabled ? "" : "opacity-50"
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-foreground">{task.prompt}</div>
+                <div className="mt-0.5 text-[11px] text-muted">
+                  {task.timeOfDay} · {daysLabel(task.daysOfWeek)}
+                  {task.lastRunAt && ` · last run ${relativeDay(task.lastRunAt)}`}
+                </div>
+              </div>
+              {!task.enabled ? (
+                <Badge tone="neutral">Paused</Badge>
+              ) : outcome ? (
+                <Badge tone={outcome.tone} dot>
+                  {outcome.label}
+                </Badge>
+              ) : (
+                <Badge tone="neutral">Not run yet</Badge>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}

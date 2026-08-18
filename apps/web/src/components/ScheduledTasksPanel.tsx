@@ -5,23 +5,14 @@ import Link from "next/link";
 import { CalendarPlus, Pause, Play, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useScheduledTasksList } from "@/lib/hooks";
+import { DAY_LABELS, daysLabel } from "@/lib/runStatus";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const WEEKDAYS = [1, 2, 3, 4, 5];
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const PERMISSION_MODES = ["default", "acceptEdits", "plan", "dontAsk"];
-
-function daysLabel(days: number[]): string {
-  const sorted = [...days].sort();
-  if (sorted.length === 7) return "Daily";
-  if (sorted.length === 5 && sorted.every((d, i) => d === WEEKDAYS[i])) return "Weekdays";
-  if (sorted.length === 2 && sorted[0] === 0 && sorted[1] === 6) return "Weekends";
-  return sorted.map((d) => DAY_LABELS[d]).join(" ");
-}
 
 function formatNextRun(iso: string | null): string {
   if (!iso) return "—";

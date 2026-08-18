@@ -57,10 +57,15 @@ export function resolvePermission(
   } else {
     pending.resolve({ behavior: "deny", message: "Denied by user via dashboard" });
   }
-  appendSessionEvent(sessionId, "permission_response", {
+  // Must be emitted, not just persisted: the UI clears its approval prompt off
+  // the back of this event arriving on the stream.
+  const event = appendSessionEvent(sessionId, "permission_response", {
     requestId,
     decision,
   });
+  handle.emitter.emit("event", event);
+  updateSession(sessionId, { status: "running" });
+  globalBus.emit("session_updated", sessionId);
   return true;
 }
 
