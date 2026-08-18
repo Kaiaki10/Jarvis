@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
   last_run_at TEXT,
   last_session_id TEXT,
   next_run_at TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -80,10 +81,177 @@ CREATE TABLE IF NOT EXISTS tasks (
   status TEXT NOT NULL,
   position REAL NOT NULL,
   session_id TEXT,
+  mission_id TEXT REFERENCES missions(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   completed_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS missions (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'planned',
+  target_date TEXT,
+  next_action TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS deliverables (
+  id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  uri TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mission_updates (
+  id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+  summary TEXT NOT NULL,
+  proposed_next_action TEXT,
+  blocker TEXT,
+  artifact_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'proposed',
+  created_at TEXT NOT NULL,
+  reviewed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_deliverables_mission ON deliverables(mission_id);
+CREATE INDEX IF NOT EXISTS idx_mission_updates_mission ON mission_updates(mission_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS evolution_proposals (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  problem TEXT NOT NULL,
+  expected_value TEXT NOT NULL,
+  change_class TEXT NOT NULL,
+  risk TEXT NOT NULL,
+  stage TEXT NOT NULL DEFAULT 'observed',
+  evidence TEXT,
+  rollback_plan TEXT,
+  lab_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  promoted_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS evolution_policies (
+  change_class TEXT PRIMARY KEY,
+  autonomy TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_evolution_proposals_stage ON evolution_proposals(stage, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS campaigns (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  objective TEXT NOT NULL,
+  audience TEXT NOT NULL,
+  offer TEXT NOT NULL,
+  channels TEXT NOT NULL,
+  primary_metric TEXT NOT NULL,
+  approval_policy TEXT NOT NULL DEFAULT 'each_item',
+  status TEXT NOT NULL DEFAULT 'draft',
+  mission_id TEXT REFERENCES missions(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS content_items (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  format TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  scheduled_for TEXT,
+  published_at TEXT,
+  performance_summary TEXT,
+  session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS campaign_generation_runs (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'running',
+  requested_count INTEGER NOT NULL,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS content_publication_runs (
+  id TEXT PRIMARY KEY,
+  content_item_id TEXT NOT NULL REFERENCES content_items(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  platform_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_items_campaign ON content_items(campaign_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_campaign_generation_session ON campaign_generation_runs(session_id);
+CREATE INDEX IF NOT EXISTS idx_content_publication_session ON content_publication_runs(session_id);
+CREATE INDEX IF NOT EXISTS idx_content_publication_item ON content_publication_runs(content_item_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS paid_growth_campaigns (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT REFERENCES campaigns(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  objective TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  external_campaign_id TEXT,
+  external_budget_entity_id TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  currency TEXT NOT NULL DEFAULT 'USD',
+  daily_budget_minor INTEGER NOT NULL,
+  lifetime_budget_minor INTEGER NOT NULL,
+  approved_budget_minor INTEGER NOT NULL DEFAULT 0,
+  spent_minor INTEGER NOT NULL DEFAULT 0,
+  revenue_minor INTEGER NOT NULL DEFAULT 0,
+  impressions INTEGER NOT NULL DEFAULT 0,
+  clicks INTEGER NOT NULL DEFAULT 0,
+  conversions INTEGER NOT NULL DEFAULT 0,
+  target_roas REAL,
+  start_date TEXT NOT NULL,
+  end_date TEXT,
+  last_synced_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS paid_growth_decisions (
+  id TEXT PRIMARY KEY,
+  paid_campaign_id TEXT NOT NULL REFERENCES paid_growth_campaigns(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'proposed',
+  reason TEXT NOT NULL,
+  proposed_daily_budget_minor INTEGER,
+  source_paid_campaign_id TEXT REFERENCES paid_growth_campaigns(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  reviewed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_paid_growth_status ON paid_growth_campaigns(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_paid_growth_decisions_status ON paid_growth_decisions(status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS platform_actions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,3 +263,137 @@ CREATE TABLE IF NOT EXISTS platform_actions (
 
 CREATE INDEX IF NOT EXISTS idx_platform_actions_lookup
   ON platform_actions(platform_id, created_at);
+
+CREATE TABLE IF NOT EXISTS memories (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  content TEXT NOT NULL,
+  normalized_content TEXT NOT NULL UNIQUE,
+  source_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_used_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_memories_active_updated
+  ON memories(status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS memory_reflections (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,
+  memories_added INTEGER NOT NULL DEFAULT 0,
+  memories_confirmed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_reflections_created
+  ON memory_reflections(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS customers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT,
+  company TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS customer_conversations (
+  id TEXT PRIMARY KEY,
+  customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  channel TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  priority TEXT NOT NULL DEFAULT 'normal',
+  sentiment TEXT NOT NULL DEFAULT 'neutral',
+  assigned_to TEXT NOT NULL DEFAULT 'jarvis',
+  summary TEXT,
+  unread_count INTEGER NOT NULL DEFAULT 1,
+  last_message_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS customer_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES customer_conversations(id) ON DELETE CASCADE,
+  direction TEXT NOT NULL,
+  sender TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS customer_reply_drafts (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES customer_conversations(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'running',
+  body TEXT,
+  error_message TEXT,
+  confidence REAL,
+  requires_approval INTEGER NOT NULL DEFAULT 1,
+  escalation_reason TEXT,
+  auto_send INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_conversations_queue
+  ON customer_conversations(status, priority, last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_customer_messages_conversation
+  ON customer_messages(conversation_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_customer_drafts_conversation
+  ON customer_reply_drafts(conversation_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_drafts_session
+  ON customer_reply_drafts(session_id);
+
+CREATE TABLE IF NOT EXISTS customer_channel_threads (
+  provider TEXT NOT NULL,
+  external_thread_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL REFERENCES customer_conversations(id) ON DELETE CASCADE,
+  access_token_hash TEXT,
+  reply_to TEXT,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (provider, external_thread_id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_inbound_events (
+  provider TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (provider, event_id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_message_deliveries (
+  message_id TEXT PRIMARY KEY REFERENCES customer_messages(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL,
+  external_id TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS customer_service_policy (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  enabled INTEGER NOT NULL DEFAULT 0,
+  auto_reply_website INTEGER NOT NULL DEFAULT 1,
+  auto_reply_email INTEGER NOT NULL DEFAULT 0,
+  auto_reply_social INTEGER NOT NULL DEFAULT 0,
+  confidence_threshold REAL NOT NULL DEFAULT 0.9,
+  max_auto_replies INTEGER NOT NULL DEFAULT 3,
+  business_hours_start TEXT NOT NULL DEFAULT '08:00',
+  business_hours_end TEXT NOT NULL DEFAULT '18:00',
+  business_days TEXT NOT NULL DEFAULT '[1,2,3,4,5]',
+  escalation_keywords TEXT NOT NULL DEFAULT '["refund","chargeback","legal","lawsuit","threat","fraud","cancel"]',
+  widget_name TEXT NOT NULL DEFAULT 'Jarvis Support',
+  widget_welcome TEXT NOT NULL DEFAULT 'Hi — how can we help?',
+  allowed_origins TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT NOT NULL
+);

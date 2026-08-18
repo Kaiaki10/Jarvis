@@ -34,7 +34,7 @@ function Stop-PortOwner {
       Stop-Process -Id $procId -Force
       Write-Host "  killed $($p.ProcessName) (PID $procId) holding port $Port" -ForegroundColor Yellow
     } catch {
-      # Already gone between listing and killing — fine.
+      Write-Host "  could not stop PID $procId on port ${Port}: $($_.Exception.Message)" -ForegroundColor Yellow
     }
   }
 }
@@ -58,6 +58,13 @@ if (-not $SkipBuild) {
 }
 
 Write-Host "Stopping..." -ForegroundColor Cyan
+# S4U child processes can be protected from an interactive Stop-Process call.
+# Ask current versions to exit themselves first; the port-owner pass below is a
+# fallback for older builds and crashed wrappers.
+foreach ($uri in @("http://127.0.0.1:4317/shutdown", "http://127.0.0.1:3000/api/shutdown")) {
+  try { Invoke-WebRequest $uri -Method Post -UseBasicParsing -TimeoutSec 2 | Out-Null } catch {}
+}
+Start-Sleep -Seconds 2
 foreach ($t in $tasks) {
   if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
     try { Stop-ScheduledTask -TaskName $t } catch {}
@@ -66,6 +73,14 @@ foreach ($t in $tasks) {
 Start-Sleep -Seconds 2
 foreach ($p in $ports) { Stop-PortOwner -Port $p }
 Start-Sleep -Seconds 1
+
+$remaining = foreach ($p in $ports) {
+  Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
+}
+if ($remaining) {
+  $details = ($remaining | ForEach-Object { "$($_.LocalAddress):$($_.LocalPort) PID $($_.OwningProcess)" }) -join ", "
+  throw "Old Jarvis processes still own production ports ($details). Run this script from an elevated PowerShell window, or reboot, then run it again. The old service was not reported as the new build."
+}
 
 Write-Host "Starting..." -ForegroundColor Cyan
 foreach ($t in $tasks) {
@@ -82,10 +97,10 @@ $orchestrator = $false
 $dashboard = $false
 while ((Get-Date) -lt $deadline -and -not ($orchestrator -and $dashboard)) {
   if (-not $orchestrator) {
-    try { $orchestrator = (Invoke-WebRequest "http://localhost:4317/platforms" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch {}
+    try { $orchestrator = (Invoke-WebRequest "http://127.0.0.1:4317/health" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch {}
   }
   if (-not $dashboard) {
-    try { $dashboard = (Invoke-WebRequest "http://localhost:3000" -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 } catch {}
+    try { $dashboard = (Invoke-WebRequest "http://127.0.0.1:3000" -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 } catch {}
   }
   if (-not ($orchestrator -and $dashboard)) { Start-Sleep -Seconds 2 }
 }

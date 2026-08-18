@@ -16,10 +16,57 @@ import type {
   TaskStatus,
   UpdateScheduledTaskRequest,
   UpdateSettingsRequest,
+  MissionRecord,
+  DeliverableRecord,
+  CreateMissionRequest,
+  UpdateMissionRequest,
+  CreateDeliverableRequest,
+  DeliverableStatus,
+  AutomationRehearsal,
+  MissionUpdateRecord,
+  EvolutionOverview,
+  EvolutionProposalRecord,
+  CreateEvolutionProposalRequest,
+  EvolutionAutonomy,
+  EvolutionChangeClass,
+  CampaignOverview,
+  CampaignRecord,
+  ContentItemRecord,
+  CampaignGenerationRunRecord,
+  ContentPublicationRunRecord,
+  CreateCampaignRequest,
+  UpdateCampaignRequest,
+  CreateContentItemRequest,
+  UpdateContentItemRequest,
+  GenerateCampaignContentRequest,
+  MemoryRecord,
+  MemoryReflectionRecord,
+  CreateMemoryRequest,
+  UpdateMemoryRequest,
+  CustomerOperationsOverview,
+  CustomerConversationRecord,
+  CustomerMessageRecord,
+  CustomerRecord,
+  CustomerReplyDraftRecord,
+  CreateCustomerConversationRequest,
+  UpdateCustomerConversationRequest,
+  CreateCustomerMessageRequest,
+  UpdateCustomerRequest,
+  CustomerServicePolicyRecord,
+  UpdateCustomerServicePolicyRequest,
+  PaidGrowthOverview,
+  PaidGrowthCampaignRecord,
+  PaidGrowthDecisionRecord,
+  CreatePaidGrowthCampaignRequest,
+  UpdatePaidGrowthCampaignRequest,
+  UpdatePaidGrowthPerformanceRequest,
 } from "@jarvis/shared";
 
 const BASE_URL =
-  process.env.NEXT_PUBLIC_ORCHESTRATOR_URL ?? "http://localhost:4317";
+  process.env.NEXT_PUBLIC_ORCHESTRATOR_URL ?? "http://127.0.0.1:4317";
+
+export const customerWidgetDemoUrl = `${BASE_URL}/widget/demo`;
+export const customerWidgetEmbedCode = `<script src="${BASE_URL}/widget/customer-chat.js" data-jarvis-url="${BASE_URL}" async></script>`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -43,7 +90,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function requestBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}${path}`);
+  if (!res.ok) throw new Error((await res.text()) || `Request failed (${res.status})`);
+  return res.blob();
+}
+
 export const api = {
+  listMemories: (status?: "active" | "archived") =>
+    request<MemoryRecord[]>(`/memories${status ? `?status=${status}` : ""}`),
+  listMemoryReflections: () => request<MemoryReflectionRecord[]>("/memory-reflections"),
+  createMemory: (body: CreateMemoryRequest) =>
+    request<MemoryRecord>("/memories", { method: "POST", body: JSON.stringify(body) }),
+  updateMemory: (id: string, patch: UpdateMemoryRequest) =>
+    request<MemoryRecord>(`/memories/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   listSessions: () => request<SessionRecord[]>("/sessions"),
   deleteSession: (id: string) =>
     request<void>(`/sessions/${id}`, { method: "DELETE" }),
@@ -76,20 +136,142 @@ export const api = {
     request<{ ok: boolean }>(`/sessions/${id}/interrupt`, { method: "POST" }),
 
   listTasks: () => request<TaskRecord[]>("/tasks"),
-  createTask: (title: string, description?: string) =>
+  createTask: (title: string, description?: string, missionId?: string) =>
     request<TaskRecord>("/tasks", {
       method: "POST",
-      body: JSON.stringify({ title, description }),
+      body: JSON.stringify({ title, description, missionId }),
     }),
   updateTask: (
     id: string,
-    patch: Partial<{ title: string; description: string; status: TaskStatus; position: number }>
+    patch: Partial<{ title: string; description: string; status: TaskStatus; position: number; missionId: string | null }>
   ) =>
     request<TaskRecord>(`/tasks/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
   deleteTask: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
+
+  listMissions: () => request<MissionRecord[]>("/missions"),
+  getMission: (id: string) => request<{ mission: MissionRecord; tasks: TaskRecord[]; deliverables: DeliverableRecord[]; updates: MissionUpdateRecord[] }>(`/missions/${id}`),
+  createMission: (body: CreateMissionRequest) => request<MissionRecord>("/missions", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  updateMission: (id: string, patch: UpdateMissionRequest) => request<MissionRecord>(`/missions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }),
+  advanceMission: (id: string) => request<{ mission: MissionRecord; task: TaskRecord; session: SessionRecord }>(`/missions/${id}/advance`, { method: "POST" }),
+  deleteMission: (id: string) => request<void>(`/missions/${id}`, { method: "DELETE" }),
+  listDeliverables: () => request<DeliverableRecord[]>("/deliverables"),
+  createDeliverable: (missionId: string, body: CreateDeliverableRequest) => request<DeliverableRecord>(`/missions/${missionId}/deliverables`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  updateDeliverable: (id: string, patch: Partial<{ title: string; description: string | null; uri: string | null; status: DeliverableStatus }>) => request<DeliverableRecord>(`/deliverables/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }),
+  deleteDeliverable: (id: string) => request<void>(`/deliverables/${id}`, { method: "DELETE" }),
+  listMissionUpdates: () => request<MissionUpdateRecord[]>("/mission-updates"),
+  reviewMissionUpdate: (id: string, decision: "apply" | "dismiss") => request<{ update: MissionUpdateRecord; mission: MissionRecord }>(`/mission-updates/${id}/review`, {
+    method: "POST",
+    body: JSON.stringify({ decision }),
+  }),
+
+  getEvolution: () => request<EvolutionOverview>("/evolution"),
+  createEvolutionProposal: (body: CreateEvolutionProposalRequest) => request<EvolutionProposalRecord>("/evolution/proposals", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  updateEvolutionProposal: (id: string, patch: Partial<CreateEvolutionProposalRequest & { stage: "observed" | "planned" }>) => request<EvolutionProposalRecord>(`/evolution/proposals/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }),
+  updateEvolutionPolicy: (changeClass: EvolutionChangeClass, autonomy: EvolutionAutonomy) => request(`/evolution/policies/${changeClass}`, {
+    method: "PATCH",
+    body: JSON.stringify({ autonomy }),
+  }),
+  startEvolutionBuild: (id: string) => request<{ proposal: EvolutionProposalRecord; session: SessionRecord }>(`/evolution/proposals/${id}/start-build`, { method: "POST" }),
+
+  getCampaigns: () => request<CampaignOverview>("/campaigns"),
+  getCampaign: (id: string) => request<{ campaign: CampaignRecord; content: ContentItemRecord[]; generationRuns: CampaignGenerationRunRecord[]; publicationRuns: ContentPublicationRunRecord[] }>(`/campaigns/${id}`),
+  createCampaign: (body: CreateCampaignRequest) => request<CampaignRecord>("/campaigns", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  updateCampaign: (id: string, patch: UpdateCampaignRequest) => request<CampaignRecord>(`/campaigns/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }),
+  deleteCampaign: (id: string) => request<void>(`/campaigns/${id}`, { method: "DELETE" }),
+  createContentItem: (campaignId: string, body: CreateContentItemRequest) => request<ContentItemRecord>(`/campaigns/${campaignId}/content`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  updateContentItem: (id: string, patch: UpdateContentItemRequest) => request<ContentItemRecord>(`/content/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }),
+  deleteContentItem: (id: string) => request<void>(`/content/${id}`, { method: "DELETE" }),
+  publishContentItem: (id: string) => request<{ sessionId: string; runId: string }>(`/content/${id}/publish`, { method: "POST" }),
+  generateCampaignContent: (id: string, body: GenerateCampaignContentRequest) => request<{ campaign: CampaignRecord; session: SessionRecord; generationRun: CampaignGenerationRunRecord }>(`/campaigns/${id}/generate`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+
+  getPaidGrowth: () => request<PaidGrowthOverview>("/paid-growth"),
+  createPaidGrowthCampaign: (body: CreatePaidGrowthCampaignRequest) =>
+    request<PaidGrowthCampaignRecord>("/paid-growth/campaigns", { method: "POST", body: JSON.stringify(body) }),
+  updatePaidGrowthCampaign: (id: string, patch: UpdatePaidGrowthCampaignRequest) =>
+    request<PaidGrowthCampaignRecord>(`/paid-growth/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  updatePaidGrowthPerformance: (id: string, body: UpdatePaidGrowthPerformanceRequest) =>
+    request<PaidGrowthCampaignRecord>(`/paid-growth/campaigns/${id}/performance`, { method: "POST", body: JSON.stringify(body) }),
+  syncPaidGrowthCampaign: (id: string) =>
+    request<{ campaign: PaidGrowthCampaignRecord; decisions: PaidGrowthDecisionRecord[]; overview: PaidGrowthOverview }>(`/paid-growth/campaigns/${id}/sync`, { method: "POST" }),
+  requestPaidGrowthLaunch: (id: string) =>
+    request<PaidGrowthDecisionRecord>(`/paid-growth/campaigns/${id}/request-launch`, { method: "POST" }),
+  refreshPaidGrowthRecommendations: () =>
+    request<{ created: PaidGrowthDecisionRecord[]; overview: PaidGrowthOverview }>("/paid-growth/recommendations/refresh", { method: "POST" }),
+  reviewPaidGrowthDecision: (id: string, decision: "approve" | "reject") =>
+    request<{ decision: PaidGrowthDecisionRecord; overview: PaidGrowthOverview }>(`/paid-growth/decisions/${id}/review`, { method: "POST", body: JSON.stringify({ decision }) }),
+
+  getCustomerOperations: () => request<CustomerOperationsOverview>("/customer-operations"),
+  updateCustomerServicePolicy: (patch: UpdateCustomerServicePolicyRequest) =>
+    request<CustomerServicePolicyRecord>("/customer-service-policy", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  createCustomerConversation: (body: CreateCustomerConversationRequest) => request<{
+    customer: CustomerRecord;
+    conversation: CustomerConversationRecord;
+    message: CustomerMessageRecord;
+  }>("/customer-conversations", { method: "POST", body: JSON.stringify(body) }),
+  updateCustomerConversation: (id: string, patch: UpdateCustomerConversationRequest) =>
+    request<CustomerConversationRecord>(`/customer-conversations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteCustomerConversation: (id: string) =>
+    request<void>(`/customer-conversations/${id}`, { method: "DELETE" }),
+  updateCustomer: (id: string, patch: UpdateCustomerRequest) =>
+    request<CustomerRecord>(`/customers/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  sendCustomerMessage: (id: string, body: CreateCustomerMessageRequest) =>
+    request<CustomerMessageRecord>(`/customer-conversations/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  draftCustomerReply: (id: string) => request<{ session: SessionRecord; draft: CustomerReplyDraftRecord }>(
+    `/customer-conversations/${id}/drafts`,
+    { method: "POST" }
+  ),
+  escalateCustomerConversation: (id: string) =>
+    request<{ conversation: CustomerConversationRecord; task: TaskRecord }>(
+      `/customer-conversations/${id}/escalate`,
+      { method: "POST" }
+    ),
+  createCustomerFollowUp: (id: string) =>
+    request<TaskRecord>(`/customer-conversations/${id}/follow-up`, { method: "POST" }),
 
   listScheduledTasks: () => request<ScheduledTaskRecord[]>("/scheduled-tasks"),
   createScheduledTask: (body: CreateScheduledTaskRequest) =>
@@ -104,6 +286,8 @@ export const api = {
     }),
   deleteScheduledTask: (id: string) =>
     request<void>(`/scheduled-tasks/${id}`, { method: "DELETE" }),
+  rehearseScheduledTask: (id: string) =>
+    request<AutomationRehearsal>(`/scheduled-tasks/${id}/rehearsal`),
 
   listPlatforms: () => request<PlatformDefinition[]>("/platforms"),
   listConnections: () => request<ConnectionRecord[]>("/connections"),
@@ -138,6 +322,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ passphrase }),
     }),
+  downloadDataBackup: () => requestBlob("/backup/database"),
   importBackup: (passphrase: string, bundle: unknown) =>
     request<{ restored: string[]; skipped: string[] }>("/backup/import", {
       method: "POST",

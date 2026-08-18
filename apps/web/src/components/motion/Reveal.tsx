@@ -32,8 +32,8 @@ export function Reveal({
     if (!el) return;
 
     if (typeof IntersectionObserver === "undefined") {
-      setVisible(true);
-      return;
+      const timer = setTimeout(() => setVisible(true), 0);
+      return () => clearTimeout(timer);
     }
 
     // Already in view on first paint (above the fold) — reveal without waiting

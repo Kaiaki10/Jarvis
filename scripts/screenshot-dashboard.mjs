@@ -13,9 +13,17 @@ const outDir = process.argv[2] ?? ".screenshots";
 
 const PAGES = [
   { path: "/", name: "overview", waitFor: "text=Jarvis" },
+  { path: "/operate", name: "operate", waitFor: "text=The operating loop" },
+  { path: "/missions", name: "missions", waitFor: "text=Missions" },
+  { path: "/campaigns", name: "campaigns", waitFor: "text=Campaigns" },
+  { path: "/paid-growth", name: "paid-growth", waitFor: "text=Paid growth control" },
   { path: "/sessions", name: "sessions", waitFor: "text=Runs" },
   { path: "/automations", name: "automations", waitFor: "text=Automations" },
+  { path: "/customers", name: "customers", waitFor: "text=Unified queue" },
+  { path: "/memory", name: "memory", waitFor: "text=What Jarvis remembers" },
+  { path: "/evolution", name: "evolution", waitFor: "text=Evolution" },
   { path: "/tasks", name: "tasks", waitFor: "text=Tasks" },
+  { path: "/notifications", name: "notifications", waitFor: "text=Notifications" },
   { path: "/connections", name: "connections", waitFor: "text=Connections" },
   { path: "/settings", name: "settings", waitFor: "text=Business context" },
 ];

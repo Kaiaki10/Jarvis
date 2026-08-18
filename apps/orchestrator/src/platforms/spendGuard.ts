@@ -60,6 +60,13 @@ export function recordAction(
   );
 }
 
+export function hasSuccessfulActionForSession(sessionId: string, platformId: string): boolean {
+  const row = db.prepare(
+    `SELECT 1 AS found FROM platform_actions WHERE session_id = ? AND platform_id = ? LIMIT 1`
+  ).get(sessionId, platformId) as unknown as { found: number } | undefined;
+  return Boolean(row);
+}
+
 /** Whitespace and case are not meaningful differences for "did we post this already". */
 export function contentHash(text: string): string {
   return createHash("sha256")

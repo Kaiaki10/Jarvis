@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Send, X } from "lucide-react";
+import { Check, Eye, ShieldQuestion, Undo2, X } from "lucide-react";
 import type { SessionEventRecord, SessionRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
@@ -31,18 +31,6 @@ interface PermissionRequestPayload {
   toolName: string;
   input: Record<string, unknown>;
   expiresAt?: string | null;
-  estimatedCostUsd?: number;
-}
-
-/** Real money, unlike Claude session costs — so it belongs in front of the decision. */
-function CostNotice({ cost, text }: { cost: number; text: unknown }) {
-  const hasUrl = typeof text === "string" && /https?:\/\/\S+/i.test(text);
-  return (
-    <span className={hasUrl ? "text-warning" : "text-muted"}>
-      ~${cost.toFixed(3)}
-      {hasUrl && " — the link is what makes it $0.20 instead of $0.015"}
-    </span>
-  );
 }
 
 /** Live countdown, so it's obvious how long is left before an auto-deny. */
@@ -85,6 +73,38 @@ const FIELD_LABELS: Record<string, string> = {
 function outboundAction(toolName: string): string | null {
   const bare = toolName.replace(/^mcp__jarvis__/, "");
   return bare === toolName ? null : (OUTBOUND_TOOL_LABELS[bare] ?? bare);
+}
+
+function decisionContext(request: PermissionRequestPayload) {
+  const name = request.toolName.replace(/^mcp__[^_]+__/, "");
+  const input = request.input;
+  if (/bash|shell|exec|command/i.test(name)) {
+    return {
+      proposal: `Run a command${typeof input.command === "string" ? `: ${input.command.slice(0, 120)}` : " on this computer"}`,
+      consequence: "This can change files or local system state depending on the command.",
+      reversible: "Depends on the command",
+    };
+  }
+  if (/write|edit|patch/i.test(name)) {
+    const target = String(input.file_path ?? input.path ?? input.file ?? "a local file");
+    return {
+      proposal: `Change ${target}`,
+      consequence: "The requested file contents will be modified.",
+      reversible: "Usually reversible with version history",
+    };
+  }
+  if (/delete|remove/i.test(name)) {
+    return {
+      proposal: `Remove ${String(input.path ?? input.file ?? "an item")}`,
+      consequence: "The target may no longer be available after approval.",
+      reversible: "May not be reversible",
+    };
+  }
+  return {
+    proposal: `Use ${name}`,
+    consequence: "Jarvis needs authority beyond the permissions already granted to this run.",
+    reversible: "Review the exact scope below",
+  };
 }
 
 /**
@@ -218,6 +238,7 @@ function PermissionCard({
   ) => Promise<void>;
 }) {
   const action = outboundAction(request.toolName);
+  const context = decisionContext(request);
   const [draft, setDraft] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     for (const [k, v] of Object.entries(request.input)) {
@@ -239,20 +260,32 @@ function PermissionCard({
   if (!action) {
     return (
       <Card className="border-warning/30 bg-warning/5">
-        <div className="px-4 pt-3.5 pb-1 text-body font-medium text-warning">
-          Permission requested
+        <div className="flex items-center gap-2 px-4 pt-4 text-body font-medium text-warning">
+          <ShieldQuestion className="h-4 w-4" strokeWidth={1.75} />
+          Decision needed
+          {request.expiresAt && <span className="ml-auto text-micro"><TimeRemaining expiresAt={request.expiresAt} /></span>}
         </div>
-        <div className="px-4 pb-4">
-          <div className="mb-2 text-body text-foreground">
-            Tool <code className="font-mono text-label">{request.toolName}</code>
+        <div className="px-4 pt-2 pb-4">
+          <div className="text-title text-foreground">{context.proposal}</div>
+          <p className="mt-1 text-label text-muted">{context.consequence}</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="rounded-lg border border-border bg-black/15 px-3 py-2">
+              <div className="flex items-center gap-1.5 text-micro font-medium text-muted uppercase"><Eye className="h-3 w-3" /> Scope</div>
+              <div className="mt-1 break-all text-label text-foreground">One use of {request.toolName}</div>
+            </div>
+            <div className="rounded-lg border border-border bg-black/15 px-3 py-2">
+              <div className="flex items-center gap-1.5 text-micro font-medium text-muted uppercase"><Undo2 className="h-3 w-3" /> Recovery</div>
+              <div className="mt-1 text-label text-foreground">{context.reversible}</div>
+            </div>
           </div>
-          <pre className="mb-3 overflow-x-auto rounded-lg bg-black/30 p-2.5 text-label text-foreground/70">
-            {JSON.stringify(request.input, null, 2)}
-          </pre>
-          <div className="flex gap-2">
+          <details className="my-3 rounded-lg border border-border bg-black/20 px-3 py-2">
+            <summary className="cursor-pointer text-label text-muted">Review exact input</summary>
+            <pre className="mt-2 overflow-x-auto text-label text-foreground/70">{JSON.stringify(request.input, null, 2)}</pre>
+          </details>
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" disabled={busy} onClick={() => onRespond("allow")}>
               <Check className="h-3.5 w-3.5 text-success" />
-              Allow
+              Allow once
             </Button>
             <Button size="sm" variant="destructive" disabled={busy} onClick={() => onRespond("deny")}>
               <X className="h-3.5 w-3.5" />
@@ -267,8 +300,8 @@ function PermissionCard({
   return (
     <Card className="border-warning/40 bg-warning/5">
       <div className="flex items-center gap-2 px-4 pt-3.5 pb-1">
-        <Send className="h-3.5 w-3.5 text-warning" />
-        <span className="text-body font-medium text-warning">{action}</span>
+        <ShieldQuestion className="h-3.5 w-3.5 text-warning" />
+        <span className="text-body font-medium text-warning">Decision needed</span>
         {request.expiresAt && (
           <span className="ml-auto text-micro">
             <TimeRemaining expiresAt={request.expiresAt} />
@@ -276,15 +309,20 @@ function PermissionCard({
         )}
       </div>
       <div className="px-4 pb-4">
+        <div className="mb-1 text-title text-foreground">{action}</div>
         <p className="mb-3 text-label text-muted">
-          Nothing has been sent yet. Review it, edit if you want, then approve.
-          {request.estimatedCostUsd ? (
-            <>
-              {" "}
-              <CostNotice cost={request.estimatedCostUsd} text={draft.text} />
-            </>
-          ) : null}
+          Nothing has been sent. Approval applies to this message only; you can edit it first.
         </p>
+        <div className="mb-3 grid gap-2 sm:grid-cols-2">
+          <div className="rounded-lg border border-border bg-black/15 px-3 py-2 text-label">
+            <span className="text-muted">Impact</span>
+            <div className="mt-0.5 text-foreground">External recipients may see it immediately.</div>
+          </div>
+          <div className="rounded-lg border border-border bg-black/15 px-3 py-2 text-label">
+            <span className="text-muted">Recovery</span>
+            <div className="mt-0.5 text-foreground">Editing or removal depends on the destination.</div>
+          </div>
+        </div>
         <div className="flex flex-col gap-3">
           {Object.entries(draft).map(([key, value]) => {
             const multiline = key === "text" || key === "body";
@@ -319,7 +357,7 @@ function PermissionCard({
         <div className="mt-4 flex items-center gap-2">
           <Button size="sm" disabled={busy} onClick={approve}>
             <Check className="h-3.5 w-3.5" />
-            {edited ? "Approve edited" : "Approve and send"}
+            {edited ? "Approve edited once" : "Approve once and send"}
           </Button>
           <Button
             size="sm"

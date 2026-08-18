@@ -65,7 +65,7 @@ export function SessionList({
   return (
     <Card>
       <CardHeader
-        title="Runs"
+        title="Run history"
         description={loading ? undefined : `${runs.length} total`}
         action={
           showViewAll && runs.length > 0 ? (

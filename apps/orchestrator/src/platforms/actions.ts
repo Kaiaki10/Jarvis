@@ -11,6 +11,7 @@ import { checkDailyCap, recordAction, isDuplicate, contentHash } from "./spendGu
 import { notify } from "../notifications/notifier.js";
 import { listImages, imagesFolder, readImage, mimeTypeFor } from "./media.js";
 import { basename } from "node:path";
+import { withPlatformLock } from "./platformLock.js";
 
 type Creds = Record<string, string>;
 
@@ -45,32 +46,35 @@ async function guarded(
   toolName: string,
   send: () => Promise<{ content: { type: "text"; text: string }[]; isError?: boolean }>,
   /** Post body, when there is one, for duplicate detection and the ledger. */
-  content?: string
+  content?: string,
+  sessionId?: string
 ) {
-  const check = checkDailyCap(platformId);
-  if (!check.allowed) {
-    notify({
-      type: "session_failed",
-      severity: "warning",
-      title: "Daily platform limit reached",
-      body: check.message ?? `Daily limit reached for ${platformId}.`,
-    });
-    return fail(check.message ?? "Daily limit reached.");
-  }
+  return withPlatformLock(platformId, async () => {
+    const check = checkDailyCap(platformId);
+    if (!check.allowed) {
+      notify({
+        type: "session_failed",
+        severity: "warning",
+        title: "Daily platform limit reached",
+        body: check.message ?? `Daily limit reached for ${platformId}.`,
+      });
+      return fail(check.message ?? "Daily limit reached.");
+    }
 
-  if (content && isDuplicate(platformId, content)) {
-    return fail(
-      `This exact text was already posted to ${platformId} within the last 30 days. ` +
-        `${platformId === "x" ? "X rejects duplicates and still bills the attempt. " : ""}` +
-        `Write something different rather than reposting.`
-    );
-  }
+    if (content && isDuplicate(platformId, content)) {
+      return fail(
+        `This exact text was already posted to ${platformId} within the last 30 days. ` +
+          `${platformId === "x" ? "X rejects duplicates and still bills the attempt. " : ""}` +
+          `Write something different rather than reposting.`
+      );
+    }
 
-  const result = await send();
-  if (!result.isError) {
-    recordAction(platformId, toolName, null, content ? contentHash(content) : null);
-  }
-  return result;
+    const result = await send();
+    if (!result.isError) {
+      recordAction(platformId, toolName, sessionId ?? null, content ? contentHash(content) : null);
+    }
+    return result;
+  });
 }
 
 const TIMEOUT_MS = 20_000;
@@ -163,7 +167,7 @@ async function uploadImageToX(creds: Creds, fileName: string): Promise<string> {
   return mediaId;
 }
 
-function buildXTools(creds: Creds): AnyTool[] {
+function buildXTools(creds: Creds, sessionId?: string): AnyTool[] {
   return erase([
     tool(
       "list_available_images",
@@ -185,15 +189,15 @@ function buildXTools(creds: Creds): AnyTool[] {
     tool(
       "post_to_x",
       "Publish a post to the connected X (Twitter) account, optionally with one image. Use only when the user has asked for something to be posted publicly. " +
-        "Cost matters: X charges $0.015 per post, but $0.20 — over thirteen times more — if the text contains any URL. " +
-        "Attaching an image is free. If a link is not essential to the post, leave it out and offer to add it as a reply instead. " +
+        "Posts containing links may have materially different platform billing, so avoid links unless essential. " +
+        "If a link is not essential to the post, leave it out and offer to add it as a reply instead. " +
         "Never post the same text twice; X rejects duplicates and the attempt is still billed.",
       {
         text: z
           .string()
           .max(280)
           .describe(
-            "The post body. Max 280 characters. Avoid including a URL unless necessary — it multiplies the cost by 13."
+            "The post body. Max 280 characters. Avoid including a URL unless necessary."
           ),
         imageFile: z
           .string()
@@ -235,8 +239,7 @@ function buildXTools(creds: Creds): AnyTool[] {
         // naming the cause this surfaces as a bare 402 that looks like a bug.
         if (res.status === 402) {
           return fail(
-            "X rejected the post: your API credits are depleted. X charges per post " +
-              "($0.015, or $0.20 if the text contains a URL). Buy credits in the X " +
+            "X rejected the post: your API credits are depleted. Buy credits in the X " +
               "Developer Console under Billing, and set a spending cap while you are there."
           );
         }
@@ -258,12 +261,12 @@ function buildXTools(creds: Creds): AnyTool[] {
         } catch {
           return ok("Posted to X.");
         }
-      }, args.text)
+      }, args.text, sessionId)
     ),
   ]);
 }
 
-function buildSlackTools(creds: Creds): AnyTool[] {
+function buildSlackTools(creds: Creds, sessionId?: string): AnyTool[] {
   return erase([
     tool(
       "post_to_slack",
@@ -285,12 +288,12 @@ function buildSlackTools(creds: Creds): AnyTool[] {
         const data = (await res.json()) as { ok?: boolean; error?: string; ts?: string };
         if (!data.ok) return fail(`Slack refused the message: ${data.error ?? "unknown error"}`);
         return ok(`Message sent to ${args.channel}.`);
-      }, args.text)
+      }, args.text, sessionId)
     ),
   ]);
 }
 
-function buildDiscordTools(creds: Creds): AnyTool[] {
+function buildDiscordTools(creds: Creds, sessionId?: string): AnyTool[] {
   return erase([
     tool(
       "post_to_discord",
@@ -316,12 +319,12 @@ function buildDiscordTools(creds: Creds): AnyTool[] {
           return fail(`Discord refused the message (HTTP ${res.status}): ${await res.text()}`);
         }
         return ok(`Message sent to Discord channel ${args.channelId}.`);
-      }, args.text)
+      }, args.text, sessionId)
     ),
   ]);
 }
 
-function buildResendTools(creds: Creds): AnyTool[] {
+function buildResendTools(creds: Creds, sessionId?: string): AnyTool[] {
   return erase([
     tool(
       "send_email",
@@ -350,12 +353,12 @@ function buildResendTools(creds: Creds): AnyTool[] {
           return fail(`Resend refused the email (HTTP ${res.status}): ${await res.text()}`);
         }
         return ok(`Email sent to ${args.to}.`);
-      })
+      }, undefined, sessionId)
     ),
   ]);
 }
 
-const BUILDERS: Record<string, (creds: Creds) => AnyTool[]> = {
+const BUILDERS: Record<string, (creds: Creds, sessionId?: string) => AnyTool[]> = {
   x: buildXTools,
   slack: buildSlackTools,
   discord: buildDiscordTools,
@@ -381,7 +384,7 @@ const READ_ONLY_TOOLS = ["mcp__jarvis__list_available_images"];
  * Builds tools for platforms that are connected AND passed their last test.
  * Exposing tools for a broken connection just invites confident failures.
  */
-export function buildPlatformToolset(): PlatformToolset {
+export function buildPlatformToolset(sessionId?: string): PlatformToolset {
   const tools: AnyTool[] = [];
   const names: string[] = [];
 
@@ -390,7 +393,7 @@ export function buildPlatformToolset(): PlatformToolset {
     const builder = BUILDERS[connection.platformId];
     const creds = getConnectionCredentials(connection.platformId);
     if (!builder || !creds) continue;
-    tools.push(...builder(creds));
+    tools.push(...builder(creds, sessionId));
     names.push(getPlatform(connection.platformId)?.definition.name ?? connection.platformId);
   }
 

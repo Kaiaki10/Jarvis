@@ -11,6 +11,10 @@ import {
   Loader2,
   AlertTriangle,
   Trash2,
+  RadioTower,
+  ShieldCheck,
+  Waves,
+  Plug,
 } from "lucide-react";
 import type { TestConnectionResult } from "@jarvis/shared";
 import { useConnections } from "@/lib/hooks";
@@ -107,18 +111,15 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
         Connections
       </Link>
 
-      <div className="mb-6 flex items-center gap-3">
-        <h1 className="text-lg font-semibold">Connect {platform.name}</h1>
-        {connection?.status === "connected" && (
-          <Badge tone="success" dot>
-            Connected
-          </Badge>
-        )}
-        {connection?.status === "error" && (
-          <Badge tone="danger" dot>
-            Needs attention
-          </Badge>
-        )}
+      <div className="relative mb-6 overflow-hidden rounded-2xl border border-border bg-gradient-to-r from-accent/12 via-white/[0.02] to-transparent p-5">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-accent/10 blur-3xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-5">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent-bright ring-1 ring-inset ring-accent/25">{platform.category === "advertising" ? <RadioTower className="h-5 w-5" /> : <Plug className="h-5 w-5" />}</span>
+            <div><div className="flex flex-wrap items-center gap-2"><h1 className="text-lg font-semibold">Connect {platform.name}</h1>{connection?.status === "connected" && <Badge tone="success" dot>Connected</Badge>}{connection?.status === "error" && <Badge tone="danger" dot>Needs attention</Badge>}</div><p className="mt-1 max-w-2xl text-label text-muted">{platform.tagline}</p>{platform.capabilities?.length ? <div className="mt-3 flex flex-wrap gap-1.5">{platform.capabilities.map((capability) => <Badge key={capability} tone="neutral">{capability}</Badge>)}</div> : null}</div>
+          </div>
+          {platform.dataFreshness && <div className="flex items-center gap-2 rounded-lg border border-border bg-surface/60 px-3 py-2 text-micro text-muted"><Waves className="h-3.5 w-3.5 text-accent-bright" /> {platform.dataFreshness}</div>}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[220px_1fr] items-start">
@@ -154,7 +155,7 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
           })}
         </ol>
 
-        <Card>
+        <Card elevation={1}>
           <CardBody className="pt-5">
             {!isCredentials && !isTest && (
               <InstructionStep step={platform.steps[stepIndex]} />
@@ -167,6 +168,7 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
                   Stored encrypted on this machine. They&apos;re never shown again after saving
                   and never leave the orchestrator.
                 </p>
+                {platform.category === "advertising" && <div className="mt-3 flex items-start gap-2 rounded-lg border border-accent/20 bg-accent/5 p-3"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent-bright" /><p className="text-label leading-relaxed text-foreground-secondary">Testing proves account access before Paid Growth can request activation or sync performance. Saving credentials alone never authorizes spend.</p></div>}
                 <div className="mt-4 flex flex-col gap-4">
                   {platform.fields.map((field) => {
                     const saved = connection?.fieldHints[field.key];

@@ -19,8 +19,17 @@ import { createDeferredWithTimeout } from "./deferredWithTimeout.js";
 import { describeActivity, extractSummary } from "./describeActivity.js";
 import { globalBus } from "../events/globalBus.js";
 import { buildPlatformToolset } from "../platforms/actions.js";
-import { estimateActionCost } from "../platforms/spendGuard.js";
+import { buildMemoryContext, recordMemoryReflection } from "../db/memoryRepo.js";
+import { buildMemoryToolset } from "../memory/memoryTools.js";
 import { notify } from "../notifications/notifier.js";
+import {
+  collectArtifactsFromMessage,
+  collectArtifactsFromResult,
+  reconcileMissionTurn,
+} from "../missions/missionReconciler.js";
+import { reconcileCampaignGeneration } from "../campaigns/contentGeneration.js";
+import { reconcileContentPublication } from "../campaigns/publicationReconciler.js";
+import { reconcileCustomerReplyDraft } from "../customers/replyDraft.js";
 
 interface PendingPermission {
   /** Returns false if the request was already answered or timed out. */
@@ -52,6 +61,16 @@ const REAP_INTERVAL_MS = 60 * 1000;
 
 export function getSessionEmitter(id: string): EventEmitter | undefined {
   return sessions.get(id)?.emitter;
+}
+
+/**
+ * Session-scoped emitters serve direct consumers, while the global event keeps
+ * an already-open browser stream alive when an idle session is reaped and later
+ * revived with a brand-new handle.
+ */
+function publishSessionEvent(sessionId: string, event: SessionEventRecord): void {
+  sessions.get(sessionId)?.emitter.emit("event", event);
+  globalBus.emit("session_event", event);
 }
 
 /** Sessions actively mid-turn. Idle ones are excluded — they aren't doing work. */
@@ -93,7 +112,7 @@ function recordUserTurn(sessionId: string, text: string): void {
   const event = appendSessionEvent(sessionId, "user", {
     message: { role: "user", content: text },
   });
-  sessions.get(sessionId)?.emitter.emit("event", event);
+  publishSessionEvent(sessionId, event);
 }
 
 /**
@@ -104,10 +123,17 @@ function recordUserTurn(sessionId: string, text: string): void {
  * claudeSessionId, so from the caller's side the conversation just continues —
  * the transcript keeps appending to the same session row either way.
  */
-export function sendFollowUp(sessionId: string, text: string): FollowUpOutcome {
+export function sendFollowUp(
+  sessionId: string,
+  text: string,
+  options: { memoryWritable?: boolean } = {}
+): FollowUpOutcome {
   const handle = sessions.get(sessionId);
 
   if (handle) {
+    if (!handle.working && atConcurrencyLimit()) {
+      return { ok: false, reason: "at_capacity" };
+    }
     handle.working = true;
     handle.lastActivityAt = Date.now();
     handle.input.push({
@@ -139,6 +165,7 @@ export function sendFollowUp(sessionId: string, text: string): FollowUpOutcome {
     allowedTools: record.allowedTools ?? undefined,
     title: record.title,
     resumeClaudeSessionId: record.claudeSessionId,
+    memoryWritable: options.memoryWritable,
   });
 
   return { ok: true, resumed: true };
@@ -177,7 +204,7 @@ export function resolvePermission(
     requestId,
     decision,
   });
-  handle.emitter.emit("event", event);
+  publishSessionEvent(sessionId, event);
   updateSession(sessionId, { status: "running" });
   globalBus.emit("session_updated", sessionId);
   return true;
@@ -200,6 +227,26 @@ export interface StartSessionParams {
   title?: string;
   /** Continue a prior Claude conversation rather than starting fresh. */
   resumeClaudeSessionId?: string;
+  /** Lets scheduled runs arrange a bounded retry after a failed turn. */
+  onTurnFinished?: (ok: boolean) => void;
+  /** Runs without project instructions or built-in tools for focused text work. */
+  isolated?: boolean;
+  /** Legacy override retained for resumed records; all non-isolated runs now reflect memory. */
+  memoryWritable?: boolean;
+}
+
+const SAFE_PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "dontAsk"]);
+
+function safePermissionMode(mode: string): PermissionMode {
+  return (SAFE_PERMISSION_MODES.has(mode) ? mode : "default") as PermissionMode;
+}
+
+function safeCallerAllowedTools(tools: string[] | undefined): string[] {
+  // Jarvis MCP tools are controlled by this service. In particular, callers must
+  // never be able to pre-approve an outbound action and skip canUseTool.
+  return (tools ?? []).filter(
+    (name) => !name.startsWith("mcp__jarvis__") && !name.startsWith("mcp__memory__")
+  );
 }
 
 // Kicked off fire-and-forget from the HTTP layer; runs for the lifetime of the session.
@@ -232,7 +279,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         decision: "deny",
         reason: "timeout",
       });
-      emitter.emit("event", timeoutEvent);
+      publishSessionEvent(params.id, timeoutEvent);
 
       // An auto-deny that nobody hears about would just be a quieter version of
       // the problem this timeout exists to solve.
@@ -258,21 +305,16 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       originalInput: toolInput,
     });
 
-    // Surfaced at approval time so a $0.20 post is a decision rather than a
-    // surprise on the invoice.
-    const estimatedCostUsd = estimateActionCost(shortName, toolInput);
-
     const event = appendSessionEvent(params.id, "permission_request", {
       requestId,
       toolName,
       input: toolInput,
       toolUseID: options.toolUseID,
       expiresAt: deferred.expiresAt?.toISOString() ?? null,
-      estimatedCostUsd,
     });
     updateSession(params.id, { status: "waiting_permission" });
     globalBus.emit("session_updated", params.id);
-    emitter.emit("event", event);
+    publishSessionEvent(params.id, event);
 
     // Reach the user out of band — an unattended run blocking here is invisible
     // until someone happens to open the dashboard.
@@ -300,23 +342,55 @@ export async function startSession(params: StartSessionParams): Promise<void> {
   globalBus.emit("session_updated", params.id);
 
   const { businessContext } = getSettings();
-  const toolset = buildPlatformToolset();
-  const systemPromptAppend = [businessContext.trim(), toolset.capabilitySummary]
+  const platformToolset = params.isolated
+    ? { capabilitySummary: "", autoAllowTools: [] }
+    : buildPlatformToolset(params.id);
+  let memoriesAddedThisTurn = 0;
+  let memoriesConfirmedThisTurn = 0;
+  const memoryToolset = !params.isolated
+    ? buildMemoryToolset(params.id, (created) => {
+        if (created) memoriesAddedThisTurn += 1;
+        else memoriesConfirmedThisTurn += 1;
+      })
+    : null;
+  const memoryContext = params.isolated ? "" : buildMemoryContext();
+  const systemPromptAppend = [
+    businessContext.trim(),
+    memoryContext,
+    platformToolset.capabilitySummary,
+    memoryToolset?.capabilitySummary ?? "",
+  ]
     .filter(Boolean)
     .join("\n\n");
+  const mcpServers = {
+    ...("mcpServers" in platformToolset ? platformToolset.mcpServers : undefined),
+    ...(memoryToolset?.mcpServers ?? {}),
+  };
+  const autoAllowTools = [
+    ...platformToolset.autoAllowTools,
+    ...(memoryToolset?.autoAllowTools ?? []),
+  ];
+  let initialTurnReported = false;
+  const missionArtifacts = new Set<string>();
+  const reportInitialTurn = (ok: boolean) => {
+    if (initialTurnReported) return;
+    initialTurnReported = true;
+    params.onTurnFinished?.(ok);
+  };
 
   try {
     const q = query({
       prompt: input,
       options: {
         cwd: params.cwd,
-        permissionMode: params.permissionMode as PermissionMode,
-        allowedTools: [...(params.allowedTools ?? []), ...toolset.autoAllowTools],
+        permissionMode: safePermissionMode(params.permissionMode),
+        allowedTools: [...safeCallerAllowedTools(params.allowedTools), ...autoAllowTools],
         includePartialMessages: true,
         // Loads the working directory's CLAUDE.md automatically. Without this the
         // SDK runs in isolation mode and a session only sees the conventions if a
         // prompt happens to tell it to go and read them.
-        settingSources: ["project"],
+        settingSources: params.isolated ? [] : ["project"],
+        ...(params.isolated ? { tools: [] as string[] } : {}),
         canUseTool,
         ...(params.resumeClaudeSessionId
           ? { resume: params.resumeClaudeSessionId }
@@ -332,7 +406,9 @@ export async function startSession(params: StartSessionParams): Promise<void> {
               },
             }
           : {}),
-        ...(toolset.mcpServers ? { mcpServers: toolset.mcpServers } : {}),
+        ...(!params.isolated && Object.keys(mcpServers).length
+          ? { mcpServers }
+          : {}),
         stderr: (data) => {
           process.stderr.write(`[claude-cli stderr] ${data}`);
         },
@@ -351,7 +427,11 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         message.type,
         message
       );
-      emitter.emit("event", event);
+      publishSessionEvent(params.id, event);
+
+      for (const artifact of collectArtifactsFromMessage(message, params.cwd)) {
+        missionArtifacts.add(artifact);
+      }
 
       // Derived from messages already flowing through, so a live progress line
       // costs nothing extra. Only meaningful steps update it, so the last real
@@ -363,6 +443,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       }
 
       if (message.type === "result") {
+        reportInitialTurn(!message.is_error);
         // Streaming-input sessions stay alive after a result, ready for a follow-up —
         // "idle" reflects that; "completed" is reserved for an explicitly closed session.
         handle.working = false;
@@ -389,6 +470,59 @@ export async function startSession(params: StartSessionParams): Promise<void> {
               ? message.errors.join("; ")
               : undefined,
         });
+        const result = "result" in message ? message.result : null;
+        for (const artifact of collectArtifactsFromResult(result, params.cwd)) {
+          missionArtifacts.add(artifact);
+        }
+        try {
+          const missionChanged = reconcileMissionTurn({
+            sessionId: params.id,
+            result,
+            ok: !message.is_error,
+            artifactPaths: missionArtifacts,
+          });
+          if (missionChanged) globalBus.emit("missions_changed");
+        } catch (err) {
+          // Mission bookkeeping is valuable, but a bookkeeping defect must not
+          // rewrite an otherwise successful agent run as failed.
+          console.error("[missions] could not reconcile completed turn:", err);
+        } finally {
+          missionArtifacts.clear();
+        }
+        try {
+          if (reconcileCampaignGeneration({ sessionId: params.id, result, ok: !message.is_error })) {
+            globalBus.emit("campaigns_changed");
+          }
+        } catch (err) {
+          console.error("[campaigns] could not reconcile generated content:", err);
+        }
+        try {
+          if (reconcileContentPublication({ sessionId: params.id, ok: !message.is_error })) {
+            globalBus.emit("campaigns_changed");
+          }
+        } catch (err) {
+          console.error("[campaigns] could not reconcile publication:", err);
+        }
+        try {
+          if (await reconcileCustomerReplyDraft({ sessionId: params.id, result, ok: !message.is_error })) {
+            globalBus.emit("customers_changed");
+          }
+        } catch (err) {
+          console.error("[customers] could not reconcile reply draft:", err);
+        }
+        try {
+          recordMemoryReflection({
+            sessionId: params.id,
+            status: params.isolated ? "skipped" : message.is_error ? "failed" : "reviewed",
+            memoriesAdded: memoriesAddedThisTurn,
+            memoriesConfirmed: memoriesConfirmedThisTurn,
+          });
+          memoriesAddedThisTurn = 0;
+          memoriesConfirmedThisTurn = 0;
+          globalBus.emit("memories_changed");
+        } catch (err) {
+          console.error("[memory] could not record automatic reflection:", err);
+        }
       } else {
         updateSession(params.id, {
           status: "running",
@@ -398,6 +532,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       globalBus.emit("session_updated", params.id);
     }
   } catch (err) {
+    reportInitialTurn(false);
     const detail = err instanceof Error ? err.message : String(err);
     updateSession(params.id, { status: "error", errorMessage: detail });
     notify({
@@ -408,6 +543,38 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       sessionId: params.id,
     });
     globalBus.emit("session_updated", params.id);
+    try {
+      recordMemoryReflection({
+        sessionId: params.id,
+        status: params.isolated ? "skipped" : "failed",
+        memoriesAdded: memoriesAddedThisTurn,
+        memoriesConfirmed: memoriesConfirmedThisTurn,
+      });
+      globalBus.emit("memories_changed");
+    } catch (reflectionError) {
+      console.error("[memory] could not record failed reflection:", reflectionError);
+    }
+    try {
+      if (reconcileCampaignGeneration({ sessionId: params.id, result: null, ok: false })) {
+        globalBus.emit("campaigns_changed");
+      }
+    } catch (reconcileError) {
+      console.error("[campaigns] could not record failed generation:", reconcileError);
+    }
+    try {
+      if (reconcileContentPublication({ sessionId: params.id, ok: false })) {
+        globalBus.emit("campaigns_changed");
+      }
+    } catch (reconcileError) {
+      console.error("[campaigns] could not record failed publication:", reconcileError);
+    }
+    try {
+      if (await reconcileCustomerReplyDraft({ sessionId: params.id, result: null, ok: false })) {
+        globalBus.emit("customers_changed");
+      }
+    } catch (reconcileError) {
+      console.error("[customers] could not record failed reply draft:", reconcileError);
+    }
     emitter.emit(
       "event",
       appendSessionEvent(params.id, "system", { error: String(err) })

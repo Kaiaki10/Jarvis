@@ -53,19 +53,22 @@ export function AutomationHealth() {
           // them all look identical — the derived kind is what distinguishes them.
           const kind = automationKind(task.prompt);
           const Icon = kind.icon;
-          return (
-            <div
-              key={task.id}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-body ${
-                task.enabled ? "" : "opacity-50"
-              }`}
-            >
+          const lastRun = task.lastSessionId
+            ? sessionById.get(task.lastSessionId)
+            : undefined;
+
+          const body = (
+            <>
               <Icon className={`h-4 w-4 shrink-0 ${kind.color}`} strokeWidth={1.75} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-foreground">{kind.label}</div>
-                <div className="mt-0.5 text-micro text-muted">
-                  {task.timeOfDay} · {daysLabel(task.daysOfWeek)}
-                  {task.lastRunAt && ` · last run ${relativeDay(task.lastRunAt)}`}
+                <div className="mt-0.5 truncate text-micro text-muted">
+                  {/* What it actually did reads better here than when it is due —
+                      the schedule is on the Automations page either way. */}
+                  {lastRun?.summary ??
+                    `${task.timeOfDay} · ${daysLabel(task.daysOfWeek)}${
+                      task.lastRunAt ? ` · last run ${relativeDay(task.lastRunAt)}` : ""
+                    }`}
                 </div>
               </div>
               {!task.enabled ? (
@@ -77,6 +80,25 @@ export function AutomationHealth() {
               ) : (
                 <Badge tone="neutral">Not run yet</Badge>
               )}
+            </>
+          );
+
+          const rowClass = `flex items-center gap-3 rounded-lg px-3 py-2.5 text-body ${
+            task.enabled ? "" : "opacity-50"
+          }`;
+
+          // Only a run that is still stored is worth linking to.
+          return lastRun ? (
+            <Link
+              key={task.id}
+              href={`/sessions/${lastRun.id}`}
+              className={`${rowClass} transition-colors hover:bg-white/[0.04]`}
+            >
+              {body}
+            </Link>
+          ) : (
+            <div key={task.id} className={rowClass}>
+              {body}
             </div>
           );
         })}

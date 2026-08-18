@@ -7,28 +7,13 @@ import {
 } from "../db/repo.js";
 import { atConcurrencyLimit, startSession } from "../sessions/sessionManager.js";
 import { globalBus } from "../events/globalBus.js";
+import { computeNextRun } from "./scheduleTime.js";
+
+export { computeNextRun } from "./scheduleTime.js";
 
 const CHECK_INTERVAL_MS = 60_000;
-
-/** Next local time matching timeOfDay ("HH:MM") on one of daysOfWeek (0=Sun..6=Sat) strictly after `from`. */
-export function computeNextRun(
-  timeOfDay: string,
-  daysOfWeek: number[],
-  from: Date
-): Date | null {
-  if (!daysOfWeek.length) return null;
-  const [hours, minutes] = timeOfDay.split(":").map(Number);
-  for (let offset = 0; offset < 8; offset++) {
-    const candidate = new Date(from);
-    candidate.setDate(candidate.getDate() + offset);
-    candidate.setHours(hours, minutes, 0, 0);
-    if (candidate <= from) continue;
-    if (daysOfWeek.includes(candidate.getDay())) {
-      return candidate;
-    }
-  }
-  return null;
-}
+const RETRY_DELAY_MS = 5 * 60_000;
+const MAX_RETRIES = 1;
 
 function fireScheduledTask(task: ScheduledTaskRecord): void {
   const session = createSession({
@@ -46,6 +31,24 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
     permissionMode: task.permissionMode,
     allowedTools: task.allowedTools ?? undefined,
     title: `Automation "${task.prompt.split("\n")[0].slice(0, 60)}"`,
+    onTurnFinished: (ok) => {
+      if (ok) {
+        if (task.retryCount) {
+          updateScheduledTask(task.id, { retryCount: 0 });
+          globalBus.emit("automations_changed");
+        }
+        return;
+      }
+      if (task.retryCount < MAX_RETRIES) {
+        updateScheduledTask(task.id, {
+          retryCount: task.retryCount + 1,
+          nextRunAt: new Date(Date.now() + RETRY_DELAY_MS).toISOString(),
+        });
+      } else {
+        updateScheduledTask(task.id, { retryCount: 0 });
+      }
+      globalBus.emit("automations_changed");
+    },
   });
 
   const now = new Date();
@@ -55,6 +58,7 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
     lastSessionId: session.id,
     nextRunAt: next ? next.toISOString() : null,
   });
+  globalBus.emit("automations_changed");
 }
 
 function tick(): void {
@@ -72,6 +76,8 @@ function tick(): void {
       return;
     }
     fireScheduledTask(task);
+    // Pace catch-up after downtime so overdue work cannot stampede the service.
+    return;
   }
 }
 

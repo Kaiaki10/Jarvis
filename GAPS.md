@@ -13,27 +13,29 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 
 ## Open
 
+### high — Attribution and marketing allocation are not autonomous yet
+The Campaign Studio now generates, reviews, schedules, and dispatches X content through
+the real approval and platform guardrails, but it does not yet ingest impressions, clicks,
+leads, or revenue. Without reliable attribution Jarvis cannot safely decide what content
+won or shift marketing allocation toward it. The next increment is a normalized measurement
+ledger and campaign experiments; allocation must remain bounded and approval-gated until
+that evidence is trustworthy.
+
+### medium — Automatic publishing currently supports X only
+The publication worker is adapter-based, but LinkedIn, Instagram, Facebook, and blog
+connections do not exist yet, and email campaigns need audience/list semantics rather than
+a single-recipient send tool. Those channels can still use the content calendar and manual
+published state, but only X has confirmed automatic dispatch today.
+
 ### medium — Slack and Discord tools are still text-only
 `post_to_slack` and `post_to_discord` send text only. X now supports attaching an
 image from the watched folder; the same could be offered for the other platforms,
 which use simpler single-request uploads.
 
-### medium — The web app has no tests
-The orchestrator has coverage. `apps/web` has none — no component tests, no test for
-the store's single-EventSource invariant, which is easy to regress by accident.
-
-### medium — Missed schedules may stampede
-`startScheduler` fires everything overdue on the first tick. If the machine was off
-for several days, multiple automations could fire at once and immediately collide with
-the concurrency cap. Behaviour under that case is untested.
-
-### medium — No retry on failure
-A transient network error fails an automation for the whole day. There is no retry and
-no distinction between transient and permanent failure.
-
 ### low — Orchestrator API is unauthenticated
-Anything that can reach `localhost:4317` can launch sessions and read transcripts.
-Acceptable for a single-user local machine; blocks ever exposing it.
+Anything running locally can launch sessions and read transcripts. Both services now bind
+explicitly to `127.0.0.1`, which closes accidental LAN exposure, but authentication is still
+required before remote access can ever be supported.
 
 ### low — Dashboard is desktop-only
 The sidebar is a fixed 240px with no responsive collapse, so the UI is unusable on a
@@ -43,19 +45,81 @@ phone. Relevant if approvals should be actionable away from the desk.
 Every platform requires manually copying tokens. Proper OAuth flows would be friendlier
 but need a public redirect URL.
 
-### medium — Foreign keys are not enforced
-`db.ts` never enables `PRAGMA foreign_keys = ON`, so the `REFERENCES sessions(id)`
-constraint in `session_events` is advisory only. Deleting a session would orphan its
-events without cascade rules, and invalid session_id values are silently accepted. This
-matters if sessions are ever pruned or deleted programmatically.
-
-### medium — EventSource has no error handler
-The global EventSource in `apps/web/src/lib/store.tsx:109` opens with no `onerror`
-listener. A network blip or orchestrator restart silently breaks the live feed — the UI
-shows stale data and never reconnects. User has no indication the dashboard is
-disconnected until they refresh manually.
-
 ## Closed
+
+- **2026-08-18** Customer channels stopped at a manually maintained inbox — closed with an
+  embeddable, token-protected website chat; signed and idempotent Resend, X Account
+  Activity, Facebook Messenger, and Instagram Messaging inbound adapters; real outbound
+  provider delivery; and one live conversation ledger. Customer-service autonomy is
+  fail-closed behind a master switch, per-channel controls, business hours, confidence and
+  reply caps, sensitive-claim checks, escalation keywords, and delivery-error review. Live
+  email/social activation still requires the user's provider credentials and public HTTPS
+  callbacks; that external setup is shown accurately rather than simulated.
+
+- **2026-08-18** Customer service had no operating surface — closed by Customer Operations:
+  durable customer identities and conversations, a prioritized unified queue, channel and
+  sentiment context, real Jarvis drafting grounded in business context and recent messages,
+  review-before-send, live event updates, human escalation with alerts and tasks, follow-up
+  tasks, relationship notes, and resolution state. External webhook ingestion remains an
+  explicit open gap rather than being represented as already connected.
+
+- **2026-08-18** Dashboard efficiency depended on continuous background polling — closed
+  by event-driven invalidation over the existing shared EventSource, cursor-first transcript
+  hydration, lightweight stream heartbeats, and turn-scoped recovery only while a reply is
+  active. A 15-second command-center load fell from 58 HTTP requests to 19, with zero idle
+  HTTP requests after hydration, while task, automation, chat, and restart continuity stayed
+  live without changing the visual system.
+
+- **2026-08-18** Jarvis continuity depended on one conversation thread — closed by explicit
+  durable memory with source attribution, deduplication, archive control, bounded context
+  injection into fresh runs, and local `remember`/`list_memories` tools for the live chat.
+  Verified end to end in an isolated real agent run: Jarvis saved a Tuesday preference and
+  a new session, with no conversation history, answered “Tuesday.” The UI also refreshed
+  its remembered count over the shared event stream without a page reload.
+
+- **2026-08-18** Scheduled campaign content did not execute — closed for X by durable
+  publication runs, a due-content worker, immediate “Publish with Jarvis,” one-time outbound
+  approval, connected-account and length preflight, daily platform caps, duplicate blocking,
+  session-attributed success evidence, and fail-closed reconciliation. Content is marked
+  Published only when the platform-action ledger confirms the post actually succeeded.
+
+- **2026-08-18** Campaign work had no first-class operating model — closed by Campaigns +
+  Content Studio: durable campaign strategy, mission linking, channel guardrails, approval
+  policy, a six-stage content pipeline, manual drafting/editing/scheduling, and real Jarvis
+  generation runs that validate structured output before creating reviewable drafts.
+
+- **2026-08-18** Jarvis Lab improvements were invisible and disconnected from the product —
+  closed by the Evolution Center: persistent proposals, risk/evidence/rollback records,
+  stored autonomy policies, isolated Lab build launches, live run links, and automatic
+  advancement to review. Production promotion is visibly gated until its atomic switch and
+  health-triggered rollback are real.
+
+- **2026-08-18** Mission state required manual upkeep — successful linked runs now reconcile
+  themselves into a completed step, automatically captured draft deliverables, and a
+  reviewable mission update with an explicit next action or blocker. Applying the proposal
+  changes mission state; dismissing it preserves the existing plan.
+
+- **2026-08-18** Jarvis exposed runs instead of outcomes — closed by first-class Missions
+  with success criteria, target dates, progress, next actions, connected tasks, deliverables,
+  and one-click mission-aware runs. The command center now leads with a daily briefing,
+  approval prompts explain scope/impact/recovery as decisions, and automations can be
+  rehearsed without executing them.
+
+- **2026-08-18** Core hardening pass — outbound Jarvis tools can no longer be
+  caller-preapproved, dangerous permission modes are rejected, both services bind to
+  loopback, request bodies are runtime-validated, foreign keys are enforced, and resumed
+  sessions respect the concurrency cap.
+- **2026-08-18** Recovery and delivery gaps — EventSource reconnect now reloads
+  authoritative state and shows real online/offline status; transcript replay is merged
+  without overwriting live events; notification email HTTP failures are logged; outbound
+  platform cap and duplicate checks are serialized per platform.
+- **2026-08-18** Automation resilience — overdue schedules are paced one per minute and a
+  failed scheduled turn gets one bounded retry after five minutes.
+- **2026-08-18** Data recovery — Settings can download an online SQLite snapshot of Jarvis
+  state, and `scripts/restore-data.ps1` restores it while retaining a safety copy.
+- **2026-08-18** Verification baseline — the web app has a component regression test for
+  the single-EventSource invariant, lint is clean, and GitHub Actions now enforces tests,
+  lint, and production builds.
 
 - **2026-08-18** Jarvis could not post images — closed by a watched images folder
   plus the X v2 chunked upload (initialize/append/finalize). Verified live: INIT and

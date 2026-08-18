@@ -9,6 +9,18 @@ import type {
   SettingsRecord,
   TaskRecord,
   TaskStatus,
+  MissionRecord,
+  MissionStatus,
+  DeliverableRecord,
+  DeliverableStatus,
+  MissionUpdateRecord,
+  MissionUpdateStatus,
+  EvolutionProposalRecord,
+  EvolutionStage,
+  EvolutionRisk,
+  EvolutionChangeClass,
+  EvolutionPolicyRecord,
+  EvolutionAutonomy,
 } from "@jarvis/shared";
 
 interface SessionRow {
@@ -224,6 +236,7 @@ interface TaskRow {
   status: string;
   position: number;
   session_id: string | null;
+  mission_id: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -237,6 +250,7 @@ function mapTask(row: TaskRow): TaskRecord {
     status: row.status as TaskStatus,
     position: row.position,
     sessionId: row.session_id,
+    missionId: row.mission_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -246,6 +260,7 @@ function mapTask(row: TaskRow): TaskRecord {
 export function createTask(input: {
   title: string;
   description?: string;
+  missionId?: string;
 }): TaskRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
@@ -253,9 +268,9 @@ export function createTask(input: {
     .prepare(`SELECT COALESCE(MAX(position), 0) as maxPos FROM tasks`)
     .get() as { maxPos: number };
   db.prepare(
-    `INSERT INTO tasks (id, title, description, status, position, session_id, created_at, updated_at, completed_at)
-     VALUES (?, ?, ?, 'todo', ?, NULL, ?, ?, NULL)`
-  ).run(id, input.title, input.description ?? null, maxPosRow.maxPos + 1, now, now);
+    `INSERT INTO tasks (id, title, description, status, position, session_id, mission_id, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, 'todo', ?, NULL, ?, ?, ?, NULL)`
+  ).run(id, input.title, input.description ?? null, maxPosRow.maxPos + 1, input.missionId ?? null, now, now);
   return getTask(id)!;
 }
 
@@ -280,6 +295,7 @@ export function updateTask(
     description: string | null;
     status: TaskStatus;
     position: number;
+    missionId: string | null;
   }>
 ): TaskRecord | undefined {
   const current = getTask(id);
@@ -292,17 +308,376 @@ export function updateTask(
         ? null
         : current.completedAt;
   db.prepare(
-    `UPDATE tasks SET title = ?, description = ?, status = ?, position = ?, updated_at = ?, completed_at = ? WHERE id = ?`
+    `UPDATE tasks SET title = ?, description = ?, status = ?, position = ?, mission_id = ?, updated_at = ?, completed_at = ? WHERE id = ?`
   ).run(
     patch.title ?? current.title,
     patch.description !== undefined ? patch.description : current.description,
     patch.status ?? current.status,
     patch.position ?? current.position,
+    patch.missionId !== undefined ? patch.missionId : current.missionId,
     now,
     completedAt,
     id
   );
   return getTask(id);
+}
+
+interface MissionRow {
+  id: string;
+  title: string;
+  outcome: string;
+  status: string;
+  target_date: string | null;
+  next_action: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+function mapMission(row: MissionRow): MissionRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    outcome: row.outcome,
+    status: row.status as MissionStatus,
+    targetDate: row.target_date,
+    nextAction: row.next_action,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at,
+  };
+}
+
+export function createMission(input: { title: string; outcome: string; targetDate?: string }): MissionRecord {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO missions (id, title, outcome, status, target_date, next_action, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, 'planned', ?, NULL, ?, ?, NULL)`
+  ).run(id, input.title, input.outcome, input.targetDate ?? null, now, now);
+  return getMission(id)!;
+}
+
+export function getMission(id: string): MissionRecord | undefined {
+  const row = db.prepare(`SELECT * FROM missions WHERE id = ?`).get(id) as unknown as MissionRow | undefined;
+  return row ? mapMission(row) : undefined;
+}
+
+export function listMissions(): MissionRecord[] {
+  return (db.prepare(
+    `SELECT * FROM missions ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'blocked' THEN 1 WHEN 'planned' THEN 2 WHEN 'completed' THEN 3 ELSE 4 END, updated_at DESC`
+  ).all() as unknown as MissionRow[]).map(mapMission);
+}
+
+export function updateMission(id: string, patch: Partial<{
+  title: string;
+  outcome: string;
+  status: MissionStatus;
+  targetDate: string | null;
+  nextAction: string | null;
+}>): MissionRecord | undefined {
+  const current = getMission(id);
+  if (!current) return undefined;
+  const now = new Date().toISOString();
+  const status = patch.status ?? current.status;
+  const completedAt = status === "completed" && current.status !== "completed"
+    ? now
+    : status !== "completed" ? null : current.completedAt;
+  db.prepare(
+    `UPDATE missions SET title = ?, outcome = ?, status = ?, target_date = ?, next_action = ?, updated_at = ?, completed_at = ? WHERE id = ?`
+  ).run(
+    patch.title ?? current.title,
+    patch.outcome ?? current.outcome,
+    status,
+    patch.targetDate !== undefined ? patch.targetDate : current.targetDate,
+    patch.nextAction !== undefined ? patch.nextAction : current.nextAction,
+    now,
+    completedAt,
+    id
+  );
+  return getMission(id);
+}
+
+export function deleteMission(id: string): void {
+  db.prepare(`DELETE FROM missions WHERE id = ?`).run(id);
+}
+
+interface DeliverableRow {
+  id: string;
+  mission_id: string;
+  title: string;
+  description: string | null;
+  uri: string | null;
+  status: string;
+  session_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapDeliverable(row: DeliverableRow): DeliverableRecord {
+  return {
+    id: row.id,
+    missionId: row.mission_id,
+    title: row.title,
+    description: row.description,
+    uri: row.uri,
+    status: row.status as DeliverableStatus,
+    sessionId: row.session_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function listDeliverables(missionId?: string): DeliverableRecord[] {
+  const rows = missionId
+    ? db.prepare(`SELECT * FROM deliverables WHERE mission_id = ? ORDER BY updated_at DESC`).all(missionId)
+    : db.prepare(`SELECT * FROM deliverables ORDER BY updated_at DESC`).all();
+  return (rows as unknown as DeliverableRow[]).map(mapDeliverable);
+}
+
+export function createDeliverable(input: {
+  missionId: string;
+  title: string;
+  description?: string;
+  uri?: string;
+  sessionId?: string;
+}): DeliverableRecord {
+  if (input.uri) {
+    const existing = db.prepare(
+      `SELECT * FROM deliverables WHERE mission_id = ? AND uri = ? LIMIT 1`
+    ).get(input.missionId, input.uri) as unknown as DeliverableRow | undefined;
+    if (existing) return mapDeliverable(existing);
+  }
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO deliverables (id, mission_id, title, description, uri, status, session_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?)`
+  ).run(id, input.missionId, input.title, input.description ?? null, input.uri ?? null, input.sessionId ?? null, now, now);
+  const row = db.prepare(`SELECT * FROM deliverables WHERE id = ?`).get(id) as unknown as DeliverableRow;
+  return mapDeliverable(row);
+}
+
+export function updateDeliverable(id: string, patch: Partial<{
+  title: string;
+  description: string | null;
+  uri: string | null;
+  status: DeliverableStatus;
+}>): DeliverableRecord | undefined {
+  const row = db.prepare(`SELECT * FROM deliverables WHERE id = ?`).get(id) as unknown as DeliverableRow | undefined;
+  if (!row) return undefined;
+  const current = mapDeliverable(row);
+  db.prepare(`UPDATE deliverables SET title = ?, description = ?, uri = ?, status = ?, updated_at = ? WHERE id = ?`).run(
+    patch.title ?? current.title,
+    patch.description !== undefined ? patch.description : current.description,
+    patch.uri !== undefined ? patch.uri : current.uri,
+    patch.status ?? current.status,
+    new Date().toISOString(),
+    id
+  );
+  return mapDeliverable(db.prepare(`SELECT * FROM deliverables WHERE id = ?`).get(id) as unknown as DeliverableRow);
+}
+
+export function deleteDeliverable(id: string): void {
+  db.prepare(`DELETE FROM deliverables WHERE id = ?`).run(id);
+}
+
+interface MissionUpdateRow {
+  id: string;
+  mission_id: string;
+  session_id: string;
+  task_id: string | null;
+  summary: string;
+  proposed_next_action: string | null;
+  blocker: string | null;
+  artifact_count: number;
+  status: string;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+function mapMissionUpdate(row: MissionUpdateRow): MissionUpdateRecord {
+  return {
+    id: row.id,
+    missionId: row.mission_id,
+    sessionId: row.session_id,
+    taskId: row.task_id,
+    summary: row.summary,
+    proposedNextAction: row.proposed_next_action,
+    blocker: row.blocker,
+    artifactCount: row.artifact_count,
+    status: row.status as MissionUpdateStatus,
+    createdAt: row.created_at,
+    reviewedAt: row.reviewed_at,
+  };
+}
+
+export function createMissionUpdate(input: {
+  missionId: string;
+  sessionId: string;
+  taskId?: string;
+  summary: string;
+  proposedNextAction?: string;
+  blocker?: string;
+  artifactCount: number;
+}): MissionUpdateRecord {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO mission_updates (id, mission_id, session_id, task_id, summary, proposed_next_action, blocker, artifact_count, status, created_at, reviewed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, NULL)`
+  ).run(id, input.missionId, input.sessionId, input.taskId ?? null, input.summary, input.proposedNextAction ?? null, input.blocker ?? null, input.artifactCount, now);
+  return getMissionUpdate(id)!;
+}
+
+export function getMissionUpdate(id: string): MissionUpdateRecord | undefined {
+  const row = db.prepare(`SELECT * FROM mission_updates WHERE id = ?`).get(id) as unknown as MissionUpdateRow | undefined;
+  return row ? mapMissionUpdate(row) : undefined;
+}
+
+export function listMissionUpdates(missionId?: string): MissionUpdateRecord[] {
+  const rows = missionId
+    ? db.prepare(`SELECT * FROM mission_updates WHERE mission_id = ? ORDER BY created_at DESC`).all(missionId)
+    : db.prepare(`SELECT * FROM mission_updates ORDER BY created_at DESC`).all();
+  return (rows as unknown as MissionUpdateRow[]).map(mapMissionUpdate);
+}
+
+export function reviewMissionUpdate(id: string, status: Exclude<MissionUpdateStatus, "proposed">): MissionUpdateRecord | undefined {
+  const current = getMissionUpdate(id);
+  if (!current) return undefined;
+  db.prepare(`UPDATE mission_updates SET status = ?, reviewed_at = ? WHERE id = ?`).run(status, new Date().toISOString(), id);
+  return getMissionUpdate(id);
+}
+
+interface EvolutionProposalRow {
+  id: string;
+  title: string;
+  problem: string;
+  expected_value: string;
+  change_class: string;
+  risk: string;
+  stage: string;
+  evidence: string | null;
+  rollback_plan: string | null;
+  lab_session_id: string | null;
+  created_at: string;
+  updated_at: string;
+  promoted_at: string | null;
+}
+
+function mapEvolutionProposal(row: EvolutionProposalRow): EvolutionProposalRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    problem: row.problem,
+    expectedValue: row.expected_value,
+    changeClass: row.change_class as EvolutionChangeClass,
+    risk: row.risk as EvolutionRisk,
+    stage: row.stage as EvolutionStage,
+    evidence: row.evidence,
+    rollbackPlan: row.rollback_plan,
+    labSessionId: row.lab_session_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    promotedAt: row.promoted_at,
+  };
+}
+
+export function createEvolutionProposal(input: {
+  title: string;
+  problem: string;
+  expectedValue: string;
+  changeClass: EvolutionChangeClass;
+  risk: EvolutionRisk;
+  evidence?: string;
+  rollbackPlan?: string;
+}): EvolutionProposalRecord {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO evolution_proposals (id, title, problem, expected_value, change_class, risk, stage, evidence, rollback_plan, lab_session_id, created_at, updated_at, promoted_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'observed', ?, ?, NULL, ?, ?, NULL)`
+  ).run(id, input.title, input.problem, input.expectedValue, input.changeClass, input.risk, input.evidence ?? null, input.rollbackPlan ?? null, now, now);
+  return getEvolutionProposal(id)!;
+}
+
+export function getEvolutionProposal(id: string): EvolutionProposalRecord | undefined {
+  const row = db.prepare(`SELECT * FROM evolution_proposals WHERE id = ?`).get(id) as unknown as EvolutionProposalRow | undefined;
+  return row ? mapEvolutionProposal(row) : undefined;
+}
+
+export function listEvolutionProposals(): EvolutionProposalRecord[] {
+  return (db.prepare(
+    `SELECT * FROM evolution_proposals ORDER BY CASE stage WHEN 'review' THEN 0 WHEN 'building' THEN 1 WHEN 'planned' THEN 2 WHEN 'observed' THEN 3 WHEN 'promoted' THEN 4 ELSE 5 END, updated_at DESC`
+  ).all() as unknown as EvolutionProposalRow[]).map(mapEvolutionProposal);
+}
+
+export function updateEvolutionProposal(id: string, patch: Partial<{
+  title: string;
+  problem: string;
+  expectedValue: string;
+  changeClass: EvolutionChangeClass;
+  risk: EvolutionRisk;
+  stage: EvolutionStage;
+  evidence: string | null;
+  rollbackPlan: string | null;
+  labSessionId: string | null;
+}>): EvolutionProposalRecord | undefined {
+  const current = getEvolutionProposal(id);
+  if (!current) return undefined;
+  const now = new Date().toISOString();
+  const stage = patch.stage ?? current.stage;
+  const promotedAt = stage === "promoted" && current.stage !== "promoted"
+    ? now
+    : stage !== "promoted" ? current.promotedAt : current.promotedAt;
+  db.prepare(
+    `UPDATE evolution_proposals SET title = ?, problem = ?, expected_value = ?, change_class = ?, risk = ?, stage = ?, evidence = ?, rollback_plan = ?, lab_session_id = ?, updated_at = ?, promoted_at = ? WHERE id = ?`
+  ).run(
+    patch.title ?? current.title,
+    patch.problem ?? current.problem,
+    patch.expectedValue ?? current.expectedValue,
+    patch.changeClass ?? current.changeClass,
+    patch.risk ?? current.risk,
+    stage,
+    patch.evidence !== undefined ? patch.evidence : current.evidence,
+    patch.rollbackPlan !== undefined ? patch.rollbackPlan : current.rollbackPlan,
+    patch.labSessionId !== undefined ? patch.labSessionId : current.labSessionId,
+    now,
+    promotedAt,
+    id
+  );
+  return getEvolutionProposal(id);
+}
+
+const EVOLUTION_POLICY_DEFAULTS: Record<EvolutionChangeClass, EvolutionAutonomy> = {
+  knowledge: "after_checks",
+  behavior: "after_checks",
+  capability: "approval_required",
+  product: "approval_required",
+  security: "approval_required",
+};
+
+export function listEvolutionPolicies(): EvolutionPolicyRecord[] {
+  const rows = db.prepare(`SELECT * FROM evolution_policies`).all() as unknown as Array<{
+    change_class: string;
+    autonomy: string;
+    updated_at: string;
+  }>;
+  const saved = new Map(rows.map((row) => [row.change_class, row]));
+  return (Object.keys(EVOLUTION_POLICY_DEFAULTS) as EvolutionChangeClass[]).map((changeClass) => ({
+    changeClass,
+    autonomy: (saved.get(changeClass)?.autonomy ?? EVOLUTION_POLICY_DEFAULTS[changeClass]) as EvolutionAutonomy,
+    updatedAt: saved.get(changeClass)?.updated_at ?? null,
+  }));
+}
+
+export function updateEvolutionPolicy(changeClass: EvolutionChangeClass, autonomy: EvolutionAutonomy): EvolutionPolicyRecord {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO evolution_policies (change_class, autonomy, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(change_class) DO UPDATE SET autonomy = excluded.autonomy, updated_at = excluded.updated_at`
+  ).run(changeClass, autonomy, now);
+  return { changeClass, autonomy, updatedAt: now };
 }
 
 export function deleteTask(id: string): void {
@@ -436,6 +811,7 @@ interface ScheduledTaskRow {
   last_run_at: string | null;
   last_session_id: string | null;
   next_run_at: string | null;
+  retry_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -453,6 +829,7 @@ function mapScheduledTask(row: ScheduledTaskRow): ScheduledTaskRecord {
     lastRunAt: row.last_run_at,
     lastSessionId: row.last_session_id,
     nextRunAt: row.next_run_at,
+    retryCount: row.retry_count ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -521,13 +898,14 @@ export function updateScheduledTask(
     lastRunAt: string;
     lastSessionId: string;
     nextRunAt: string | null;
+    retryCount: number;
   }>
 ): ScheduledTaskRecord | undefined {
   const current = getScheduledTask(id);
   if (!current) return undefined;
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE scheduled_tasks SET prompt = ?, cwd = ?, permission_mode = ?, allowed_tools = ?, time_of_day = ?, days_of_week = ?, enabled = ?, last_run_at = ?, last_session_id = ?, next_run_at = ?, updated_at = ? WHERE id = ?`
+    `UPDATE scheduled_tasks SET prompt = ?, cwd = ?, permission_mode = ?, allowed_tools = ?, time_of_day = ?, days_of_week = ?, enabled = ?, last_run_at = ?, last_session_id = ?, next_run_at = ?, retry_count = ?, updated_at = ? WHERE id = ?`
   ).run(
     patch.prompt ?? current.prompt,
     patch.cwd ?? current.cwd,
@@ -545,6 +923,7 @@ export function updateScheduledTask(
     patch.lastRunAt ?? current.lastRunAt,
     patch.lastSessionId ?? current.lastSessionId,
     patch.nextRunAt !== undefined ? patch.nextRunAt : current.nextRunAt,
+    patch.retryCount ?? current.retryCount,
     now,
     id
   );
@@ -574,8 +953,8 @@ export function setPrimarySessionId(id: string): void {
 /** Removes a session and its transcript. Refuses nothing — callers check status. */
 export function deleteSession(id: string): void {
   db.prepare(`DELETE FROM session_events WHERE session_id = ?`).run(id);
-  // Anything still pointing at this row would otherwise link to a 404. Foreign
-  // keys aren't enforced yet, so clear the references by hand.
+  // These legacy reference columns do not yet carry SQL foreign-key clauses,
+  // so clear them explicitly before deleting the session.
   db.prepare(
     `UPDATE scheduled_tasks SET last_session_id = NULL WHERE last_session_id = ?`
   ).run(id);

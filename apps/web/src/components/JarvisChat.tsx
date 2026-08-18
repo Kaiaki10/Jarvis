@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, Loader2, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { ArrowUp, Brain, Loader2, Sparkles } from "lucide-react";
 import type { SessionRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { useSessionStream } from "@/lib/hooks";
@@ -9,6 +10,8 @@ import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { SessionTranscript } from "@/components/SessionTranscript";
+import { Badge } from "@/components/ui/Badge";
+import { useConnectionStatus, useMemories } from "@/lib/store";
 
 /**
  * The one ongoing conversation with Jarvis.
@@ -24,7 +27,12 @@ export function JarvisChat() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [activityKey, setActivityKey] = useState(0);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const followStreamRef = useRef(true);
+  const { memories } = useMemories();
+  const connectionStatus = useConnectionStatus();
 
   useEffect(() => {
     api
@@ -47,6 +55,7 @@ export function JarvisChat() {
     try {
       const { sessionId: id } = await api.sendChat(text);
       onSent(id);
+      setActivityKey((key) => key + 1);
     } catch (err) {
       // Put the text back rather than losing what was typed.
       setDraft(text);
@@ -64,20 +73,55 @@ export function JarvisChat() {
   }
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  });
+    const area = scrollAreaRef.current;
+    const transcript = transcriptRef.current;
+    if (!area || !transcript) return;
+    const observer = new MutationObserver(() => {
+      if (followStreamRef.current) area.scrollTop = area.scrollHeight;
+    });
+    observer.observe(transcript, { childList: true, characterData: true, subtree: true });
+    area.scrollTop = area.scrollHeight;
+    return () => observer.disconnect();
+  }, [sessionId, loading]);
 
   return (
     <Card elevation={2} className="flex flex-col overflow-hidden">
-      <div className="max-h-[calc(100vh-24rem)] min-h-[19rem] overflow-y-auto px-6 py-6">
+      <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-3">
+        <div className="flex items-center gap-2.5">
+          <span className="relative flex h-2 w-2">
+            {connectionStatus === "connected" && <span className="ping-ring absolute inset-0 rounded-full" />}
+            <span className={`relative h-2 w-2 rounded-full ${connectionStatus === "connected" ? "bg-success" : connectionStatus === "connecting" ? "bg-warning" : "bg-danger"}`} />
+          </span>
+          <div>
+            <div className="text-label font-medium text-foreground">
+              {connectionStatus === "connected" ? "Jarvis is present" : connectionStatus === "connecting" ? "Reconnecting to Jarvis" : "Jarvis is offline"}
+            </div>
+            <div className="text-micro text-muted">
+              {connectionStatus === "connected" ? "Replies stream live · context continues" : "Messages will not claim to be live until the connection returns"}
+            </div>
+          </div>
+        </div>
+        <Link href="/memory" aria-label="Open Jarvis memory">
+          <Badge tone="accent"><Brain className="h-3 w-3" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} remembered</Badge>
+        </Link>
+      </div>
+      <div
+        ref={scrollAreaRef}
+        onScroll={(event) => {
+          const area = event.currentTarget;
+          followStreamRef.current = area.scrollHeight - area.scrollTop - area.clientHeight < 80;
+        }}
+        className="max-h-[calc(100vh-24rem)] min-h-[19rem] overflow-y-auto px-6 py-6"
+      >
+        <div ref={transcriptRef}>
         {loading ? (
           <div className="text-body text-muted">Loading…</div>
         ) : sessionId ? (
-          <ChatBody sessionId={sessionId} />
+          <ChatBody sessionId={sessionId} activityKey={activityKey} />
         ) : (
           <EmptyState />
         )}
-        <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* The composer is its own plane — darker than the transcript above it, so
@@ -127,8 +171,8 @@ export function JarvisChat() {
   );
 }
 
-function ChatBody({ sessionId }: { sessionId: string }) {
-  const { session, events, refreshSession } = useSessionStream(sessionId);
+function ChatBody({ sessionId, activityKey }: { sessionId: string; activityKey: number }) {
+  const { session, events, refreshSession } = useSessionStream(sessionId, activityKey);
   return (
     <SessionTranscript
       sessionId={sessionId}

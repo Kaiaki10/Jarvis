@@ -168,6 +168,39 @@ Craft that costs responsiveness isn't craft. These are limits, not targets:
 - A grid row with cards of unequal height needs `items-stretch` and `h-full` on
   the children, or the short column leaves a void.
 
+## Conversation and memory
+
+Jarvis is a relationship surface, not a request form. The interface must make
+continuity and current activity legible without pretending the system is more
+available or more certain than it is.
+
+- New assistant text appears as it streams. While the user remains near the end
+  of the transcript, the view follows it; scrolling upward suspends auto-follow
+  so reading is never interrupted.
+- Presence is truthful. A live pulse requires an open orchestrator event stream;
+  reconnecting and offline states use their real status and never say “live.”
+- Durable memory changes appear without a reload. The conversation shows how
+  many active memories exist and links to a place where each can be reviewed or
+  archived.
+- Memory is explicit and bounded: Jarvis saves durable facts, preferences,
+  decisions, and relationship context—not secrets, guesses, or transient chat.
+- A visual pass on the conversation must inspect an active streamed reply as
+  well as the idle screenshot. Static empty-state polish alone is insufficient.
+- Motion may make arrival and presence legible, but token streaming and
+  auto-follow use direct DOM updates; never put one React state update per token
+  on the render path.
+
+## Customer operations
+
+- The queue, conversation, and customer context remain visually distinct: selection
+  happens in the queue, the relationship happens in the transcript, and operational
+  controls stay in context and next-action panels.
+- Jarvis output is always labeled and reviewable before it enters the outbound timeline.
+  Running, ready, used, and failed draft states must be truthful and visible.
+- Desktop uses queue + conversation columns before adding a third context column; narrow
+  widths stack rather than squeezing a transcript below a useful reading measure.
+- The design screenshot pass includes `/customers` at desktop and narrow widths.
+
 ## Non-negotiables
 
 These are the ones that get quietly broken. Check them on any visual change.

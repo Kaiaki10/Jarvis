@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNextRun } from "./scheduler.js";
+import { computeNextRun } from "./scheduleTime.js";
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const WEEKDAYS = [1, 2, 3, 4, 5];

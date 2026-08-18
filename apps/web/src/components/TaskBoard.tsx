@@ -4,10 +4,11 @@ import { useState } from "react";
 import { Plus, ArrowRight, Trash2 } from "lucide-react";
 import type { TaskRecord, TaskStatus } from "@jarvis/shared";
 import { api } from "@/lib/api";
-import { useTasksList } from "@/lib/hooks";
+import { useMissionsList, useTasksList } from "@/lib/hooks";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 const COLUMNS: { status: TaskStatus; label: string }[] = [
   { status: "todo", label: "To do" },
@@ -17,6 +18,8 @@ const COLUMNS: { status: TaskStatus; label: string }[] = [
 
 export function TaskBoard() {
   const { tasks, refresh } = useTasksList();
+  const { missions } = useMissionsList();
+  const missionById = new Map(missions.map((mission) => [mission.id, mission]));
   const [newTitle, setNewTitle] = useState("");
 
   async function addTask() {
@@ -39,7 +42,7 @@ export function TaskBoard() {
 
   return (
     <Card>
-      <CardHeader title="Tasks" description="Simple to-do list" />
+      <CardHeader title="Human work queue" description="Deliberate tasks that stay under your control" />
       <div className="px-5 pb-4 flex gap-2">
         <Input
           className="flex-1"
@@ -71,6 +74,11 @@ export function TaskBoard() {
                     className="group rounded-lg border border-border bg-white/[0.02] p-2.5 text-body"
                   >
                     <div className="text-foreground">{task.title}</div>
+                    {task.missionId && missionById.get(task.missionId) && (
+                      <Badge tone="accent" className="mt-1.5">
+                        {missionById.get(task.missionId)!.title}
+                      </Badge>
+                    )}
                     <div className="mt-1.5 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                       {COLUMNS.filter((c) => c.status !== col.status).map((c) => (
                         <button

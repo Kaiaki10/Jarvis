@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, ChevronRight, ShieldQuestion } from "lucide-react";
 import { useSessionsList } from "@/lib/hooks";
@@ -17,9 +17,18 @@ const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export function AttentionQueue() {
   const { sessions, loading, primarySessionId } = useSessionsList();
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    const first = setTimeout(() => setNow(Date.now()), 0);
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, []);
 
   const items = useMemo(() => {
-    const now = Date.now();
     return sessions
       .filter((session) => {
         const outcome = outcomeForStatus(session.status);
@@ -29,7 +38,7 @@ export function AttentionQueue() {
         // restarts. That isn't a failure — the next message resumes it — so
         // only a genuine block is worth surfacing for it.
         if (session.id === primarySessionId) return false;
-        return now - new Date(session.updatedAt).getTime() < RECENT_WINDOW_MS;
+        return now === null || now - new Date(session.updatedAt).getTime() < RECENT_WINDOW_MS;
       })
       .sort((a, b) => {
         const aBlocked = a.status === "waiting_permission" ? 0 : 1;
@@ -37,7 +46,7 @@ export function AttentionQueue() {
         if (aBlocked !== bBlocked) return aBlocked - bBlocked;
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       });
-  }, [sessions, primarySessionId]);
+  }, [sessions, primarySessionId, now]);
 
   if (loading) return null;
 

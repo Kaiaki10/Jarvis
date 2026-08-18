@@ -1,0 +1,63 @@
+import { beforeAll, describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+beforeAll(() => {
+  const dir = mkdtempSync(join(tmpdir(), "jarvis-publication-"));
+  process.env.JARVIS_DB_PATH = join(dir, "test.db");
+});
+
+async function fixture() {
+  const campaigns = await import("../db/campaignRepo.js");
+  const sessions = await import("../db/repo.js");
+  const campaign = campaigns.createCampaign({
+    name: "Launch",
+    objective: "Create demand",
+    audience: "Operators",
+    offer: "A walkthrough",
+    channels: ["x"],
+    primaryMetric: "Requests",
+    approvalPolicy: "each_item",
+  });
+  const item = campaigns.createContentItem({
+    campaignId: campaign.id,
+    title: "Launch post",
+    body: "A concise launch post.",
+    format: "social_post",
+    channel: "x",
+  });
+  campaigns.updateContentItem(item.id, { status: "review" });
+  const session = sessions.createSession({ title: "Publish", cwd: process.cwd(), permissionMode: "default" });
+  campaigns.createContentPublicationRun({ contentItemId: item.id, sessionId: session.id, platformId: "x" });
+  return { campaigns, sessions, item, session };
+}
+
+describe("content publication reconciliation", () => {
+  it("marks content published only when the platform ledger confirms success", async () => {
+    const { campaigns, item, session } = await fixture();
+    const { recordAction } = await import("../platforms/spendGuard.js");
+    const { reconcileContentPublication } = await import("./publicationReconciler.js");
+    recordAction("x", "post_to_x", session.id, "hash");
+    expect(reconcileContentPublication({ sessionId: session.id, ok: true })).toBe(true);
+    expect(campaigns.getContentItem(item.id)?.status).toBe("published");
+    expect(campaigns.getContentPublicationRunBySession(session.id)?.status).toBe("published");
+  });
+
+  it("fails closed when a run finishes without a confirmed outbound action", async () => {
+    const { campaigns, sessions, item, session } = await fixture();
+    sessions.updateSettings({ notifyOnDesktop: false });
+    const { reconcileContentPublication } = await import("./publicationReconciler.js");
+    reconcileContentPublication({ sessionId: session.id, ok: true });
+    expect(campaigns.getContentItem(item.id)?.status).toBe("review");
+    expect(campaigns.getContentPublicationRunBySession(session.id)?.status).toBe("failed");
+  });
+
+  it("selects only due content that has never had a publication attempt", async () => {
+    const campaigns = await import("../db/campaignRepo.js");
+    const campaign = campaigns.createCampaign({ name: "Calendar", objective: "Publish", audience: "Owners", offer: "Guide", channels: ["x"], primaryMetric: "Reads", approvalPolicy: "each_item" });
+    const item = campaigns.createContentItem({ campaignId: campaign.id, title: "Due", body: "Due now", format: "social_post", channel: "x" });
+    campaigns.updateContentItem(item.id, { status: "scheduled", scheduledFor: new Date(Date.now() - 1_000).toISOString() });
+    expect(campaigns.listDueContentItems(new Date().toISOString()).map((entry) => entry.id)).toContain(item.id);
+  });
+});

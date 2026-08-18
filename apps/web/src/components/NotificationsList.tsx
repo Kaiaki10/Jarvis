@@ -46,7 +46,7 @@ export function NotificationsList() {
   return (
     <Card>
       <CardHeader
-        title="Notifications"
+        title="Attention inbox"
         description={unread ? `${unread} unread` : "Nothing unread"}
         action={
           unread > 0 ? (

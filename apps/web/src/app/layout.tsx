@@ -16,7 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Jarvis",
-  description: "Personal command center for Claude Code",
+  description: "Autonomous business operating system",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

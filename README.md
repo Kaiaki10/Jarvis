@@ -1,7 +1,44 @@
-# Jarvis Dashboard
+# Jarvis
 
-A personal command center for orchestrating Claude Code sessions: launch, watch, and steer
-multiple sessions from a web dashboard, plus a simple task list.
+An autonomous business operating system for turning goals into missions, campaigns,
+content, decisions, automations, tasks, and measurable deliverables from one place.
+
+## Product flow
+
+- **Daily briefing** — opens with what changed, what is blocked, what is ready to review,
+  and the most useful next move.
+- **Missions** — keep an outcome, target date, next action, plan, runs, and deliverables
+  together. “Advance with Jarvis” launches a run with that context already attached.
+- **Mission autopilot** — successful mission runs complete their linked step, capture
+  document-style artifacts as draft deliverables, and propose a reviewable progress update,
+  next action, and blocker instead of silently changing the mission.
+- **Decision inbox** — permission prompts explain the proposed action, its scope, likely
+  consequence, recovery options, and whether approval applies only once.
+- **Automation rehearsal** — simulates the next run times and checks prerequisites without
+  executing the automation.
+- **Evolution Center** — tracks product gaps through observation, planning, isolated Lab
+  builds, verification, and review. Each proposal carries user value, evidence, risk, and a
+  rollback plan; production promotion remains gated until atomic deploy and rollback exist.
+- **Campaigns + Content Studio** — turns an objective, audience, offer, approved channels,
+  and success metric into a coordinated content pipeline. Jarvis generation runs return
+  structured drafts directly into Idea → Draft → Review → Scheduled → Published → Measured,
+  with durable run evidence and channel guardrails. Reviewed X content can be published
+  immediately or dispatched from the calendar; both routes use the same one-time approval,
+  duplicate detection, platform cap, and confirmed-action ledger.
+- **Customer Operations** — unifies durable identity and conversation history across an
+  embeddable website chat, received email, X direct messages, Facebook Messenger, and
+  Instagram Messaging. Jarvis can answer routine messages automatically under explicit
+  per-channel, business-hours, confidence, and reply-count controls; sensitive language,
+  unsupported commitments, and delivery failures remain in human review. Signed webhook
+  verification, event idempotency, real provider delivery status, escalation, follow-up
+  tasks, and relationship notes all live in the same real-time queue.
+- **Durable memory** — every non-isolated Jarvis turn automatically reflects on new
+  preferences, business facts, decisions, relationship details, and stable facts before it
+  finishes. Qualified memories enter future runs immediately; turns with nothing durable
+  still leave a visible reflection receipt instead of fabricating a memory. The Memory page
+  shows source runs, adds and archives facts, and stays current over the shared event stream.
+  Focused isolated generators are marked memory-protected so generated copy cannot become
+  personal memory.
 
 ## Prerequisites
 
@@ -59,6 +96,22 @@ Platform credentials are encrypted with `jarvis.key`, which exists only on this 
 exports them re-encrypted under a passphrase you choose, so the file is safe to store
 anywhere the passphrase isn't. Restore works on a fresh machine with a different key.
 
+## Backing up Jarvis data
+
+Settings → Backup & recovery can also download a consistent SQLite snapshot containing
+tasks, schedules, settings, notifications, sessions, and transcripts. Keep both files:
+the data snapshot preserves Jarvis state, while the passphrase-protected credential backup
+is what makes platform credentials portable to another machine.
+
+Restore a downloaded data snapshot with:
+
+```
+.\scripts\restore-data.ps1 -BackupPath C:\path\to\jarvis-data-YYYY-MM-DD.db
+```
+
+The script stops the orchestrator, keeps a timestamped safety copy of the current database,
+restores the selected snapshot, and starts the service again.
+
 ## Connections
 
 The Connections page walks you through linking a platform: what to create, where to click,
@@ -70,16 +123,37 @@ Once a platform is connected and passing its test, sessions get tools for it
 (`post_to_x`, `post_to_slack`, `post_to_discord`, `send_email`). Every outbound action
 pauses for your approval first, where you can edit the draft before it sends.
 
+## Customer channels
+
+Customer Operations → Controls owns customer-service autonomy and website chat setup.
+Autonomy starts off, email/social auto-replies start off, and website replies are eligible
+only after the master switch is enabled. Copy the embed snippet from that screen or open
+the included `/widget/demo` page to test the complete customer experience.
+
+Inbound provider routes are:
+
+- Resend: `/webhooks/resend` with an `email.received` webhook and its signing secret.
+- X Account Activity: `/webhooks/x` for CRC verification and direct-message events.
+- Facebook Messenger: `/webhooks/facebook`.
+- Instagram Messaging: `/webhooks/instagram`.
+
+Provider webhooks require a public HTTPS callback. Do not expose the full local API;
+configure a reverse proxy or tunnel to publish only `/webhooks/*` and `/widget/*`, then put
+the public site origins in Customer Operations → Controls. Resend retrieves the received
+email body after verifying the event; Meta and X payload signatures are checked against
+the exact raw request body. Duplicate provider event IDs are ignored.
+
 ## Configuration
 
-- `apps/orchestrator`: `PORT` (default `4317`), `WEB_ORIGIN` (default `http://localhost:3000`,
+- `apps/orchestrator`: `HOST` (default `127.0.0.1`), `PORT` (default `4317`), `WEB_ORIGIN` (default `http://localhost:3000`,
   used for CORS), `JARVIS_DB_PATH` (default `apps/orchestrator/jarvis.db`)
 - `apps/web`: `NEXT_PUBLIC_ORCHESTRATOR_URL` in `apps/web/.env.local` (default `http://localhost:4317`)
 
 ## Data
 
-SQLite database at `apps/orchestrator/jarvis.db` (git-ignored) holds sessions, their full
-event/transcript log, and tasks. Delete the file to reset.
+SQLite database at `apps/orchestrator/jarvis.db` (git-ignored) holds missions, campaigns,
+content, customers, conversations, reply drafts, deliverables, durable memories, sessions,
+their full event/transcript log, tasks, schedules, and settings. Delete the file to reset.
 
 ## Billing
 
@@ -91,11 +165,13 @@ pay-per-token — leave it unset.
 
 ## Known limitations
 
-- Single local user, no auth — don't expose the orchestrator's port beyond localhost.
+- Single local user, no auth. Both services bind to `127.0.0.1`; do not override the host
+  to expose them without adding authentication first.
 - Restarting the orchestrator interrupts any in-flight sessions; they can't be reattached
   mid-execution (shows as `interrupted` in the sessions list).
 - Automations only fire while the orchestrator process is running. There's no wake-from-sleep
   or system-level trigger — leave it running (e.g. start it at login) for morning schedules.
-- Idle sessions are closed after 30 minutes to release their Claude Code subprocess. After
-  that, follow-ups fail; resuming a closed session isn't implemented yet.
-- Session transcripts grow unbounded; verbose tool output is stored in full.
+- Idle sessions are closed after 30 minutes to release their Claude Code subprocess.
+  Follow-ups transparently resume from the stored Claude session ID.
+- Detailed transcripts follow the retention setting and redundant streaming deltas are
+  compacted hourly. Individual persisted events are capped at 64 KB.

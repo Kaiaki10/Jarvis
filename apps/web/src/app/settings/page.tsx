@@ -5,8 +5,9 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Control plane"
         title="Settings"
-        description="Context Jarvis carries into every session, plus safety rails"
+        description="Business context, safety rails, storage, recovery, and operating limits"
       />
       <div className="px-8 pb-10 max-w-3xl">
         <SettingsPanel />

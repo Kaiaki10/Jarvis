@@ -6,10 +6,15 @@ import {
   CalendarPlus,
   CalendarClock,
   ChevronRight,
+  ArrowRight,
   Pause,
   Play,
   Trash2,
+  FlaskConical,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
+import type { AutomationRehearsal, ScheduledTaskRecord, SessionRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { useScheduledTasksList, useSettings, useSessionsList } from "@/lib/hooks";
 import { DAY_LABELS, daysLabel } from "@/lib/runStatus";
@@ -60,6 +65,60 @@ function summarize(prompt: string): string {
 const CHEVRON =
   "h-3.5 w-3.5 shrink-0 text-muted transition-transform group-open:rotate-90";
 
+/**
+ * The "what it just did" line, and the way through to the whole run.
+ *
+ * Lives inside a <summary>, where any click toggles the row open. The link
+ * stops the click there so following it doesn't also expand the thing you're
+ * navigating away from.
+ *
+ * Only ever links to a session that is actually loaded. A run can be deleted
+ * from the Runs page, and a dead link to a missing transcript is worse than
+ * plainly saying there is nothing to see.
+ */
+function LastRunLine({
+  task,
+  lastRun,
+  running,
+}: {
+  task: ScheduledTaskRecord;
+  lastRun: SessionRecord | undefined;
+  running: boolean;
+}) {
+  if (!lastRun) {
+    return (
+      <span className="mt-1 block text-micro text-muted">
+        {task.lastRunAt ? "Last run is no longer stored" : "Not run yet"}
+      </span>
+    );
+  }
+
+  const text = running
+    ? (lastRun.currentActivity ?? "Working…")
+    : (lastRun.summary ?? "View what it did");
+
+  return (
+    <Link
+      href={`/sessions/${lastRun.id}`}
+      onClick={(e) => e.stopPropagation()}
+      title={text}
+      className={`group/run mt-1 flex w-fit max-w-full items-center gap-1.5 rounded text-micro transition-colors ${
+        running
+          ? "text-accent-foreground hover:text-white"
+          : "text-muted hover:text-foreground"
+      }`}
+    >
+      <span className="truncate underline decoration-transparent underline-offset-2 transition-colors group-hover/run:decoration-current">
+        {text}
+      </span>
+      <ArrowRight
+        className="h-3 w-3 shrink-0 -translate-x-1 opacity-0 transition-all group-hover/run:translate-x-0 group-hover/run:opacity-100"
+        strokeWidth={2}
+      />
+    </Link>
+  );
+}
+
 export function ScheduledTasksPanel() {
   const { tasks, refresh } = useScheduledTasksList();
   const { settings } = useSettings();
@@ -70,6 +129,8 @@ export function ScheduledTasksPanel() {
   const [permissionMode, setPermissionMode] = useState("default");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [rehearsals, setRehearsals] = useState<Record<string, AutomationRehearsal>>({});
+  const [rehearsing, setRehearsing] = useState<string | null>(null);
 
   function toggleDay(day: number) {
     setDays((prev) =>
@@ -105,6 +166,16 @@ export function ScheduledTasksPanel() {
     refresh();
   }
 
+  async function rehearse(id: string) {
+    setRehearsing(id);
+    try {
+      const result = await api.rehearseScheduledTask(id);
+      setRehearsals((current) => ({ ...current, [id]: result }));
+    } finally {
+      setRehearsing(null);
+    }
+  }
+
   const { sessionById } = useSessionsList();
   const activeCount = tasks.filter((t) => t.enabled).length;
   const runningCount = tasks.filter((t) => {
@@ -117,7 +188,7 @@ export function ScheduledTasksPanel() {
       <div className="px-5 pt-5">
         <div className="flex items-baseline justify-between gap-4">
           <h2 className="text-body font-semibold tracking-tight text-foreground">
-            Automations
+            Automation schedule
           </h2>
           <span className="font-mono text-micro tabular-nums text-muted">
             {tasks.length ? (
@@ -136,7 +207,7 @@ export function ScheduledTasksPanel() {
           </span>
         </div>
         <p className="mt-0.5 text-label text-muted">
-          Recurring work Jarvis does on its own
+          Recurring work Jarvis runs unattended
         </p>
         <div className="rule-fade mt-3.5" />
       </div>
@@ -201,16 +272,10 @@ export function ScheduledTasksPanel() {
                 >
                   {summarize(task.prompt)}
                 </span>
-                {/* What it is doing now, or what it did last time. */}
-                {running && lastRun?.currentActivity ? (
-                  <span className="mt-1 flex items-center gap-1.5 text-micro text-accent-foreground">
-                    <span className="truncate">{lastRun.currentActivity}</span>
-                  </span>
-                ) : lastRun?.summary ? (
-                  <span className="mt-1 block truncate text-micro text-muted">
-                    {lastRun.summary}
-                  </span>
-                ) : null}
+                {/* What it is doing now, or what it did last time — and the way
+                    through to the full run. Linked only when the session is
+                    actually there; a link to a pruned run is worse than none. */}
+                <LastRunLine task={task} lastRun={lastRun} running={!!running} />
               </span>
 
               <span className="hidden shrink-0 flex-col items-end gap-0.5 md:flex">
@@ -276,6 +341,42 @@ export function ScheduledTasksPanel() {
                     Last run
                   </div>
                   {lastRun.summary}
+                </div>
+              )}
+              <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-black/15 px-3 py-2.5">
+                <div>
+                  <div className="flex items-center gap-1.5 text-label font-medium text-foreground">
+                    <FlaskConical className="h-3.5 w-3.5 text-accent-bright" strokeWidth={1.75} />
+                    Rehearsal
+                  </div>
+                  <p className="mt-0.5 text-micro text-muted">Check timing, prerequisites, and approval behavior without running it.</p>
+                </div>
+                <Button size="sm" variant="secondary" disabled={rehearsing === task.id} onClick={() => void rehearse(task.id)}>
+                  {rehearsing === task.id ? "Checking…" : "Simulate"}
+                </Button>
+              </div>
+              {rehearsals[task.id] && (
+                <div className="mb-2 grid gap-2 rounded-lg border border-accent/20 bg-accent/5 p-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-micro font-medium uppercase tracking-wide text-muted">Preflight</div>
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      {rehearsals[task.id].checks.map((check) => (
+                        <div key={check.label} className="flex items-start gap-2 text-label">
+                          {check.ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />}
+                          <span><span className="text-foreground">{check.label}:</span> <span className="text-muted">{check.detail}</span></span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-micro font-medium uppercase tracking-wide text-muted">Next three runs</div>
+                    <div className="mt-2 flex flex-col gap-1 text-label text-foreground">
+                      {rehearsals[task.id].nextRuns.map((run) => <span key={run}>{new Date(run).toLocaleString()}</span>)}
+                    </div>
+                    <div className="mt-2 text-micro text-muted">
+                      {rehearsals[task.id].approvalRequired ? "External actions will stop for your approval." : "No external-action approval is predicted."}
+                    </div>
+                  </div>
                 </div>
               )}
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2.5 font-mono text-micro leading-relaxed text-muted">

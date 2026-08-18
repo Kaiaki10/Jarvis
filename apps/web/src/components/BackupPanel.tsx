@@ -12,12 +12,32 @@ export function BackupPanel() {
   const { connections, refresh } = useConnections();
   const [exportPass, setExportPass] = useState("");
   const [importPass, setImportPass] = useState("");
-  const [busy, setBusy] = useState<"export" | "import" | null>(null);
+  const [busy, setBusy] = useState<"export" | "import" | "data" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const hasCredentials = connections.length > 0;
+
+  async function downloadData() {
+    setBusy("data");
+    setError(null);
+    setNotice(null);
+    try {
+      const blob = await api.downloadDataBackup();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `jarvis-data-${new Date().toISOString().slice(0, 10)}.db`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setNotice("Jarvis data backup downloaded.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function doExport() {
     setBusy("export");
@@ -81,6 +101,29 @@ export function BackupPanel() {
         </div>
 
         <div>
+          <div className="text-body font-medium text-foreground">Back up Jarvis data</div>
+          <p className="mt-0.5 text-label text-muted">
+            Downloads a consistent SQLite snapshot containing tasks, schedules, settings,
+            notifications, sessions, and transcripts. Keep the encrypted credential backup
+            below as well; credentials in this database still require this machine&apos;s key.
+          </p>
+          <Button
+            className="mt-2"
+            size="sm"
+            variant="secondary"
+            onClick={downloadData}
+            disabled={busy !== null}
+          >
+            {busy === "data" ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            Download data backup
+          </Button>
+        </div>
+
+        <div className="border-t border-border pt-4">
           <div className="text-body font-medium text-foreground">Create a backup</div>
           <p className="mt-0.5 text-label text-muted">
             Downloads an encrypted file containing every saved credential. Choose a

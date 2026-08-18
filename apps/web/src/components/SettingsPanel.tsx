@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { useSettings } from "@/lib/hooks";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
@@ -11,14 +11,22 @@ import { StoragePanel } from "@/components/StoragePanel";
 
 export function SettingsPanel() {
   const { settings, saveSettings } = useSettings();
-  const [context, setContext] = useState("");
+
+  if (!settings) {
+    return <div className="text-body text-muted">Loading settings…</div>;
+  }
+
+  return <LoadedSettingsPanel key={settings.businessContext} settings={settings} saveSettings={saveSettings} />;
+}
+
+function LoadedSettingsPanel({
+  settings,
+  saveSettings,
+}: ReturnType<typeof useSettings> & { settings: NonNullable<ReturnType<typeof useSettings>["settings"]> }) {
+  const [context, setContext] = useState(settings.businessContext);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    if (settings && !dirty) setContext(settings.businessContext);
-  }, [settings, dirty]);
 
   async function saveContext() {
     setSaving(true);
@@ -30,10 +38,6 @@ export function SettingsPanel() {
     } finally {
       setSaving(false);
     }
-  }
-
-  if (!settings) {
-    return <div className="text-body text-muted">Loading settings…</div>;
   }
 
   return (
@@ -132,10 +136,9 @@ export function SettingsPanel() {
             <div>
               <div className="text-body text-foreground">Daily platform action limit</div>
               <div className="text-label text-muted">
-                Caps posts and emails per platform per day. These cost real money — X
-                charges $0.015 a post, or $0.20 if it contains a link — and automations
-                run unattended, so this stops a looping job spending overnight. The
-                platform&apos;s own spending cap is a backstop; this fails first.
+                Caps posts and emails per platform per day. Some platform actions are
+                billable, and automations run unattended, so this stops a looping job
+                from repeatedly publishing. The platform&apos;s own cap remains a backstop.
               </div>
             </div>
             <Select

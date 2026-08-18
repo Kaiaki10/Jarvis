@@ -15,7 +15,8 @@ import { SessionTranscript } from "@/components/SessionTranscript";
  * ongoing conversation with Jarvis lives on the Overview instead.
  */
 export function SessionDetail({ sessionId }: { sessionId: string }) {
-  const { session, events, refreshSession } = useSessionStream(sessionId);
+  const [activityKey, setActivityKey] = useState(0);
+  const { session, events, refreshSession } = useSessionStream(sessionId, activityKey);
   const [followUp, setFollowUp] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -29,6 +30,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     setFollowUp("");
     try {
       const { resumed } = await api.sendMessage(sessionId, text);
+      setActivityKey((key) => key + 1);
       if (resumed) setNotice("Session had gone idle — resuming it.");
     } catch (err) {
       // Put the text back rather than losing what they typed.

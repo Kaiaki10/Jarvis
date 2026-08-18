@@ -113,7 +113,7 @@ async function sendEmail(title: string, body: string): Promise<void> {
   if (!creds?.apiKey || !creds.fromAddress) return;
 
   try {
-    await fetch("https://api.resend.com/emails", {
+    const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${creds.apiKey}`,
@@ -127,9 +127,19 @@ async function sendEmail(title: string, body: string): Promise<void> {
       }),
       signal: AbortSignal.timeout(15_000),
     });
-  } catch {
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 500);
+      console.warn(
+        `[notifications] email delivery failed (HTTP ${response.status}): ${detail}`
+      );
+    }
+  } catch (err) {
     // A notification that fails to send must never take down the thing it is
     // reporting on.
+    console.warn(
+      "[notifications] email delivery failed:",
+      err instanceof Error ? err.message : String(err)
+    );
   }
 }
 

@@ -5,8 +5,9 @@ export default function AutomationsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Unattended work"
         title="Automations"
-        description="Recurring tasks Jarvis fires on its own, on a schedule you set"
+        description="Scheduled Jarvis runs with rehearsal, safeguards, and execution history"
       />
       <div className="px-8 pb-10">
         <ScheduledTasksPanel />
