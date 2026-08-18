@@ -67,6 +67,18 @@ phone. Relevant if approvals should be actionable away from the desk.
 Every platform requires manually copying tokens. Proper OAuth flows would be friendlier
 but need a public redirect URL.
 
+### medium — Foreign keys are not enforced
+`db.ts` never enables `PRAGMA foreign_keys = ON`, so the `REFERENCES sessions(id)`
+constraint in `session_events` is advisory only. Deleting a session would orphan its
+events without cascade rules, and invalid session_id values are silently accepted. This
+matters if sessions are ever pruned or deleted programmatically.
+
+### medium — EventSource has no error handler
+The global EventSource in `apps/web/src/lib/store.tsx:109` opens with no `onerror`
+listener. A network blip or orchestrator restart silently breaks the live feed — the UI
+shows stale data and never reconnects. User has no indication the dashboard is
+disconnected until they refresh manually.
+
 ## Closed
 
 - **2026-08-17** OAuth 1.0a signing was unverified — closed by a clean-room RFC 5849

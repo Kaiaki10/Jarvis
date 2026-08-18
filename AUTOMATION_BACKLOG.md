@@ -11,6 +11,10 @@ Each run picks **one** item, completes it properly, and records the outcome here
 
 ## Up next
 
+- [ ] EventSource reconnection: Add an `onerror` handler to the global EventSource in
+      `apps/web/src/lib/store.tsx` that automatically reconnects when the orchestrator
+      drops or restarts. Without this, the dashboard silently shows stale data after any
+      network blip until the user manually refreshes.
 - [ ] Loading states: lists render "Loading…" as plain text. Add skeleton rows so the
       layout doesn't jump when data arrives.
 - [ ] The session transcript renders tool calls as nothing at all — tool_use blocks are
