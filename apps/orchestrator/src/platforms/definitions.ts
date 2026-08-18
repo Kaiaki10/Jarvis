@@ -282,19 +282,24 @@ const x: Platform = {
         linkLabel: "Open X developer portal",
       },
       {
-        title: "Set app permissions to Read and write",
+        title: "Turn on user authentication",
         body: [
-          "In your app's settings open User authentication settings and set App permissions to Read and write.",
+          "In your app open Settings → User authentication settings → Set up.",
+          "Set App permissions to Read and write, and Type of App to Automated App or Bot.",
+          "X then demands a Callback URI and a Website URL before it will save. Jarvis never uses them — it signs each request with tokens you generate by hand, so no browser redirect ever happens. Put http://localhost:3000/callback and http://localhost:3000 to get past the form (any URL you control works).",
         ],
-        warning:
-          "Do this BEFORE generating access tokens. Tokens carry whatever permission the app had when they were created — if you generate them while the app is read-only, posting fails with a 403 and you must regenerate them.",
+        linkUrl: "https://developer.x.com/en/portal/dashboard",
+        linkLabel: "Open X developer portal",
       },
       {
-        title: "Generate keys and tokens",
+        title: "Generate keys and tokens — in this order",
         body: [
-          "Open the Keys and tokens tab. Copy the API Key and Secret, then generate the Access Token and Secret.",
-          "Paste all four below.",
+          "Open the Keys and tokens tab. Copy the API Key and API Key Secret.",
+          "Then generate the Access Token and Secret, and paste all four below.",
+          "Under the access token X should say 'Read and Write'. If it says 'Read', the permission change came too late — regenerate the token.",
         ],
+        warning:
+          "Access tokens permanently carry whatever permission the app had at the moment they were created. If you already generated tokens before switching to Read and write, they can read but never post, and the connection test still passes because reading works. Regenerate them after changing permissions, then re-enter them here.",
       },
     ],
   },
