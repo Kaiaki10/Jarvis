@@ -43,6 +43,7 @@ export function SessionList({
 }) {
   const { sessions, loading, primarySessionId, removeSession } = useSessionsList();
   const [busy, setBusy] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const runs = sessions.filter((s) => s.id !== primarySessionId);
@@ -51,6 +52,7 @@ export function SessionList({
   async function remove(id: string) {
     setBusy(id);
     setError(null);
+    setConfirming(null);
     try {
       await removeSession(id);
     } catch (err) {
@@ -109,15 +111,37 @@ export function SessionList({
               </Badge>
               <ChevronRight className="h-4 w-4 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
             </Link>
-            <button
-              type="button"
-              aria-label={`Delete run: ${session.title}`}
-              disabled={busy === session.id}
-              onClick={() => remove(session.id)}
-              className="rounded-md p-1.5 text-muted opacity-0 transition hover:bg-danger/10 hover:text-danger group-hover:opacity-100 disabled:opacity-40"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            {confirming === session.id ? (
+              <span className="flex shrink-0 items-center gap-1.5">
+                <span className="text-micro text-muted">Delete?</span>
+                <button
+                  type="button"
+                  disabled={busy === session.id}
+                  onClick={() => remove(session.id)}
+                  className="rounded-md px-2 py-1 text-micro font-medium text-danger transition-colors hover:bg-danger/15 disabled:opacity-40"
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirming(null)}
+                  className="rounded-md px-2 py-1 text-micro text-muted transition-colors hover:bg-white/[0.06] hover:text-foreground"
+                >
+                  No
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                aria-label={`Delete run: ${session.title}`}
+                onClick={() => setConfirming(session.id)}
+                // Revealing on hover alone hides this from keyboard and touch
+                // entirely, so focus reveals it too.
+                className="shrink-0 rounded-md p-1.5 text-muted opacity-0 transition hover:bg-danger/10 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         ))}
       </div>

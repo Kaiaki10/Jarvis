@@ -1,4 +1,5 @@
 import {
+  Sparkles,
   Hammer,
   FlaskConical,
   Eye,
@@ -26,6 +27,12 @@ export interface AutomationKind {
 }
 
 const KINDS: Array<{ match: RegExp; kind: AutomationKind }> = [
+  // Ahead of Critique: both are design work, and this one implements rather
+  // than files, so it must not be mistaken for the review pass.
+  {
+    match: /measurably nicer/i,
+    kind: { label: "Polish", icon: Sparkles, color: "text-fuchsia-300", spine: "bg-fuchsia-400" },
+  },
   {
     match: /implement (exactly )?one improvement/i,
     kind: { label: "Build", icon: Hammer, color: "text-indigo-300", spine: "bg-indigo-400" },

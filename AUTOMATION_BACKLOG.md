@@ -6,6 +6,9 @@ Each run picks **one** item, completes it properly, and records the outcome here
 ## How to use this file
 
 - `## Up next` — candidate work, best-first. Keep items small enough for one session.
+- `## Design` — visual and usability findings, judged against DESIGN_SYSTEM.md.
+  Filed by the critique job, implemented by the polish job. Mark anything that
+  breaks a non-negotiable with **(non-negotiable)** so polish takes it first.
 - `## Done` — newest first, with the date and a one-line result.
 - `## Notes` — anything a future run should know (dead ends, conventions, gotchas).
 
@@ -19,6 +22,24 @@ Each run picks **one** item, completes it properly, and records the outcome here
 - [ ] Relative timestamps: the sessions list shows status but never when anything ran.
       Add a subtle "3m ago" per row.
 - [ ] Keyboard: Cmd/Ctrl+Enter should submit the launcher prompt from anywhere in the form.
+
+## Design
+
+Judged against DESIGN_SYSTEM.md. Seeded 2026-08-18 from the design system rebuild —
+these are things noticed while doing it that were out of scope for that pass.
+
+- [ ] `ScheduledTasksPanel` rows use a `<details>` element whose summary marker is
+      hidden. Verify the disclosure state is announced to screen readers and that the
+      row is operable by keyboard.
+- [ ] The narrow (900px) viewport was only ever checked by screenshot at page level.
+      Walk each page at that width and check nothing overflows — `SettingsPanel` and
+      `ConnectionWizard` have the widest form rows and are the likeliest to break.
+- [ ] `SettingsPanel` and `ConnectionWizard` were swept onto the type scale mechanically
+      but never redesigned. Both are long unbroken forms with no grouping or visual
+      rhythm — the densest, least considered pages in the app.
+- [ ] Loading states render as the plain word "Loading…" in six components. Skeleton
+      rows matching the real row height would stop the layout jumping when data lands.
+      (Also listed under Up next; whichever job gets there first should tick both.)
 
 ## Done
 
