@@ -1,27 +1,21 @@
-import { Header } from "@/components/hud/Header";
-import { StatusPanel } from "@/components/hud/StatusPanel";
-import { ActivityLog } from "@/components/hud/ActivityLog";
+import { PageHeader } from "@/components/PageHeader";
 import { SessionLauncher } from "@/components/SessionLauncher";
+import { StatsRow } from "@/components/StatsRow";
 import { SessionList } from "@/components/SessionList";
-import { TaskBoard } from "@/components/TaskBoard";
-import { ScheduledTasksPanel } from "@/components/ScheduledTasksPanel";
+import { ActivityFeed } from "@/components/ActivityFeed";
 
 export default function Home() {
   return (
     <>
-      <Header />
-      <main className="flex-1 max-w-6xl mx-auto w-full p-6 flex flex-col gap-6">
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-6 items-start">
-          <StatusPanel />
-          <div className="py-4">
-            <SessionLauncher />
-          </div>
-          <ActivityLog />
+      <PageHeader title="Overview" description="What should Jarvis work on?" />
+      <div className="px-8 pb-10 flex flex-col gap-6">
+        <SessionLauncher />
+        <StatsRow />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px] items-start">
+          <SessionList limit={6} showViewAll />
+          <ActivityFeed />
         </div>
-        <SessionList />
-        <ScheduledTasksPanel />
-        <TaskBoard />
-      </main>
+      </div>
     </>
   );
 }

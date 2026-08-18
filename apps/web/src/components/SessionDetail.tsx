@@ -2,10 +2,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowLeft, ArrowUp, Check, X } from "lucide-react";
 import type { SessionEventRecord } from "@jarvis/shared";
 import { useSessionStream } from "@/lib/hooks";
 import { api } from "@/lib/api";
-import { Panel } from "@/components/hud/Panel";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 interface ContentBlock {
   type: string;
@@ -102,76 +106,77 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 max-w-3xl mx-auto w-full">
-      <div className="flex items-center gap-3">
+    <div className="flex h-screen flex-col">
+      <div className="flex items-center gap-3 border-b border-border px-8 py-4">
         <Link
-          href="/"
-          className="text-xs uppercase tracking-widest text-cyan-400/70 hover:text-cyan-300"
+          href="/sessions"
+          className="flex items-center gap-1.5 text-sm text-muted hover:text-foreground"
         >
-          ← Dashboard
+          <ArrowLeft className="h-4 w-4" />
+          Sessions
         </Link>
         {session && (
-          <span className="text-[10px] uppercase tracking-widest text-cyan-500/40">
-            {session.status}
-            {session.costUsd != null && ` · $${session.costUsd.toFixed(4)}`}
-            {session.turns != null && ` · ${session.turns} turn(s)`}
-          </span>
+          <div className="ml-auto flex items-center gap-3 text-xs text-muted">
+            {session.costUsd != null && <span>${session.costUsd.toFixed(4)}</span>}
+            {session.turns != null && <span>{session.turns} turn(s)</span>}
+            <Badge tone="neutral">{session.status}</Badge>
+          </div>
         )}
       </div>
 
-      <Panel title="SESSION-LOG" bodyClassName="flex flex-col gap-3 min-h-[320px]">
-        {events.map((event) => (
-          <TranscriptEntry key={event.id} event={event} />
-        ))}
-        {liveText && (
-          <div className="rounded-sm border border-cyan-500/10 bg-cyan-500/5 p-2.5 text-sm text-cyan-100 whitespace-pre-wrap">
-            {liveText}
-            <span className="animate-hud-pulse text-cyan-300">▍</span>
-          </div>
-        )}
-      </Panel>
+      <div className="flex-1 overflow-y-auto px-8 py-6">
+        <div className="mx-auto flex max-w-2xl flex-col gap-3">
+          {events.map((event) => (
+            <TranscriptEntry key={event.id} event={event} />
+          ))}
+          {liveText && (
+            <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-3 text-sm text-foreground whitespace-pre-wrap">
+              {liveText}
+              <span className="animate-pulse-soft">▍</span>
+            </div>
+          )}
 
-      {pendingPermission && (
-        <Panel eyebrow="ALERT //" title="PERMISSION REQUIRED" className="border-orange-500/50">
-          <div className="text-sm mb-2 text-orange-200">
-            Tool <code className="font-mono">{pendingPermission.toolName}</code>
-          </div>
-          <pre className="text-xs bg-black/30 border border-orange-500/15 rounded-sm p-2 mb-3 overflow-x-auto text-orange-100/80">
-            {JSON.stringify(pendingPermission.input, null, 2)}
-          </pre>
-          <div className="flex gap-2">
-            <button
-              onClick={() => respond("allow")}
-              className="rounded-sm border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-xs uppercase tracking-widest text-emerald-300 hover:bg-emerald-500/20"
-            >
-              Allow
-            </button>
-            <button
-              onClick={() => respond("deny")}
-              className="rounded-sm border border-red-400/50 bg-red-500/10 px-3 py-1 text-xs uppercase tracking-widest text-red-300 hover:bg-red-500/20"
-            >
-              Deny
-            </button>
-          </div>
-        </Panel>
-      )}
+          {pendingPermission && (
+            <Card className="border-warning/30 bg-warning/5">
+              <div className="px-4 pt-3.5 pb-1 text-sm font-medium text-warning">
+                Permission requested
+              </div>
+              <div className="px-4 pb-4">
+                <div className="mb-2 text-sm text-foreground">
+                  Tool <code className="font-mono text-xs">{pendingPermission.toolName}</code>
+                </div>
+                <pre className="mb-3 overflow-x-auto rounded-lg bg-black/30 p-2.5 text-xs text-foreground/70">
+                  {JSON.stringify(pendingPermission.input, null, 2)}
+                </pre>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => respond("allow")}>
+                    <Check className="h-3.5 w-3.5 text-success" />
+                    Allow
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => respond("deny")}>
+                    <X className="h-3.5 w-3.5" />
+                    Deny
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      </div>
 
-      <div className="flex items-center gap-2 rounded-sm border border-cyan-400/40 bg-black/40 box-glow px-3 py-2.5">
-        <span className="text-cyan-400 text-glow">&gt;</span>
-        <input
-          className="flex-1 bg-transparent outline-none text-sm text-cyan-100"
-          placeholder="Send a follow-up…"
-          value={followUp}
-          onChange={(e) => setFollowUp(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendFollowUp()}
-        />
-        <button
-          onClick={sendFollowUp}
-          disabled={sending}
-          className="rounded-sm border border-cyan-400/50 bg-cyan-500/10 px-3 py-1 text-xs uppercase tracking-widest text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50"
-        >
-          Send
-        </button>
+      <div className="border-t border-border px-8 py-4">
+        <div className="mx-auto flex max-w-2xl items-center gap-2">
+          <Input
+            className="flex-1"
+            placeholder="Send a follow-up…"
+            value={followUp}
+            onChange={(e) => setFollowUp(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendFollowUp()}
+          />
+          <Button size="sm" onClick={sendFollowUp} disabled={sending}>
+            <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.5} />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -181,7 +186,7 @@ function TranscriptEntry({ event }: { event: SessionEventRecord }) {
   if (event.type === "user") {
     const payload = event.payload as { message: ApiMessage };
     return (
-      <div className="self-end max-w-[80%] rounded-sm border border-cyan-400/30 bg-cyan-500/15 p-2.5 text-sm text-cyan-50 whitespace-pre-wrap">
+      <div className="self-end max-w-[80%] rounded-xl bg-accent px-4 py-2.5 text-sm text-white whitespace-pre-wrap">
         {messageText(payload.message)}
       </div>
     );
@@ -191,7 +196,7 @@ function TranscriptEntry({ event }: { event: SessionEventRecord }) {
     const text = messageText(payload.message);
     if (!text) return null;
     return (
-      <div className="rounded-sm border border-cyan-500/10 bg-black/20 p-2.5 text-sm text-cyan-100 whitespace-pre-wrap">
+      <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-2.5 text-sm text-foreground whitespace-pre-wrap">
         {text}
       </div>
     );
@@ -203,7 +208,7 @@ function TranscriptEntry({ event }: { event: SessionEventRecord }) {
       total_cost_usd: number;
     };
     return (
-      <div className="text-[10px] uppercase tracking-wider text-cyan-500/40">
+      <div className="px-1 text-xs text-muted">
         {payload.is_error ? "Turn ended with an error" : "Turn complete"} ·{" "}
         {(payload.duration_ms / 1000).toFixed(1)}s · ${payload.total_cost_usd.toFixed(4)}
       </div>
@@ -213,20 +218,14 @@ function TranscriptEntry({ event }: { event: SessionEventRecord }) {
     const payload = event.payload as { subtype?: string; model?: string };
     if (payload.subtype === "init") {
       return (
-        <div className="text-[10px] uppercase tracking-wider text-cyan-500/40">
-          Session started · {payload.model}
-        </div>
+        <div className="px-1 text-xs text-muted">Session started · {payload.model}</div>
       );
     }
     return null;
   }
   if (event.type === "permission_response") {
     const payload = event.payload as { decision: string };
-    return (
-      <div className="text-[10px] uppercase tracking-wider text-cyan-500/40">
-        Permission {payload.decision}
-      </div>
-    );
+    return <div className="px-1 text-xs text-muted">Permission {payload.decision}</div>;
   }
   return null;
 }

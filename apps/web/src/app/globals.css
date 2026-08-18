@@ -1,88 +1,68 @@
 @import "tailwindcss";
 
 :root {
-  --background: #04070a;
-  --background-raised: #070c10;
-  --foreground: #d3f6fc;
-  --foreground-dim: #6f9aa3;
-  --hud-line: rgba(103, 232, 249, 0.18);
-  --hud-glow: rgba(56, 224, 255, 0.55);
+  --background: #09090b;
+  --surface: #131316;
+  --surface-hover: #1a1a1e;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --foreground: #f4f4f5;
+  --muted: #8a8a93;
+  --accent: #6366f1;
+  --accent-foreground: #eef0ff;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-mono-hud);
-  --font-mono: var(--font-mono-hud);
-  --font-display: var(--font-display);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-mono-hud), ui-monospace, monospace;
-  background-image:
-    linear-gradient(rgba(56, 224, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(56, 224, 255, 0.05) 1px, transparent 1px),
-    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(24, 79, 92, 0.25), transparent 70%);
-  background-size: 44px 44px, 44px 44px, 100% 100%;
-  background-attachment: fixed;
-}
-
-.font-display {
-  font-family: var(--font-display), var(--font-mono-hud), sans-serif;
-}
-
-.hud-corner {
-  position: absolute;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-color: var(--hud-glow);
-  pointer-events: none;
-}
-
-.text-glow {
-  text-shadow: 0 0 10px var(--hud-glow), 0 0 2px var(--hud-glow);
-}
-
-.box-glow {
-  box-shadow: 0 0 16px -4px var(--hud-glow);
-}
-
-@keyframes hud-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-
-.animate-hud-pulse {
-  animation: hud-pulse 2s ease-in-out infinite;
-}
-
-@keyframes hud-spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.animate-spin-slow {
-  animation: hud-spin-slow 40s linear infinite;
-}
-
-@keyframes hud-spin-reverse {
-  from { transform: rotate(360deg); }
-  to { transform: rotate(0deg); }
-}
-
-.animate-spin-reverse {
-  animation: hud-spin-reverse 28s linear infinite;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 ::selection {
-  background: rgba(56, 224, 255, 0.35);
-  color: #04070a;
+  background: rgba(99, 102, 241, 0.35);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--foreground-dim);
-  opacity: 0.7;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+* {
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-width: thin;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
 }

@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { CalendarPlus, Pause, Play, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useScheduledTasksList } from "@/lib/hooks";
-import { Panel } from "@/components/hud/Panel";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Input, Select, Textarea } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAYS = [1, 2, 3, 4, 5];
@@ -25,11 +29,11 @@ function formatNextRun(iso: string | null): string {
   const now = new Date();
   const sameDay = date.toDateString() === now.toDateString();
   const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (sameDay) return `Today ${time}`;
+  if (sameDay) return `Today, ${time}`;
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
-  if (date.toDateString() === tomorrow.toDateString()) return `Tomorrow ${time}`;
-  return `${date.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  if (date.toDateString() === tomorrow.toDateString()) return `Tomorrow, ${time}`;
+  return `${date.toLocaleDateString([], { weekday: "short" })}, ${time}`;
 }
 
 export function ScheduledTasksPanel() {
@@ -77,39 +81,43 @@ export function ScheduledTasksPanel() {
   }
 
   return (
-    <Panel title="AUTOMATIONS" eyebrow="SYSTEM //">
-      <div className="flex flex-col gap-2 mb-4 border-b border-cyan-500/10 pb-4">
-        <textarea
-          className="rounded-sm border border-cyan-500/25 bg-black/30 px-2 py-1.5 text-sm text-cyan-100 outline-none focus:border-cyan-400/60"
+    <Card>
+      <CardHeader
+        title="Automations"
+        description="Recurring tasks Jarvis runs on its own"
+      />
+      <div className="mx-5 mb-4 flex flex-col gap-2.5 rounded-lg border border-border bg-white/[0.02] p-3">
+        <Textarea
+          className="border-0 bg-transparent p-0 text-sm focus:bg-transparent"
           placeholder="What should Jarvis do automatically? e.g. Summarize overnight emails and draft replies"
           rows={2}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
         />
         <div className="flex flex-wrap gap-2">
-          <input
-            className="flex-1 min-w-[200px] rounded-sm border border-cyan-500/20 bg-black/30 px-2 py-1.5 text-xs font-mono text-cyan-200/80 outline-none focus:border-cyan-400/50"
-            placeholder="working directory — e.g. C:\Users\you\projects\thing"
+          <Input
+            className="h-8 min-w-[200px] flex-1 font-mono text-xs"
+            placeholder="Working directory"
             value={cwd}
             onChange={(e) => setCwd(e.target.value)}
           />
-          <input
+          <Input
             type="time"
-            className="rounded-sm border border-cyan-500/20 bg-black/30 px-2 py-1.5 text-xs text-cyan-200/80 outline-none focus:border-cyan-400/50"
+            className="h-8 w-auto text-xs"
             value={timeOfDay}
             onChange={(e) => setTimeOfDay(e.target.value)}
           />
-          <select
-            className="rounded-sm border border-cyan-500/20 bg-black/30 px-2 py-1.5 text-xs text-cyan-200/80 outline-none focus:border-cyan-400/50"
+          <Select
+            className="h-8 w-auto text-xs"
             value={permissionMode}
             onChange={(e) => setPermissionMode(e.target.value)}
           >
             {PERMISSION_MODES.map((mode) => (
-              <option key={mode} value={mode} className="bg-black">
+              <option key={mode} value={mode} className="bg-surface">
                 {mode}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex gap-1">
@@ -117,57 +125,60 @@ export function ScheduledTasksPanel() {
               <button
                 key={day}
                 onClick={() => toggleDay(day)}
-                className={`h-7 w-9 rounded-sm border text-[10px] uppercase tracking-wide transition-colors ${
+                className={`h-7 w-9 rounded-md border text-[11px] font-medium transition-colors ${
                   days.includes(day)
-                    ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-200"
-                    : "border-cyan-500/15 text-cyan-500/40 hover:border-cyan-500/30"
+                    ? "border-accent/40 bg-accent/15 text-accent-foreground"
+                    : "border-border text-muted hover:border-border-strong"
                 }`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <button
-            onClick={create}
-            disabled={creating}
-            className="ml-auto rounded-sm border border-cyan-400/50 bg-cyan-500/10 px-4 py-1.5 text-xs tracking-[0.2em] uppercase text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50"
-          >
-            {creating ? "…" : "Schedule"}
-          </button>
+          <Button size="sm" onClick={create} disabled={creating} className="ml-auto">
+            <CalendarPlus className="h-3.5 w-3.5" />
+            Schedule
+          </Button>
         </div>
-        {error && <div className="text-xs text-red-400">{error}</div>}
+        {error && <div className="text-xs text-danger">{error}</div>}
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 px-5 pb-5">
         {tasks.length === 0 && (
-          <div className="text-sm text-cyan-500/50">No automations scheduled yet.</div>
+          <div className="text-sm text-muted">No automations scheduled yet.</div>
         )}
         {tasks.map((task) => (
           <div
             key={task.id}
-            className={`rounded-sm border p-2.5 text-sm ${
-              task.enabled
-                ? "border-cyan-500/15 bg-black/20 text-cyan-100"
-                : "border-cyan-500/10 bg-black/10 text-cyan-500/40"
+            className={`rounded-lg border border-border p-3 text-sm ${
+              task.enabled ? "bg-white/[0.02]" : "opacity-50"
             }`}
           >
             <div className="flex items-start justify-between gap-3">
-              <span className="flex-1">{task.prompt}</span>
-              <div className="flex items-center gap-2 shrink-0 text-[10px] uppercase tracking-wider">
-                <button onClick={() => toggleEnabled(task.id, task.enabled)} className="hover:text-cyan-300">
-                  {task.enabled ? "Pause" : "Resume"}
+              <span className="flex-1 text-foreground">{task.prompt}</span>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => toggleEnabled(task.id, task.enabled)}
+                  className="rounded p-1 text-muted hover:text-foreground"
+                  title={task.enabled ? "Pause" : "Resume"}
+                >
+                  {task.enabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                 </button>
-                <button onClick={() => remove(task.id)} className="hover:text-red-400">
-                  Delete
+                <button
+                  onClick={() => remove(task.id)}
+                  className="rounded p-1 text-muted hover:text-danger"
+                  title="Delete"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px] uppercase tracking-wider text-cyan-500/50">
-              <span>{task.timeOfDay}</span>
-              <span>{daysLabel(task.daysOfWeek)}</span>
-              <span>Next: {task.enabled ? formatNextRun(task.nextRunAt) : "Paused"}</span>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+              <Badge tone="neutral">{task.timeOfDay}</Badge>
+              <Badge tone="neutral">{daysLabel(task.daysOfWeek)}</Badge>
+              <span>{task.enabled ? `Next: ${formatNextRun(task.nextRunAt)}` : "Paused"}</span>
               {task.lastSessionId && (
-                <Link href={`/sessions/${task.lastSessionId}`} className="hover:text-cyan-300">
+                <Link href={`/sessions/${task.lastSessionId}`} className="hover:text-foreground">
                   Last run →
                 </Link>
               )}
@@ -175,6 +186,6 @@ export function ScheduledTasksPanel() {
           </div>
         ))}
       </div>
-    </Panel>
+    </Card>
   );
 }

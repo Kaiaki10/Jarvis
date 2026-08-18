@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { Orbitron, Share_Tech_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { AppShell } from "@/components/AppShell";
 
-const orbitron = Orbitron({
-  variable: "--font-display",
+const inter = Inter({
+  variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["500", "700", "900"],
 });
 
-const shareTechMono = Share_Tech_Mono({
-  variable: "--font-mono-hud",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
-  weight: "400",
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
@@ -21,11 +21,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${orbitron.variable} ${shareTechMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} h-full`}>
+      <body className="min-h-full antialiased">
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }
