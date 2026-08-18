@@ -13,11 +13,6 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 
 ## Open
 
-### high — Approvals wait forever
-`canUseTool` returns a promise with no timeout (`sessionManager.ts`). A blocked
-session holds its slot indefinitely against the concurrency cap, and an unattended run
-can stall silently for days. Needs a timeout with a sensible default action (deny).
-
 ### high — No outbound action has ever succeeded end to end
 Tool registration, gating, editing and rejection are all verified, but no real post or
 email has been sent through any platform. Until one is, the send path is unproven.
@@ -69,6 +64,11 @@ shows stale data and never reconnects. User has no indication the dashboard is
 disconnected until they refresh manually.
 
 ## Closed
+
+- **2026-08-17** Approvals waited forever — closed by a configurable deadline
+  (default 4h, `deferredWithTimeout.ts`) that auto-denies with `interrupt`, notifies,
+  and frees the session slot. Verified with a 1-minute timeout on a real blocked
+  session: auto-denied, file never written, status left `waiting_permission`.
 
 - **2026-08-17** Nothing reached the user when a run needed them — closed by
   `notifications/notifier.ts`: an in-app inbox with an unread badge, plus a Windows

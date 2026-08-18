@@ -283,6 +283,7 @@ const SETTING_DEFAULTS: SettingsRecord = {
   maxConcurrentSessions: 3,
   notifyOnDesktop: true,
   notifyEmail: "",
+  approvalTimeoutMinutes: 240,
 };
 
 function readSetting(key: string): string | undefined {
@@ -312,6 +313,15 @@ export function getSettings(): SettingsRecord {
         : SETTING_DEFAULTS.maxConcurrentSessions,
     notifyOnDesktop: (readSetting("notify_on_desktop") ?? "true") === "true",
     notifyEmail: readSetting("notify_email") ?? SETTING_DEFAULTS.notifyEmail,
+    approvalTimeoutMinutes: (() => {
+      const raw = readSetting("approval_timeout_minutes");
+      if (raw === undefined) return SETTING_DEFAULTS.approvalTimeoutMinutes;
+      const parsed = Number(raw);
+      // 0 is meaningful here ("wait forever"), so only reject genuinely bad values.
+      return Number.isFinite(parsed) && parsed >= 0
+        ? parsed
+        : SETTING_DEFAULTS.approvalTimeoutMinutes;
+    })(),
   };
 }
 
@@ -332,6 +342,9 @@ export function updateSettings(
   }
   if (patch.notifyEmail !== undefined) {
     writeSetting("notify_email", patch.notifyEmail);
+  }
+  if (patch.approvalTimeoutMinutes !== undefined) {
+    writeSetting("approval_timeout_minutes", String(patch.approvalTimeoutMinutes));
   }
   return getSettings();
 }

@@ -453,6 +453,17 @@ app.patch("/settings", (req: Request, res: Response) => {
     res.status(400).json({ error: "maxConcurrentSessions must be an integer from 1 to 10" });
     return;
   }
+  if (
+    body.approvalTimeoutMinutes !== undefined &&
+    (!Number.isInteger(body.approvalTimeoutMinutes) ||
+      body.approvalTimeoutMinutes < 0 ||
+      body.approvalTimeoutMinutes > 10080)
+  ) {
+    res
+      .status(400)
+      .json({ error: "approvalTimeoutMinutes must be an integer from 0 to 10080 (7 days)" });
+    return;
+  }
   res.json(updateSettings(body));
 });
 

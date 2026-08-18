@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowUp, Check, Send, X } from "lucide-react";
 import type { SessionEventRecord } from "@jarvis/shared";
@@ -33,6 +33,27 @@ interface PermissionRequestPayload {
   requestId: string;
   toolName: string;
   input: Record<string, unknown>;
+  expiresAt?: string | null;
+}
+
+/** Live countdown, so it's obvious how long is left before an auto-deny. */
+function TimeRemaining({ expiresAt }: { expiresAt: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const msLeft = new Date(expiresAt).getTime() - now;
+  if (msLeft <= 0) return <span className="text-danger">expired</span>;
+
+  const mins = Math.round(msLeft / 60000);
+  const label = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  return (
+    <span className={mins <= 15 ? "text-danger" : "text-muted"}>
+      auto-denies in {label}
+    </span>
+  );
 }
 
 const OUTBOUND_TOOL_LABELS: Record<string, string> = {
@@ -248,6 +269,11 @@ function PermissionCard({
       <div className="flex items-center gap-2 px-4 pt-3.5 pb-1">
         <Send className="h-3.5 w-3.5 text-warning" />
         <span className="text-sm font-medium text-warning">{action}</span>
+        {request.expiresAt && (
+          <span className="ml-auto text-[11px]">
+            <TimeRemaining expiresAt={request.expiresAt} />
+          </span>
+        )}
       </div>
       <div className="px-4 pb-4">
         <p className="mb-3 text-xs text-muted">
@@ -346,7 +372,14 @@ function TranscriptEntry({ event }: { event: SessionEventRecord }) {
     return null;
   }
   if (event.type === "permission_response") {
-    const payload = event.payload as { decision: string };
+    const payload = event.payload as { decision: string; reason?: string };
+    if (payload.reason === "timeout") {
+      return (
+        <div className="px-1 text-xs text-warning">
+          Auto-denied — no response within the approval window
+        </div>
+      );
+    }
     return <div className="px-1 text-xs text-muted">Permission {payload.decision}</div>;
   }
   return null;

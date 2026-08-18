@@ -126,6 +126,37 @@ export function SettingsPanel() {
               ))}
             </Select>
           </div>
+
+          <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+            <div>
+              <div className="text-sm text-foreground">Approval timeout</div>
+              <div className="text-xs text-muted">
+                How long an unattended run waits for you before denying itself and
+                stopping. Without a limit it holds a session slot indefinitely. Denying
+                is recoverable; sending something unreviewed isn&apos;t.
+              </div>
+            </div>
+            <Select
+              className="h-8 w-auto shrink-0 text-xs"
+              value={String(settings.approvalTimeoutMinutes)}
+              onChange={(e) =>
+                saveSettings({ approvalTimeoutMinutes: Number(e.target.value) })
+              }
+            >
+              {[
+                [30, "30 minutes"],
+                [60, "1 hour"],
+                [240, "4 hours"],
+                [720, "12 hours"],
+                [1440, "24 hours"],
+                [0, "Never time out"],
+              ].map(([value, label]) => (
+                <option key={value} value={value} className="bg-surface">
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </CardBody>
       </Card>
 

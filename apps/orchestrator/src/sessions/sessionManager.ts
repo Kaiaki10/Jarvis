@@ -10,12 +10,14 @@ import type {
 import { appendSessionEvent, getSettings, updateSession } from "../db/repo.js";
 import type { SessionEventRecord } from "@jarvis/shared";
 import { createPushable, type Pushable } from "./pushableIterable.js";
+import { createDeferredWithTimeout } from "./deferredWithTimeout.js";
 import { globalBus } from "../events/globalBus.js";
 import { buildPlatformToolset } from "../platforms/actions.js";
 import { notify } from "../notifications/notifier.js";
 
 interface PendingPermission {
-  resolve: (result: PermissionResult) => void;
+  /** Returns false if the request was already answered or timed out. */
+  settle: (result: PermissionResult) => boolean;
   /** Falling back to this on approve matters — `{}` would run the tool with no arguments. */
   originalInput: Record<string, unknown>;
 }
@@ -93,14 +95,23 @@ export function resolvePermission(
   const pending = handle?.pendingPermissions.get(requestId);
   if (!handle || !pending) return false;
   handle.pendingPermissions.delete(requestId);
+
+  // The request may have expired while this response was in flight; settle()
+  // reports that so we don't log an approval that never took effect.
+  let accepted: boolean;
   if (decision === "allow") {
-    pending.resolve({
+    accepted = pending.settle({
       behavior: "allow",
       updatedInput: updatedInput ?? pending.originalInput,
     });
   } else {
-    pending.resolve({ behavior: "deny", message: "Denied by user via dashboard" });
+    accepted = pending.settle({
+      behavior: "deny",
+      message: "Denied by user via dashboard",
+    });
   }
+  if (!accepted) return false;
+
   // Must be emitted, not just persisted: the UI clears its approval prompt off
   // the back of this event arriving on the stream.
   const event = appendSessionEvent(sessionId, "permission_response", {
@@ -149,11 +160,49 @@ export async function startSession(params: StartSessionParams): Promise<void> {
 
   const canUseTool: CanUseTool = async (toolName, toolInput, options) => {
     const requestId = randomUUID();
+    const shortName = toolName.replace(/^mcp__jarvis__/, "");
+    const timeoutMs = getSettings().approvalTimeoutMinutes * 60_000;
+
+    const deferred = createDeferredWithTimeout<PermissionResult>(timeoutMs, () => {
+      pendingPermissions.delete(requestId);
+
+      const timeoutEvent = appendSessionEvent(params.id, "permission_response", {
+        requestId,
+        decision: "deny",
+        reason: "timeout",
+      });
+      emitter.emit("event", timeoutEvent);
+
+      // An auto-deny that nobody hears about would just be a quieter version of
+      // the problem this timeout exists to solve.
+      notify({
+        type: "session_failed",
+        severity: "warning",
+        title: "Approval timed out",
+        body: `${params.title ?? "A session"} asked to use ${shortName} and got no answer, so it was denied automatically.`,
+        sessionId: params.id,
+      });
+
+      // Deny rather than allow: refusing a post is recoverable, sending one isn't.
+      // interrupt stops the model retrying alternatives unattended for hours.
+      return {
+        behavior: "deny",
+        message: `No response within the approval window, so this was denied automatically. Stop and leave it for a human.`,
+        interrupt: true,
+      };
+    });
+
+    pendingPermissions.set(requestId, {
+      settle: deferred.settle,
+      originalInput: toolInput,
+    });
+
     const event = appendSessionEvent(params.id, "permission_request", {
       requestId,
       toolName,
       input: toolInput,
       toolUseID: options.toolUseID,
+      expiresAt: deferred.expiresAt?.toISOString() ?? null,
     });
     updateSession(params.id, { status: "waiting_permission" });
     globalBus.emit("session_updated", params.id);
@@ -165,12 +214,11 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       type: "approval_needed",
       severity: "warning",
       title: "Approval needed",
-      body: `${params.title ?? "A session"} is waiting on you to approve ${toolName.replace(/^mcp__jarvis__/, "")}.`,
+      body: `${params.title ?? "A session"} is waiting on you to approve ${shortName}.`,
       sessionId: params.id,
     });
-    return new Promise<PermissionResult>((resolve) => {
-      pendingPermissions.set(requestId, { resolve, originalInput: toolInput });
-    });
+
+    return deferred.promise;
   };
 
   // First turn — session_id is unknown until the SDK's init message arrives.

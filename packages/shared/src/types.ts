@@ -154,6 +154,8 @@ export interface SettingsRecord {
   notifyOnDesktop: boolean;
   /** Where to email alerts. Only used once an email platform is connected. */
   notifyEmail: string;
+  /** Auto-deny an unanswered approval after this many minutes. 0 waits forever. */
+  approvalTimeoutMinutes: number;
 }
 
 export interface UpdateSettingsRequest {
@@ -162,6 +164,7 @@ export interface UpdateSettingsRequest {
   maxConcurrentSessions?: number;
   notifyOnDesktop?: boolean;
   notifyEmail?: string;
+  approvalTimeoutMinutes?: number;
 }
 
 export interface ScheduledTaskRecord {
