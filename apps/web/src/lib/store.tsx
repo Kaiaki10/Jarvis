@@ -106,6 +106,53 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let reconnectDelay = 1000;
+    let currentSource: EventSource | null = null;
+
+    function connect() {
+      if (cancelled) return;
+
+      const source = new EventSource(globalEventsUrl());
+      currentSource = source;
+
+      source.addEventListener("session-updated", (evt) => {
+        const updated = JSON.parse((evt as MessageEvent).data) as SessionRecord;
+
+        setSessions((prev) => {
+          const idx = prev.findIndex((s) => s.id === updated.id);
+          const next = idx === -1 ? [updated, ...prev] : [...prev];
+          if (idx !== -1) next[idx] = updated;
+          return next.sort(
+            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
+        });
+
+        setActivity((prev) => {
+          const entry = toActivityEntry(updated);
+          if (prev.some((e) => e.id === entry.id)) return prev;
+          return [entry, ...prev].slice(0, ACTIVITY_LIMIT);
+        });
+      });
+
+      source.addEventListener("notifications-changed", () => {
+        refreshNotifications().catch(() => {});
+      });
+
+      source.addEventListener("open", () => {
+        reconnectDelay = 1000;
+      });
+
+      source.onerror = () => {
+        source.close();
+        if (cancelled) return;
+
+        reconnectTimer = setTimeout(() => {
+          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+          connect();
+        }, reconnectDelay);
+      };
+    }
 
     api.listSessions().then((initial) => {
       if (cancelled) return;
@@ -119,33 +166,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
     });
 
-    const source = new EventSource(globalEventsUrl());
-    source.addEventListener("session-updated", (evt) => {
-      const updated = JSON.parse((evt as MessageEvent).data) as SessionRecord;
-
-      setSessions((prev) => {
-        const idx = prev.findIndex((s) => s.id === updated.id);
-        const next = idx === -1 ? [updated, ...prev] : [...prev];
-        if (idx !== -1) next[idx] = updated;
-        return next.sort(
-          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        );
-      });
-
-      setActivity((prev) => {
-        const entry = toActivityEntry(updated);
-        if (prev.some((e) => e.id === entry.id)) return prev;
-        return [entry, ...prev].slice(0, ACTIVITY_LIMIT);
-      });
-    });
-
-    source.addEventListener("notifications-changed", () => {
-      refreshNotifications().catch(() => {});
-    });
+    connect();
 
     return () => {
       cancelled = true;
-      source.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (currentSource) currentSource.close();
     };
   }, [refreshNotifications]);
 

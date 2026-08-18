@@ -11,10 +11,6 @@ Each run picks **one** item, completes it properly, and records the outcome here
 
 ## Up next
 
-- [ ] EventSource reconnection: Add an `onerror` handler to the global EventSource in
-      `apps/web/src/lib/store.tsx` that automatically reconnects when the orchestrator
-      drops or restarts. Without this, the dashboard silently shows stale data after any
-      network blip until the user manually refreshes.
 - [ ] Loading states: lists render "Loading…" as plain text. Add skeleton rows so the
       layout doesn't jump when data arrives.
 - [ ] The session transcript renders tool calls as nothing at all — tool_use blocks are
@@ -26,6 +22,7 @@ Each run picks **one** item, completes it properly, and records the outcome here
 
 ## Done
 
+- [x] **2026-08-18** EventSource reconnection: Added automatic reconnection with exponential backoff (1s → 30s max) to `apps/web/src/lib/store.tsx`. The global EventSource now recovers from orchestrator restarts or network drops without manual refresh.
 - [x] **2026-08-17** Test suite: Added comprehensive tests for `oauth1.ts` OAuth 1.0a HMAC-SHA1 signing (23 tests covering header format, RFC 3986 encoding, signature construction, parameter sorting, nonce/timestamp generation, and edge cases). All tests passing.
 - [x] **2026-08-17** Empty states: Added icons and action links to TodaySchedule, SessionList, and ScheduledTasksPanel. All empty states now follow the pattern from AutomationHealth (icon + message + clickable action).
 
