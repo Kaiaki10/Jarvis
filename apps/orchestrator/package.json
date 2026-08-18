@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/http/server.ts",
     "smoke:session": "tsx src/sessions/smokeTest.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/db/schema.sql','dist/db/schema.sql')\"",
     "start": "node dist/http/server.js"
   },
@@ -23,6 +25,7 @@
     "@types/node": "^24.0.0",
     "@types/uuid": "^9.0.8",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.10"
   }
 }
