@@ -13,12 +13,6 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 
 ## Open
 
-### critical — Losing `jarvis.key` makes every stored credential unrecoverable
-There is no backup of `jarvis.key` or `jarvis.db`. The key is generated once and
-gitignored by design, so a disk failure or an accidental delete permanently destroys
-every connected platform's credentials with no recovery path. Needs at least a
-documented backup step, ideally an export command.
-
 ### high — No notification when something needs a human
 An automation that blocks for approval at 07:00 sits untouched until someone opens
 the dashboard. Unattended operation is only real if it can reach you — email via the
@@ -81,6 +75,13 @@ disconnected until they refresh manually.
 
 ## Closed
 
+- **2026-08-17** Losing `jarvis.key` destroyed every credential — closed by
+  passphrase-protected export/restore (`security/portableBackup.ts`, Settings →
+  Backup & recovery). Verified by deleting the key and all connections, restarting
+  with a freshly generated key, and recovering from the backup file.
+- **2026-08-17** Restarting the service silently kept running old code — the task's
+  node child was orphaned and held the port. Closed by `scripts/restart-service.ps1`,
+  which kills the port owner before starting.
 - **2026-08-17** OAuth 1.0a signing was unverified — closed by a clean-room RFC 5849
   cross-check in `oauth1.vector.test.ts`.
 - **2026-08-17** Automations died on logout — closed by S4U principal plus boot trigger.

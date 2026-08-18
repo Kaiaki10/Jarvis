@@ -6,6 +6,7 @@ import { useSettings } from "@/lib/hooks";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Textarea, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { BackupPanel } from "@/components/BackupPanel";
 
 export function SettingsPanel() {
   const { settings, saveSettings } = useSettings();
@@ -127,6 +128,8 @@ export function SettingsPanel() {
           </div>
         </CardBody>
       </Card>
+
+      <BackupPanel />
 
       <Card>
         <CardHeader title="Billing" description="How this connects to your Claude account" />

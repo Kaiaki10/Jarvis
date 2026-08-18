@@ -99,6 +99,17 @@ export const api = {
   deleteConnection: (platformId: string) =>
     request<void>(`/connections/${platformId}`, { method: "DELETE" }),
 
+  exportBackup: (passphrase: string) =>
+    request<Record<string, unknown>>("/backup/export", {
+      method: "POST",
+      body: JSON.stringify({ passphrase }),
+    }),
+  importBackup: (passphrase: string, bundle: unknown) =>
+    request<{ restored: string[]; skipped: string[] }>("/backup/import", {
+      method: "POST",
+      body: JSON.stringify({ passphrase, bundle }),
+    }),
+
   getSettings: () => request<SettingsRecord>("/settings"),
   updateSettings: (patch: UpdateSettingsRequest) =>
     request<SettingsRecord>("/settings", {

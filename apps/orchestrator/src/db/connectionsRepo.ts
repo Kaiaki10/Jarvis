@@ -104,3 +104,46 @@ export function recordTestResult(
 export function deleteConnection(platformId: string): void {
   db.prepare(`DELETE FROM connections WHERE platform_id = ?`).run(platformId);
 }
+
+/**
+ * Every stored credential, decrypted. Only for building a passphrase-protected
+ * backup — never return this from an API response.
+ */
+export function exportAllCredentials(): Record<string, Record<string, string>> {
+  const rows = db
+    .prepare(`SELECT platform_id, credentials FROM connections`)
+    .all() as unknown as Array<{ platform_id: string; credentials: string }>;
+
+  const out: Record<string, Record<string, string>> = {};
+  for (const row of rows) {
+    try {
+      out[row.platform_id] = decryptJson<Record<string, string>>(row.credentials);
+    } catch {
+      // A row we can't decrypt is already lost; skip it rather than fail the backup.
+    }
+  }
+  return out;
+}
+
+/**
+ * Restores credentials from a backup. Status is reset rather than assumed — a token
+ * that worked when the backup was taken may have been revoked since, and claiming
+ * "connected" without checking would be a lie.
+ */
+export function importCredentials(
+  bundle: Record<string, Record<string, string>>
+): { restored: string[]; skipped: string[] } {
+  const restored: string[] = [];
+  const skipped: string[] = [];
+
+  for (const [platformId, values] of Object.entries(bundle)) {
+    if (!getPlatform(platformId)) {
+      skipped.push(platformId);
+      continue;
+    }
+    saveConnection(platformId, values);
+    restored.push(platformId);
+  }
+
+  return { restored, skipped };
+}

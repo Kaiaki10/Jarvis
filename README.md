@@ -37,9 +37,27 @@ start on its own after a reboot:
 .\scripts\install-service.ps1
 ```
 
-This builds both apps and registers two hidden logon tasks (`Jarvis Orchestrator` and
-`Jarvis Dashboard`), with logs in `scripts/logs`. Remove them with
+This builds both apps and registers two hidden tasks (`Jarvis Orchestrator` and
+`Jarvis Dashboard`) that start at boot and at logon, running whether or not you are
+signed in. Logs land in `scripts/logs`. Remove them with
 `.\scripts\uninstall-service.ps1` — your database and credentials are left alone.
+
+To apply code changes, always use:
+
+```
+.\scripts\restart-service.ps1        # add -SkipBuild to restart without rebuilding
+```
+
+`Stop-ScheduledTask` on its own is not enough — it orphans the node process, which keeps
+holding the port so the old code carries on serving. The restart script kills the port
+owner first.
+
+## Backing up credentials
+
+Platform credentials are encrypted with `jarvis.key`, which exists only on this machine.
+**Lose it and every stored credential is unrecoverable.** Settings → Backup & recovery
+exports them re-encrypted under a passphrase you choose, so the file is safe to store
+anywhere the passphrase isn't. Restore works on a fresh machine with a different key.
 
 ## Connections
 

@@ -37,7 +37,14 @@ import {
   saveConnection,
   recordTestResult,
   deleteConnection,
+  exportAllCredentials,
+  importCredentials,
 } from "../db/connectionsRepo.js";
+import {
+  createBackup,
+  restoreBackup,
+  type BackupBundle,
+} from "../security/portableBackup.js";
 import { getPlatform, platformDefinitions } from "../platforms/definitions.js";
 import { computeNextRun, startScheduler } from "../scheduler/scheduler.js";
 import { globalBus } from "../events/globalBus.js";
@@ -359,6 +366,47 @@ app.post("/connections/:platformId/test", async (req: Request, res: Response) =>
 app.delete("/connections/:platformId", (req: Request, res: Response) => {
   deleteConnection(req.params.platformId);
   res.status(204).send();
+});
+
+// ---- Credential backup and recovery ----
+
+app.post("/backup/export", (req: Request, res: Response) => {
+  const { passphrase } = req.body as { passphrase?: string };
+  if (!passphrase) {
+    res.status(400).json({ error: "passphrase is required" });
+    return;
+  }
+  const credentials = exportAllCredentials();
+  if (Object.keys(credentials).length === 0) {
+    res.status(400).json({ error: "There are no saved credentials to back up yet." });
+    return;
+  }
+  try {
+    res.json(createBackup(credentials, passphrase));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/backup/import", (req: Request, res: Response) => {
+  const { passphrase, bundle } = req.body as {
+    passphrase?: string;
+    bundle?: BackupBundle;
+  };
+  if (!passphrase || !bundle) {
+    res.status(400).json({ error: "passphrase and bundle are both required" });
+    return;
+  }
+  try {
+    const credentials = restoreBackup<Record<string, Record<string, string>>>(
+      bundle,
+      passphrase
+    );
+    const result = importCredentials(credentials);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 // ---- Settings ----
