@@ -25,6 +25,30 @@ const VIEWPORTS = [
   { name: "narrow", width: 900, height: 1000 },
 ];
 
+/**
+ * Scrolls the page so anything that reveals on approach has actually revealed
+ * before the shutter goes.
+ *
+ * Reveal-on-scroll is driven by IntersectionObserver, which never fires for
+ * content below the fold if nothing ever scrolls. A full-page screenshot
+ * captures the whole document but does NOT scroll to get it — so without this,
+ * every below-the-fold panel photographs as blank, and a reviewer reading these
+ * images concludes the page is broken.
+ */
+async function settleReveals(page) {
+  await page.evaluate(async () => {
+    const step = Math.round(window.innerHeight * 0.75);
+    for (let y = 0; y < document.body.scrollHeight; y += step) {
+      window.scrollTo(0, y);
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    window.scrollTo(0, 0);
+    await new Promise((r) => setTimeout(r, 80));
+  });
+  // Long enough for the reveal transition itself to finish.
+  await page.waitForTimeout(700);
+}
+
 async function main() {
   mkdirSync(outDir, { recursive: true });
 
@@ -45,6 +69,7 @@ async function main() {
       try {
         await page.goto(url, { waitUntil: "networkidle", timeout: 20000 });
         await page.waitForSelector(target.waitFor, { timeout: 10000 });
+        await settleReveals(page);
         const file = `${outDir}/${viewport.name}-${target.name}.png`;
         await page.screenshot({ path: file, fullPage: true });
         console.log(`captured ${file}`);

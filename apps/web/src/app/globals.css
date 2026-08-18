@@ -45,6 +45,32 @@
   --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
   --duration-fast: 140ms;
   --duration-base: 240ms;
+
+  /* Springs. Real interfaces overshoot slightly and settle — linear easing is
+     what makes an animation read as "computer moved a box" instead of "object
+     responded". Pick by how much authority the element has: a whole panel
+     settles gently, a small control can be snappier.
+
+     These are curve approximations, not a physics solver. That is deliberate —
+     they compose with CSS transitions, cost nothing at runtime, and degrade to
+     an instant state change under reduced-motion. */
+  --spring-gentle: linear(
+    0, 0.093 4.5%, 0.34 10.6%, 0.79 21.2%, 0.984 27.5%, 1.06 33.9%,
+    1.076 40.9%, 1.026 55.6%, 0.998 73%, 1
+  );
+  --spring-snappy: linear(
+    0, 0.19 5.5%, 0.63 12.5%, 1.03 21%, 1.11 26.5%, 1.13 33%, 1.04 48%,
+    0.995 65%, 1
+  );
+  --duration-slow: 420ms;
+  --duration-reveal: 620ms;
+
+  /* Materials. Depth from layered translucency rather than drop shadows —
+     a panel that lets the background through reads as glass over the page,
+     not a rectangle sitting on it. */
+  --glass-blur: 20px;
+  --glass-tint: rgba(255, 255, 255, 0.045);
+  --glass-edge: rgba(255, 255, 255, 0.09);
 }
 
 @theme inline {
@@ -276,9 +302,103 @@ textarea::placeholder {
   animation: shimmer 2.4s linear infinite;
 }
 
+/* --- Materials ----------------------------------------------------------- */
+
+/* Glass. Real translucency over whatever is behind it, with a lit top edge.
+   Reserve it for surfaces that float above the page — the sidebar, overlays,
+   anything sticky — so "floating" stays meaningful. */
+.material-glass {
+  background: var(--glass-tint);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  border: 1px solid var(--glass-edge);
+}
+
+/* Pointer-tracked highlight. The --mx/--my custom properties are written by the
+   Spotlight component; with no pointer they stay unset and this renders
+   nothing, so it is inert on touch and for keyboard users. */
+.material-spotlight {
+  position: relative;
+  isolation: isolate;
+}
+
+.material-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+  background: radial-gradient(
+    380px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(129, 132, 255, 0.09),
+    transparent 42%
+  );
+}
+
+.material-spotlight[data-active="true"]::before {
+  opacity: 1;
+}
+
+/* --- Scroll-driven ------------------------------------------------------- */
+
+/* Content reveals as it enters the viewport. Driven by IntersectionObserver in
+   the Reveal component — data-visible flips once and never flips back, so
+   nothing re-animates while you scroll around a page you're working in. */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity var(--duration-reveal) var(--ease-out),
+    transform var(--duration-reveal) var(--spring-gentle);
+  /* Hint the compositor only while the transition can still run. */
+  will-change: opacity, transform;
+}
+
+.reveal[data-visible="true"] {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* Scroll-linked parallax, where the browser supports driving an animation from
+   scroll position directly. No JS, no scroll listener, runs off the main
+   thread. Browsers without it simply get no parallax, which is the correct
+   fallback — it is decoration. */
+@supports (animation-timeline: view()) {
+  .parallax-slow {
+    animation: parallax-drift linear both;
+    animation-timeline: view();
+    animation-range: entry 0% exit 100%;
+  }
+}
+
+@keyframes parallax-drift {
+  from {
+    transform: translateY(var(--parallax-from, 12px));
+  }
+  to {
+    transform: translateY(var(--parallax-to, -12px));
+  }
+}
+
 /* Respect the OS setting — everything above is decoration, none of it carries
    meaning that survives being switched off. */
 @media (prefers-reduced-motion: reduce) {
+  /* Reveals must not leave content stranded at opacity 0 when their transition
+     is disabled — this is the one case where switching motion off could hide
+     information rather than just calming it. */
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .parallax-slow {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {

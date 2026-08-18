@@ -49,7 +49,12 @@ function Sidebar() {
   const { unread } = useNotifications();
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-surface/30 backdrop-blur-xl">
+    // The aside stretches the full document height so the glass runs the whole
+    // side of the page; the nav inside it sticks to the viewport, so it stays
+    // reachable on long pages like Settings without the panel itself ending
+    // partway down.
+    <aside className="material-glass w-60 shrink-0 border-y-0 border-l-0 border-r-border">
+      <div className="sticky top-0 flex h-screen flex-col">
       <div className="px-5 py-6">
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-[0.6rem] bg-gradient-to-br from-accent-bright to-accent text-label font-bold text-white shadow-elev-1 ring-1 ring-inset ring-white/20">
@@ -108,6 +113,7 @@ function Sidebar() {
           Online
         </span>
         <LiveClock />
+        </div>
       </div>
     </aside>
   );

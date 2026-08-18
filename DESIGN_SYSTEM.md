@@ -82,6 +82,82 @@ don't fight it with inline styles.
 Hover transitions belong on interactive things only. A card that isn't a link
 shouldn't move when the pointer crosses it.
 
+## The motion layer
+
+Everything animated lives in `apps/web/src/components/motion/`. One place to
+judge whether the app moves coherently, and one place to fix it when it doesn't.
+Components compose these rather than hand-rolling transitions.
+
+| Primitive | What it does | Where it belongs |
+|---|---|---|
+| `Stagger` | Sections settle in sequence on load | Above-the-fold sections |
+| `Reveal` | Reveals on scroll approach, once | Below-the-fold sections |
+| `Spotlight` | Pointer-tracked highlight on a surface | Cards worth pointing at |
+| `CountUp` | Animates a number to its new value | Any figure that changes |
+
+Springs (`--spring-gentle`, `--spring-snappy`) are curve approximations, not a
+physics solver — deliberately, so they compose with plain CSS transitions and
+cost nothing at runtime. Pick by authority: a whole panel settles gently, a
+small control can be snappier.
+
+Materials (`.material-glass`, `.material-spotlight`) are for surfaces that float
+above the page. Reserve glass for things that genuinely float — the sidebar,
+overlays, anything sticky — so "floating" keeps meaning something.
+
+### What this is not
+
+This is a dashboard, not a product launch page. Apple's site is a linear story
+you scroll once, where scroll *is* the interaction; this is a control room
+someone opens twenty times a day. So:
+
+- **Never hijack scroll.** No scroll-jacking, no pinned sequences that trap the
+  page, no waiting through an animation to reach a number.
+- **Nothing important is gated behind a scroll.** A reveal may only ever delay
+  something below the fold. (`Reveal` fires once and stays revealed for the same
+  reason — content that re-animates every time it crosses the fold reads as
+  broken, not polished.)
+- **Animation is never load-bearing.** If it doesn't run, the interface still
+  works and still tells the truth.
+
+### The ladder
+
+Each rung is one session's work and builds on the one below. Climb; don't
+restyle sideways. A rung counts as done when it is applied in at least three
+real places, documented in the table above, and verified by screenshot.
+
+- [x] **0 — Foundation.** Tokens, type scale, elevation, focus ring.
+- [x] **1 — Motion layer.** Springs, materials, `Stagger`/`Reveal`/`Spotlight`/`CountUp`.
+- [ ] **2 — State transitions.** Things morph instead of swapping. Skeletons
+      that crossfade into real content rather than being replaced; status badges
+      that transition between states; list rows that animate on add and remove
+      instead of appearing. Highest value rung — this is where the app stops
+      feeling like it redraws.
+- [ ] **3 — Shared elements across navigation.** The View Transitions API, so
+      opening a run from the list carries its title and status across instead of
+      cutting to a new page. Check browser support and degrade to a plain
+      navigation.
+- [ ] **4 — Long-page structure.** Settings and Connections are long unbroken
+      forms. Sticky section headers and a progress rail, so position in a long
+      document is always obvious. Scroll-*linked*, never scroll-hijacked.
+- [ ] **5 — Physicality.** Direct manipulation where it earns its place: the
+      task board dragging with momentum and spring settle rather than snapping.
+- [ ] **6 — Ambient state.** The interface quietly reflects what the system is
+      doing — a background that shifts while a run is active, so you can tell at
+      a glance without reading a badge. Subtle enough to ignore.
+
+### Budget
+
+Craft that costs responsiveness isn't craft. These are limits, not targets:
+
+- Animate `transform` and `opacity` only. Anything triggering layout drops frames
+  on a page this dense.
+- No animation on a repeating list row's mount beyond opacity — a fifty-row list
+  must not stagger fifty times.
+- `will-change` only while a transition can still run, never parked permanently.
+- Pointer-driven effects write CSS custom properties; they never call `setState`
+  on move, and they batch reads into one `requestAnimationFrame`.
+- Every rung must hold "no console errors" in the screenshot run at both widths.
+
 ## Spacing and layout
 
 - Page padding `px-8`; sections `gap-6`; inside a card `px-5`, header `pt-5 pb-4`.
