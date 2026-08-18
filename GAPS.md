@@ -25,6 +25,14 @@ approval gate helps only while a human is watching; unattended runs have no limi
 Needs a per-platform daily action cap enforced in `platforms/actions.ts`, and ideally
 a running count surfaced in the dashboard.
 
+### high — Jarvis cannot post images anywhere
+`post_to_x` sends only `{ text }`, and the Slack and Discord tools are text-only too.
+Image posts are the norm for social media and X does not charge extra for them
+($0.015, same as text), so this is a pure capability gap rather than a cost one.
+Needs the two-step X flow — upload to media/upload for a media_id, then attach it —
+plus a decision about where images come from: generated, or a local folder the user
+drops files into.
+
 ### medium — The web app has no tests
 The orchestrator has coverage. `apps/web` has none — no component tests, no test for
 the store's single-EventSource invariant, which is easy to regress by accident.
