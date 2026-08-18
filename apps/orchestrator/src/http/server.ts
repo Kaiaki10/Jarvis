@@ -389,6 +389,19 @@ app.put("/connections/:platformId", (req: Request, res: Response) => {
     res.status(400).json({ error: `Missing required field(s): ${missing.join(", ")}` });
     return;
   }
+
+  // Catch a mispaste here rather than letting it surface later as an opaque
+  // "invalid key" from the platform, which gives the user nothing to act on.
+  for (const field of platform.definition.fields) {
+    const value = merged[field.key];
+    if (!field.expectedPrefix || !value) continue;
+    if (!value.startsWith(field.expectedPrefix)) {
+      res.status(400).json({
+        error: `${field.label} should start with "${field.expectedPrefix}". The value given starts with "${value.slice(0, 4)}…", so it looks like a different value was pasted.`,
+      });
+      return;
+    }
+  }
   res.json(saveConnection(platform.definition.id, merged));
 });
 

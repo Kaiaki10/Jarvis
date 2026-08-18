@@ -80,6 +80,8 @@ export interface CredentialFieldDefinition {
   /** Masked in the UI and never returned by the API once saved. */
   secret: boolean;
   optional?: boolean;
+  /** Rejected at save time if the value doesn't start with this, to catch mispastes. */
+  expectedPrefix?: string;
 }
 
 export interface SetupStepDefinition {
