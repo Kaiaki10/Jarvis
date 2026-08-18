@@ -13,13 +13,6 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 
 ## Open
 
-### high — No outbound action has ever succeeded end to end
-Everything up to the API call is now verified against live X credentials: OAuth 1.0a
-signing, write permission, tool registration, the approval gate, and edit-before-send.
-The real post returned HTTP 402 `credits depleted` — not 401 or 403, which is what
-proves the rest of the chain is correct. Blocked solely on buying X credits. Nothing
-has actually been published yet, so the path stays unproven until one lands.
-
 ### high — Jarvis cannot post images anywhere
 `post_to_x` sends only `{ text }`, and the Slack and Discord tools are text-only too.
 Image posts are the norm for social media and X does not charge extra for them
@@ -66,6 +59,13 @@ shows stale data and never reconnects. User has no indication the dashboard is
 disconnected until they refresh manually.
 
 ## Closed
+
+- **2026-08-18** No outbound action had ever succeeded end to end — CLOSED. Jarvis
+  composed and sent a real email to the user via Resend through the whole chain:
+  session, MCP tool, encrypted vault credentials, spend guard, approval gate, live
+  API. Verified by the tool returning "Email sent" and a billable action landing in
+  the ledger. X remains blocked on account credits (HTTP 402), but the outbound
+  path itself is now proven.
 
 - **2026-08-18** No spend guardrail on paid platform APIs — closed by a per-platform
   daily action cap (`platforms/spendGuard.ts`, default 25) checked before the outbound
