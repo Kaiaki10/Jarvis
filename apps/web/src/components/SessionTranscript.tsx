@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Eye, ShieldQuestion, Undo2, X } from "lucide-react";
+import { Check, Eye, ShieldQuestion, Undo2, Wrench, X } from "lucide-react";
 import type { SessionEventRecord, SessionRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
@@ -11,11 +11,20 @@ import { Button } from "@/components/ui/Button";
 interface ContentBlock {
   type: string;
   text?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+  id?: string;
 }
 
 interface ApiMessage {
   role: string;
   content: string | ContentBlock[];
+}
+
+interface ToolCall {
+  id?: string;
+  name: string;
+  input: Record<string, unknown>;
 }
 
 function messageText(message: ApiMessage): string {
@@ -24,6 +33,55 @@ function messageText(message: ApiMessage): string {
     .filter((b) => b.type === "text")
     .map((b) => b.text ?? "")
     .join("");
+}
+
+function toolCalls(message: ApiMessage): ToolCall[] {
+  if (typeof message.content === "string") return [];
+  return message.content
+    .filter((b) => b.type === "tool_use")
+    .map((b) => ({ id: b.id, name: b.name ?? "tool", input: b.input ?? {} }));
+}
+
+function shortenPath(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const parts = value.split(/[\\/]/);
+  return parts[parts.length - 1] || null;
+}
+
+function firstLine(value: unknown, max = 60): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const line = value.trim().split("\n")[0];
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
+/** Mirrors the phrasing of the live "…" activity line, past tense for history. */
+function toolCallLabel(name: string, input: Record<string, unknown>): string {
+  if (name.startsWith("mcp__jarvis__")) {
+    const bare = name.replace("mcp__jarvis__", "");
+    return bare.replace(/_/g, " ");
+  }
+  switch (name) {
+    case "Bash": {
+      const command = firstLine(input.command, 60);
+      return command ? `Ran ${command}` : "Ran a command";
+    }
+    case "Read":
+      return `Read ${shortenPath(input.file_path) ?? "a file"}`;
+    case "Write":
+      return `Wrote ${shortenPath(input.file_path) ?? "a file"}`;
+    case "Edit":
+      return `Edited ${shortenPath(input.file_path) ?? "a file"}`;
+    case "Glob":
+    case "Grep":
+      return "Searched the codebase";
+    case "TodoWrite":
+      return "Updated the plan";
+    case "WebSearch":
+    case "WebFetch":
+      return "Looked something up";
+    default:
+      return name;
+  }
 }
 
 interface PermissionRequestPayload {
@@ -402,11 +460,19 @@ function TranscriptEntry({
   if (event.type === "assistant") {
     const payload = event.payload as { message: ApiMessage };
     const text = messageText(payload.message);
-    if (!text) return null;
+    const calls = toolCalls(payload.message);
+    if (!text && calls.length === 0) return null;
     return (
-      <div className="animate-message-in max-w-[92%] self-start rounded-2xl rounded-tl-md border border-border bg-white/[0.03] px-4 py-2.5 text-body whitespace-pre-wrap text-foreground shadow-elev-1">
-        {text}
-      </div>
+      <>
+        {text && (
+          <div className="animate-message-in max-w-[92%] self-start rounded-2xl rounded-tl-md border border-border bg-white/[0.03] px-4 py-2.5 text-body whitespace-pre-wrap text-foreground shadow-elev-1">
+            {text}
+          </div>
+        )}
+        {calls.map((call, i) => (
+          <ToolCallRow key={call.id ?? i} call={call} />
+        ))}
+      </>
     );
   }
   if (event.type === "result") {
@@ -441,4 +507,20 @@ function TranscriptEntry({
     return <div className="px-1 text-label text-muted">Permission {payload.decision}</div>;
   }
   return null;
+}
+
+/** A single tool call the agent made, collapsed to its label with the raw input on demand. */
+function ToolCallRow({ call }: { call: ToolCall }) {
+  const bare = call.name.replace(/^mcp__[^_]+__/, "");
+  return (
+    <details className="animate-message-in max-w-[92%] self-start rounded-lg border border-border bg-black/15 px-3 py-2 text-label text-muted">
+      <summary className="cursor-pointer truncate text-foreground-secondary">
+        <Wrench className="mr-1.5 inline h-3.5 w-3.5 align-[-2px]" strokeWidth={1.75} aria-hidden />
+        {toolCallLabel(bare, call.input)}
+      </summary>
+      <pre className="mt-2 overflow-x-auto text-label text-foreground/70">
+        {JSON.stringify(call.input, null, 2)}
+      </pre>
+    </details>
+  );
 }

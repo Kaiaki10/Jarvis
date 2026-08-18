@@ -16,9 +16,6 @@ Each run picks **one** item, completes it properly, and records the outcome here
 
 - [ ] Loading states: lists render "Loading…" as plain text. Add skeleton rows so the
       layout doesn't jump when data arrives.
-- [ ] The session transcript renders tool calls as nothing at all — tool_use blocks are
-      skipped entirely in `TranscriptEntry`. Show a compact, collapsible tool call row so
-      it's visible what the agent actually did.
 - [ ] Relative timestamps: the sessions list shows status but never when anything ran.
       Add a subtle "3m ago" per row.
 - [ ] Keyboard: Cmd/Ctrl+Enter should submit the launcher prompt from anywhere in the form.
@@ -43,6 +40,13 @@ these are things noticed while doing it that were out of scope for that pass.
 
 ## Done
 
+- [x] **2026-08-18** Tool call visibility: `TranscriptEntry` in `SessionTranscript.tsx` was
+      silently dropping `tool_use` content blocks. Added a `ToolCallRow` — a wrench icon, a
+      humanized label ("Ran npm test", "Read store.tsx"), and a `<details>` disclosure for
+      the raw input JSON — following the existing collapsible pattern (visible marker, no
+      hidden-marker a11y risk). Verified against a live 53-tool-call session at desktop and
+      narrow widths via a port-3100 preview against the running orchestrator: no console
+      errors, no overflow, existing text bubbles and permission cards unaffected.
 - [x] **2026-08-18** EventSource reconnection: Added automatic reconnection with exponential backoff (1s → 30s max) to `apps/web/src/lib/store.tsx`. The global EventSource now recovers from orchestrator restarts or network drops without manual refresh.
 - [x] **2026-08-17** Test suite: Added comprehensive tests for `oauth1.ts` OAuth 1.0a HMAC-SHA1 signing (23 tests covering header format, RFC 3986 encoding, signature construction, parameter sorting, nonce/timestamp generation, and edge cases). All tests passing.
 - [x] **2026-08-17** Empty states: Added icons and action links to TodaySchedule, SessionList, and ScheduledTasksPanel. All empty states now follow the pattern from AutomationHealth (icon + message + clickable action).
