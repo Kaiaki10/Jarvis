@@ -49,7 +49,7 @@ these are things noticed while doing it that were out of scope for that pass.
 
 ## Notes
 
-- The live Jarvis runs from **compiled output** in `C:\Users\kaima\projects\jarvis`
+- The live Jarvis runs from **compiled output** in your main checkout
   (`dist/` and `.next/`). This worktree is a separate checkout on branch `jarvis/auto`,
   so nothing done here affects the running service until a human merges and rebuilds.
 - `npx tsc --noEmit` needs `.next/types` to exist for the web app (`LayoutProps` is

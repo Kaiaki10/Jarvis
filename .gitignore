@@ -12,3 +12,9 @@ dist/
 scripts/logs/
 .screenshots/
 .screenshots-*/
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
