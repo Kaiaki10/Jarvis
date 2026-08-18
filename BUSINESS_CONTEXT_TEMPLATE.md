@@ -16,12 +16,16 @@ else can be imperfect; that section is what stops invented claims going out.
 
 - **Business name:** Northwest Hussle
 - **One sentence:** A platform for trade — crypto, stocks, and business ideas.
-- **What that actually means in practice:** **[NEEDS YOU]** _Is this a community, a
-  research/news product, a tool, a course, a signals service, a marketplace? The posts
-  will be vague until this is specific._
-- **Who buys it:** **[NEEDS YOU]** _e.g. "self-directed retail traders who already have
-  a brokerage account" vs "complete beginners". Very different voices._
-- **Who it is not for:** **[NEEDS YOU]** _Naming this sharpens everything else._
+- **What that actually means in practice:** A community and research platform for
+  self-directed traders. Members do their own research and make their own decisions;
+  we provide the material and the room to think in, not the calls.
+- **Who buys it:** Self-directed traders across crypto, stocks, and business ideas —
+  people who already take responsibility for their own positions.
+- **Who it is not for:** Anyone looking to be told what to buy, handed signals, or sold
+  a shortcut. We are not an advisory service and must never sound like one.
+- **Why this matters beyond positioning:** "Self-directed" is also our compliance
+  posture. Members decide; we inform. A post that starts doing the deciding for them
+  breaks the brand and the legal footing in the same sentence.
 - **Stage:** **[NEEDS YOU]** _Pre-launch / first users / established._
 
 ## Facts Jarvis may state as true
@@ -110,7 +114,9 @@ press-release filler that says nothing, the third manufactures urgency about mon
 ## Naming
 
 - Written exactly as: **Northwest Hussle** — two words, and note the spelling of Hussle.
-- Terms: **[NEEDS YOU]** _e.g. "members" vs "users"; "markets" vs "assets"._
+- Say **members**, not users or subscribers — it is a community.
+- Say **research**, not signals, calls, alerts, or plays. Those words imply advice.
+- Say **markets** and **ideas**; avoid "opportunities", which reads as a pitch.
 
 ## Brand assets
 
@@ -125,8 +131,12 @@ press-release filler that says nothing, the third manufactures urgency about mon
 
 ## What we post about
 
-- **Recurring themes:** **[NEEDS YOU]** _3–5 subjects. e.g. market mechanics explained
-  plainly, business idea breakdowns, what moved and why, lessons from being wrong._
+- **Recurring themes** (edit freely — these are a starting set, not a rule):
+  1. Market mechanics explained plainly — how a thing actually works.
+  2. What moved and why, after the fact, rather than predicting the next move.
+  3. Business idea breakdowns — the model, the margins, the risk.
+  4. Research method — how to check a claim, read a filing, size a position.
+  5. Being wrong, in public. Post-mortems build more trust here than wins do.
 - **Never post about:** politics, other people's losses, anything mocking retail
   traders, specific price predictions.
 - **Competitors:** discuss approaches, never name and criticise.
