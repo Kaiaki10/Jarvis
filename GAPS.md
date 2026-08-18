@@ -21,6 +21,8 @@ which use simpler single-request uploads.
 ### medium — The web app has no tests
 The orchestrator has coverage. `apps/web` has none — no component tests, no test for
 the store's single-EventSource invariant, which is easy to regress by accident.
+Playwright is installed in `apps/web/package.json` but no `*.test.ts` or `*.spec.ts`
+files exist anywhere under `apps/web`.
 
 ### medium — Missed schedules may stampede
 `startScheduler` fires everything overdue on the first tick. If the machine was off
@@ -43,20 +45,35 @@ phone. Relevant if approvals should be actionable away from the desk.
 Every platform requires manually copying tokens. Proper OAuth flows would be friendlier
 but need a public redirect URL.
 
+### medium — Notifications table grows without bound
+The `notifications` table has no pruning. Old notifications accumulate forever — a
+system running for a year would have tens of thousands of rows. `listNotifications` caps
+the API response at 100, but the full history stays in SQLite and slows queries.
+Notifications are deleted when their linked session is deleted (`repo.ts:583`), but
+sessions themselves are only pruned by event retention, not guaranteed to be removed.
+
+### medium — Platform actions ledger grows without bound
+`platform_actions` records every billable action taken (posts, emails, etc.) and has no
+pruning. The table is used for daily spend caps (`spendGuard.ts:35-42`) and duplicate
+detection within a 30-day window (`spendGuard.ts:77-88`), so only rows older than 30
+days are technically stale. A busy automation could write thousands of rows per month,
+and nothing ever removes them.
+
 ### medium — Foreign keys are not enforced
 `db.ts` never enables `PRAGMA foreign_keys = ON`, so the `REFERENCES sessions(id)`
-constraint in `session_events` is advisory only. Deleting a session would orphan its
-events without cascade rules, and invalid session_id values are silently accepted. This
-matters if sessions are ever pruned or deleted programmatically.
-
-### medium — EventSource has no error handler
-The global EventSource in `apps/web/src/lib/store.tsx:109` opens with no `onerror`
-listener. A network blip or orchestrator restart silently breaks the live feed — the UI
-shows stale data and never reconnects. User has no indication the dashboard is
-disconnected until they refresh manually.
+constraint in `session_events` is advisory only. Without enforcement, inserting an event
+with a nonexistent session_id would succeed silently. `deleteSession` works around this
+manually at `repo.ts:576-580` by deleting events first, then clearing backreferences in
+scheduled_tasks, but the lack of enforcement means any future table referencing sessions
+must remember to do the same or risk orphaning rows.
 
 ## Closed
 
+- **2026-08-18** EventSource has no error handler — closed by automatic reconnection with
+  exponential backoff (1s → 30s max) in `apps/web/src/lib/store.tsx:150-158`. The global
+  EventSource now recovers from orchestrator restarts or network drops without manual
+  refresh. Verified in code: onerror closes the source, schedules reconnect with
+  increasing delay, and the open listener resets the delay on success.
 - **2026-08-18** Jarvis could not post images — closed by a watched images folder
   plus the X v2 chunked upload (initialize/append/finalize). Verified live: INIT and
   APPEND both succeeded against the real API and only FINALIZE stopped, on account
