@@ -50,23 +50,23 @@ export function StoragePanel() {
         description="Session transcripts accumulate as automations run"
       />
       <CardBody className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-white/[0.02] p-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-white/[0.02] p-3 text-body">
           <div className="flex items-center gap-2">
             <Database className="h-4 w-4 text-muted" strokeWidth={1.75} />
             <span className="text-foreground">{stats ? formatBytes(stats.dbBytes) : "…"}</span>
           </div>
-          <div className="text-xs text-muted">
+          <div className="text-label text-muted">
             {stats ? `${stats.totalEvents.toLocaleString()} events` : ""}
             {stats ? ` · ${stats.sessions} sessions` : ""}
           </div>
           {stats && stats.compactableEvents > 0 && (
-            <div className="text-xs text-warning">
+            <div className="text-label text-warning">
               {stats.compactableEvents.toLocaleString()} compactable
             </div>
           )}
         </div>
 
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-label leading-relaxed text-muted">
           Streaming events are what a turn looks like as it types. Once it finishes, the
           full text is already stored in the completed message, so those deltas are
           redundant — they&apos;re just the bulk of the log. Jarvis compacts them
@@ -75,14 +75,14 @@ export function StoragePanel() {
 
         <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
           <div>
-            <div className="text-sm text-foreground">Keep transcripts for</div>
-            <div className="text-xs text-muted">
+            <div className="text-body text-foreground">Keep transcripts for</div>
+            <div className="text-label text-muted">
               Older sessions keep their summary and status; only the detailed transcript
               is dropped.
             </div>
           </div>
           <Select
-            className="h-8 w-auto shrink-0 text-xs"
+            className="h-8 w-auto shrink-0 text-label"
             value={String(settings?.eventRetentionDays ?? 30)}
             onChange={(e) => saveSettings({ eventRetentionDays: Number(e.target.value) })}
           >
@@ -106,7 +106,7 @@ export function StoragePanel() {
             Compact now
           </Button>
           {notice && (
-            <span className="flex items-center gap-1.5 text-xs text-success">
+            <span className="flex items-center gap-1.5 text-label text-success">
               <Check className="h-3.5 w-3.5" />
               {notice}
             </span>

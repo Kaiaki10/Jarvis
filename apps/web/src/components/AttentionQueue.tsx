@@ -46,8 +46,8 @@ export function AttentionQueue() {
       <Card className="flex items-center gap-3 px-5 py-4">
         <CheckCircle2 className="h-4 w-4 text-success" strokeWidth={2} />
         <div>
-          <div className="text-sm font-medium text-foreground">All clear</div>
-          <div className="text-xs text-muted">
+          <div className="text-body font-medium text-foreground">All clear</div>
+          <div className="text-label text-muted">
             Nothing is blocked or failing. Jarvis will surface anything that needs you here.
           </div>
         </div>
@@ -71,7 +71,7 @@ export function AttentionQueue() {
             <Link
               key={session.id}
               href={`/sessions/${session.id}`}
-              className="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-white/[0.04]"
+              className="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-body hover:bg-white/[0.04]"
             >
               <Icon
                 className={`h-4 w-4 shrink-0 ${blocked ? "text-warning" : "text-danger"}`}

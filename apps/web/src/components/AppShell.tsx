@@ -38,7 +38,9 @@ function LiveClock() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
-  return <span className="tabular-nums text-muted">{time ?? "--:--:--"}</span>;
+  return (
+    <span className="font-mono tabular-nums text-muted">{time ?? "--:--:--"}</span>
+  );
 }
 
 /** Inside the provider, so it can show the live unread count. */
@@ -47,17 +49,20 @@ function Sidebar() {
   const { unread } = useNotifications();
 
   return (
-    <aside className="w-60 shrink-0 border-r border-border flex flex-col">
-      <div className="px-5 py-5">
-        <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-accent flex items-center justify-center text-xs font-bold text-white">
+    <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-surface/30 backdrop-blur-xl">
+      <div className="px-5 py-6">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-[0.6rem] bg-gradient-to-br from-accent-bright to-accent text-label font-bold text-white shadow-elev-1 ring-1 ring-inset ring-white/20">
             J
           </div>
-          <span className="text-sm font-semibold tracking-tight">Jarvis</span>
+          <span className="text-title text-foreground">Jarvis</span>
         </div>
-        <p className="mt-1 text-[11px] text-muted">Personal command center</p>
+        <p className="mt-1.5 text-micro tracking-wide text-muted">
+          Personal command center
+        </p>
       </div>
-      <nav className="flex-1 px-3 flex flex-col gap-0.5">
+
+      <nav className="flex flex-1 flex-col gap-0.5 px-3">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);
           const badge = href === "/notifications" && unread > 0 ? unread : null;
@@ -65,16 +70,27 @@ function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+              aria-current={active ? "page" : undefined}
+              className={`group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-body transition-all duration-150 ${
                 active
-                  ? "bg-white/[0.06] text-foreground"
-                  : "text-muted hover:text-foreground hover:bg-white/[0.03]"
+                  ? "bg-white/[0.07] font-medium text-foreground"
+                  : "text-muted hover:bg-white/[0.04] hover:text-foreground"
               }`}
             >
-              <Icon className="h-4 w-4" strokeWidth={1.75} />
+              {/* The lit spine is what marks the current page — a background
+                  tint alone is too easy to miss at this contrast. */}
+              {active && (
+                <span className="absolute top-1.5 bottom-1.5 -left-1 w-0.5 rounded-full bg-accent-bright shadow-[0_0_8px_var(--accent-glow)]" />
+              )}
+              <Icon
+                className={`h-4 w-4 shrink-0 transition-colors ${
+                  active ? "text-accent-bright" : "text-muted group-hover:text-foreground"
+                }`}
+                strokeWidth={1.75}
+              />
               {label}
               {badge !== null && (
-                <span className="ml-auto rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums">
+                <span className="ml-auto rounded-full bg-accent px-1.5 py-0.5 text-micro font-semibold text-white tabular-nums shadow-elev-1">
                   {badge > 99 ? "99+" : badge}
                 </span>
               )}
@@ -82,9 +98,13 @@ function Sidebar() {
           );
         })}
       </nav>
-      <div className="px-5 py-4 border-t border-border flex items-center justify-between text-[11px]">
+
+      <div className="flex items-center justify-between border-t border-border px-5 py-4 text-micro">
         <span className="flex items-center gap-1.5 text-success">
-          <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-soft" />
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="ping-ring absolute inset-0 rounded-full" />
+            <span className="relative h-1.5 w-1.5 rounded-full bg-success" />
+          </span>
           Online
         </span>
         <LiveClock />

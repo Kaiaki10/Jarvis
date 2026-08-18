@@ -116,10 +116,10 @@ export function ScheduledTasksPanel() {
     <Card className="surface-raised">
       <div className="px-5 pt-5">
         <div className="flex items-baseline justify-between gap-4">
-          <h2 className="text-sm font-semibold tracking-tight text-foreground">
+          <h2 className="text-body font-semibold tracking-tight text-foreground">
             Automations
           </h2>
-          <span className="font-mono text-[11px] tabular-nums text-muted">
+          <span className="font-mono text-micro tabular-nums text-muted">
             {tasks.length ? (
               <>
                 <span className="text-foreground">{activeCount}</span>
@@ -135,14 +135,14 @@ export function ScheduledTasksPanel() {
             )}
           </span>
         </div>
-        <p className="mt-0.5 text-xs text-muted">
+        <p className="mt-0.5 text-label text-muted">
           Recurring work Jarvis does on its own
         </p>
         <div className="rule-fade mt-3.5" />
       </div>
 
       {settings && !settings.automationsEnabled && (
-        <div className="mx-5 mb-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-xs text-warning">
+        <div className="mx-5 mb-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-label text-warning">
           All automations are paused by the master switch in{" "}
           <Link href="/settings" className="underline">
             Settings
@@ -183,7 +183,7 @@ export function ScheduledTasksPanel() {
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
                   <span
-                    className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${kind.color}`}
+                    className={`text-micro font-semibold uppercase tracking-[0.14em] ${kind.color}`}
                   >
                     {kind.label}
                   </span>
@@ -195,7 +195,7 @@ export function ScheduledTasksPanel() {
                   )}
                 </span>
                 <span
-                  className={`mt-0.5 block truncate text-sm ${
+                  className={`mt-0.5 block truncate text-body ${
                     task.enabled ? "text-foreground" : "text-muted line-through"
                   }`}
                 >
@@ -203,26 +203,26 @@ export function ScheduledTasksPanel() {
                 </span>
                 {/* What it is doing now, or what it did last time. */}
                 {running && lastRun?.currentActivity ? (
-                  <span className="mt-1 flex items-center gap-1.5 text-[11px] text-accent-foreground">
+                  <span className="mt-1 flex items-center gap-1.5 text-micro text-accent-foreground">
                     <span className="truncate">{lastRun.currentActivity}</span>
                   </span>
                 ) : lastRun?.summary ? (
-                  <span className="mt-1 block truncate text-[11px] text-muted">
+                  <span className="mt-1 block truncate text-micro text-muted">
                     {lastRun.summary}
                   </span>
                 ) : null}
               </span>
 
               <span className="hidden shrink-0 flex-col items-end gap-0.5 md:flex">
-                <span className="font-mono text-xs tabular-nums text-foreground/80">
+                <span className="font-mono text-label tabular-nums text-foreground/80">
                   {task.timeOfDay}
                 </span>
-                <span className="text-[10px] uppercase tracking-wider text-muted">
+                <span className="text-micro uppercase tracking-wider text-muted">
                   {daysLabel(task.daysOfWeek)}
                 </span>
               </span>
 
-              <span className="hidden w-28 shrink-0 text-right text-[11px] text-muted lg:block">
+              <span className="hidden w-28 shrink-0 text-right text-micro text-muted lg:block">
                 {task.enabled ? formatNextRun(task.nextRunAt) : "Paused"}
               </span>
 
@@ -255,7 +255,7 @@ export function ScheduledTasksPanel() {
             </summary>
 
             <div className="border-t border-border px-3 py-3">
-              <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
+              <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-micro text-muted">
                 <span>
                   Runs {task.timeOfDay} · {daysLabel(task.daysOfWeek)}
                 </span>
@@ -271,14 +271,14 @@ export function ScheduledTasksPanel() {
                 )}
               </div>
               {lastRun?.summary && (
-                <div className="mb-2 rounded-md border border-border bg-black/20 p-2.5 text-xs text-foreground">
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted">
+                <div className="mb-2 rounded-md border border-border bg-black/20 p-2.5 text-label text-foreground">
+                  <div className="mb-1 text-micro uppercase tracking-wide text-muted">
                     Last run
                   </div>
                   {lastRun.summary}
                 </div>
               )}
-              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2.5 font-mono text-[11px] leading-relaxed text-muted">
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2.5 font-mono text-micro leading-relaxed text-muted">
                 {task.prompt}
               </pre>
             </div>
@@ -287,21 +287,21 @@ export function ScheduledTasksPanel() {
         })}
 
         {tasks.length === 0 && (
-          <div className="flex items-center gap-2.5 py-2 text-sm text-muted">
+          <div className="flex items-center gap-2.5 py-2 text-body text-muted">
             <CalendarClock className="h-4 w-4" strokeWidth={1.75} />
             No automations yet — add one below.
           </div>
         )}
 
         <details className="group mt-2 rounded-lg border border-dashed border-border">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm text-muted hover:text-foreground [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-body text-muted hover:text-foreground [&::-webkit-details-marker]:hidden">
             <ChevronRight className={CHEVRON} strokeWidth={2} />
             New automation
           </summary>
 
           <div className="flex flex-col gap-2.5 border-t border-border p-3">
             <Textarea
-              className="w-full text-sm"
+              className="w-full text-body"
               placeholder="What should Jarvis do automatically?"
               rows={3}
               value={prompt}
@@ -309,19 +309,19 @@ export function ScheduledTasksPanel() {
             />
             <div className="flex flex-wrap gap-2">
               <Input
-                className="h-8 min-w-[200px] flex-1 font-mono text-xs"
+                className="h-8 min-w-[200px] flex-1 font-mono text-label"
                 placeholder="Working directory"
                 value={cwd}
                 onChange={(e) => setCwd(e.target.value)}
               />
               <Input
                 type="time"
-                className="h-8 w-auto text-xs"
+                className="h-8 w-auto text-label"
                 value={timeOfDay}
                 onChange={(e) => setTimeOfDay(e.target.value)}
               />
               <Select
-                className="h-8 w-auto text-xs"
+                className="h-8 w-auto text-label"
                 value={permissionMode}
                 onChange={(e) => setPermissionMode(e.target.value)}
               >
@@ -338,7 +338,7 @@ export function ScheduledTasksPanel() {
                   <button
                     key={day}
                     onClick={() => toggleDay(day)}
-                    className={`h-7 w-9 rounded-md border text-[11px] font-medium transition-colors ${
+                    className={`h-7 w-9 rounded-md border text-micro font-medium transition-colors ${
                       days.includes(day)
                         ? "border-accent/40 bg-accent/15 text-accent-foreground"
                         : "border-border text-muted hover:border-border-strong"
@@ -353,7 +353,7 @@ export function ScheduledTasksPanel() {
                 Schedule
               </Button>
             </div>
-            {error && <div className="text-xs text-danger">{error}</div>}
+            {error && <div className="text-label text-danger">{error}</div>}
           </div>
         </details>
       </div>

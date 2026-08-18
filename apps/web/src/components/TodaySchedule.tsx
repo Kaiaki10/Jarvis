@@ -66,7 +66,7 @@ export function TodaySchedule() {
         action={
           <Link
             href="/automations"
-            className="text-xs font-medium text-muted hover:text-foreground"
+            className="text-label font-medium text-muted hover:text-foreground"
           >
             Manage
           </Link>
@@ -74,7 +74,7 @@ export function TodaySchedule() {
       />
       <div className="flex flex-col px-2 pb-3">
         {entries.length === 0 && (
-          <div className="flex items-center gap-2.5 px-3 py-3 text-sm text-muted">
+          <div className="flex items-center gap-2.5 px-3 py-3 text-body text-muted">
             <Calendar className="h-4 w-4" strokeWidth={1.75} />
             Nothing scheduled for today.
             <Link href="/automations" className="text-foreground hover:underline">
@@ -85,11 +85,11 @@ export function TodaySchedule() {
         {entries.map((entry) => {
           const row = (
             <div
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-body ${
                 entry.sessionId ? "hover:bg-white/[0.04]" : ""
               }`}
             >
-              <span className="w-14 shrink-0 font-mono text-xs text-muted">
+              <span className="w-14 shrink-0 font-mono text-label text-muted">
                 {formatTime(entry.time)}
               </span>
               <span
@@ -109,7 +109,7 @@ export function TodaySchedule() {
                   {entry.outcomeLabel}
                 </Badge>
               ) : (
-                <span className="flex items-center gap-1 text-[11px] text-muted">
+                <span className="flex items-center gap-1 text-micro text-muted">
                   <Clock className="h-3 w-3" />
                   Upcoming
                 </span>

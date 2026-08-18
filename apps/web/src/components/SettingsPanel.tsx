@@ -33,7 +33,7 @@ export function SettingsPanel() {
   }
 
   if (!settings) {
-    return <div className="text-sm text-muted">Loading settings…</div>;
+    return <div className="text-body text-muted">Loading settings…</div>;
   }
 
   return (
@@ -45,7 +45,7 @@ export function SettingsPanel() {
         />
         <CardBody>
           <Textarea
-            className="w-full min-h-[220px] font-mono text-xs leading-relaxed"
+            className="w-full min-h-[220px] font-mono text-label leading-relaxed"
             placeholder={
               "e.g.\n\n## Business\nWe sell handmade leather goods, direct to consumer.\n\n## Voice\nWarm, plainspoken, never salesy. No exclamation marks.\n\n## Policies\n30-day returns, no questions asked. Never promise delivery dates."
             }
@@ -61,13 +61,13 @@ export function SettingsPanel() {
               Save context
             </Button>
             {saved && (
-              <span className="flex items-center gap-1.5 text-xs text-success">
+              <span className="flex items-center gap-1.5 text-label text-success">
                 <Check className="h-3.5 w-3.5" />
                 Saved
               </span>
             )}
             {dirty && !saving && (
-              <span className="text-xs text-muted">Unsaved changes</span>
+              <span className="text-label text-muted">Unsaved changes</span>
             )}
           </div>
         </CardBody>
@@ -81,8 +81,8 @@ export function SettingsPanel() {
         <CardBody className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="text-sm text-foreground">Automations enabled</div>
-              <div className="text-xs text-muted">
+              <div className="text-body text-foreground">Automations enabled</div>
+              <div className="text-label text-muted">
                 Master switch. Turn off to stop every scheduled automation from firing,
                 without deleting any of them.
               </div>
@@ -106,15 +106,15 @@ export function SettingsPanel() {
 
           <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
             <div>
-              <div className="text-sm text-foreground">Max concurrent sessions</div>
-              <div className="text-xs text-muted">
+              <div className="text-body text-foreground">Max concurrent sessions</div>
+              <div className="text-label text-muted">
                 Caps how many sessions run at once, so a burst of automations can&apos;t chew
                 through your plan&apos;s rate limits. Scheduled runs wait rather than being
                 skipped.
               </div>
             </div>
             <Select
-              className="h-8 w-auto shrink-0 text-xs"
+              className="h-8 w-auto shrink-0 text-label"
               value={String(settings.maxConcurrentSessions)}
               onChange={(e) =>
                 saveSettings({ maxConcurrentSessions: Number(e.target.value) })
@@ -130,8 +130,8 @@ export function SettingsPanel() {
 
           <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
             <div>
-              <div className="text-sm text-foreground">Daily platform action limit</div>
-              <div className="text-xs text-muted">
+              <div className="text-body text-foreground">Daily platform action limit</div>
+              <div className="text-label text-muted">
                 Caps posts and emails per platform per day. These cost real money — X
                 charges $0.015 a post, or $0.20 if it contains a link — and automations
                 run unattended, so this stops a looping job spending overnight. The
@@ -139,7 +139,7 @@ export function SettingsPanel() {
               </div>
             </div>
             <Select
-              className="h-8 w-auto shrink-0 text-xs"
+              className="h-8 w-auto shrink-0 text-label"
               value={String(settings.dailyPlatformActionCap)}
               onChange={(e) =>
                 saveSettings({ dailyPlatformActionCap: Number(e.target.value) })
@@ -162,15 +162,15 @@ export function SettingsPanel() {
 
           <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
             <div>
-              <div className="text-sm text-foreground">Approval timeout</div>
-              <div className="text-xs text-muted">
+              <div className="text-body text-foreground">Approval timeout</div>
+              <div className="text-label text-muted">
                 How long an unattended run waits for you before denying itself and
                 stopping. Without a limit it holds a session slot indefinitely. Denying
                 is recoverable; sending something unreviewed isn&apos;t.
               </div>
             </div>
             <Select
-              className="h-8 w-auto shrink-0 text-xs"
+              className="h-8 w-auto shrink-0 text-label"
               value={String(settings.approvalTimeoutMinutes)}
               onChange={(e) =>
                 saveSettings({ approvalTimeoutMinutes: Number(e.target.value) })
@@ -201,8 +201,8 @@ export function SettingsPanel() {
         <CardBody className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="text-sm text-foreground">Desktop notifications</div>
-              <div className="text-xs text-muted">
+              <div className="text-body text-foreground">Desktop notifications</div>
+              <div className="text-label text-muted">
                 Windows toast when something needs approval or a run fails. Only appears
                 while you&apos;re signed in — Jarvis keeps running either way.
               </div>
@@ -225,8 +225,8 @@ export function SettingsPanel() {
           </div>
 
           <div className="border-t border-border pt-4">
-            <div className="text-sm text-foreground">Email alerts</div>
-            <div className="text-xs text-muted">
+            <div className="text-body text-foreground">Email alerts</div>
+            <div className="text-label text-muted">
               Reaches you away from this machine. Requires an email platform connected on
               the Connections page; until then this is stored but unused.
             </div>
@@ -251,14 +251,14 @@ export function SettingsPanel() {
           description="Drop images here and Jarvis can attach them to posts"
         />
         <CardBody>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-label leading-relaxed text-muted">
             Generate images however you like — including in ChatGPT under a subscription
             you already pay for — then save them to this folder. Jarvis lists what&apos;s
             there and attaches one when you ask it to. Nothing outside this folder is
             readable, and you still approve every post before it goes out.
           </p>
           <Input
-            className="mt-2 w-full font-mono text-xs"
+            className="mt-2 w-full font-mono text-label"
             placeholder="Leave blank to use the default folder in your home directory"
             defaultValue={settings.imagesFolder}
             onBlur={(e) => {
@@ -277,15 +277,15 @@ export function SettingsPanel() {
       <Card>
         <CardHeader title="Billing" description="How this connects to your Claude account" />
         <CardBody>
-          <p className="text-sm text-muted leading-relaxed">
+          <p className="text-body text-muted leading-relaxed">
             Jarvis runs through your existing Claude Code login, so sessions draw on your
             Claude subscription&apos;s included usage — not metered per-token API billing.
             Heavy use can hit your plan&apos;s rate limits (sessions get throttled until the
             window resets), but it does not create a separate bill.
           </p>
-          <p className="mt-2 text-sm text-muted leading-relaxed">
+          <p className="mt-2 text-body text-muted leading-relaxed">
             The one thing that would change this: setting an{" "}
-            <code className="font-mono text-xs text-foreground">ANTHROPIC_API_KEY</code> in the
+            <code className="font-mono text-label text-foreground">ANTHROPIC_API_KEY</code> in the
             orchestrator&apos;s environment. That takes precedence over subscription auth and
             switches you to pay-per-token. Leave it unset.
           </p>

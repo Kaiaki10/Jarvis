@@ -59,7 +59,7 @@ export function NotificationsList() {
       />
       <div className="flex flex-col px-2 pb-3">
         {notifications.length === 0 && (
-          <div className="flex items-center gap-2.5 px-3 py-4 text-sm text-muted">
+          <div className="flex items-center gap-2.5 px-3 py-4 text-body text-muted">
             <BellOff className="h-4 w-4" strokeWidth={1.75} />
             No notifications yet. Jarvis will alert you here when something needs you.
           </div>
@@ -75,12 +75,12 @@ export function NotificationsList() {
               <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${toneClass(n)}`} strokeWidth={1.75} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-foreground">{n.title}</span>
+                  <span className="text-body text-foreground">{n.title}</span>
                   {!n.read && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
                 </div>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted">{n.body}</p>
+                <p className="mt-0.5 text-label leading-relaxed text-muted">{n.body}</p>
               </div>
-              <span className="shrink-0 text-[11px] text-muted">{relative(n.createdAt)}</span>
+              <span className="shrink-0 text-micro text-muted">{relative(n.createdAt)}</span>
             </div>
           );
 
@@ -96,7 +96,7 @@ export function NotificationsList() {
               {!n.read && (
                 <button
                   onClick={() => markRead(n.id)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-[11px] text-muted opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-micro text-muted opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
                 >
                   Mark read
                 </button>

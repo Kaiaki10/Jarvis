@@ -178,16 +178,21 @@ export function SessionTranscript({
       ))}
 
       {liveText && (
-        <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-3 text-sm whitespace-pre-wrap text-foreground">
+        <div className="animate-message-in rounded-2xl rounded-tl-md border border-border bg-white/[0.03] px-4 py-3 text-body whitespace-pre-wrap text-foreground shadow-elev-1">
           {liveText}
-          <span className="animate-pulse-soft">▍</span>
+          <span className="animate-pulse-soft text-accent-bright">▍</span>
         </div>
       )}
 
       {thinking && (
-        <div className="flex items-center gap-2 px-1 text-xs text-muted">
-          <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-accent" />
-          {session?.currentActivity ?? "Working…"}
+        <div className="flex items-center gap-2 px-1 text-label">
+          <span className="relative flex h-1.5 w-1.5 text-accent">
+            <span className="ping-ring absolute inset-0 rounded-full" />
+            <span className="relative h-1.5 w-1.5 rounded-full bg-accent" />
+          </span>
+          <span className="text-shimmer font-medium">
+            {session?.currentActivity ?? "Working…"}
+          </span>
         </div>
       )}
 
@@ -234,14 +239,14 @@ function PermissionCard({
   if (!action) {
     return (
       <Card className="border-warning/30 bg-warning/5">
-        <div className="px-4 pt-3.5 pb-1 text-sm font-medium text-warning">
+        <div className="px-4 pt-3.5 pb-1 text-body font-medium text-warning">
           Permission requested
         </div>
         <div className="px-4 pb-4">
-          <div className="mb-2 text-sm text-foreground">
-            Tool <code className="font-mono text-xs">{request.toolName}</code>
+          <div className="mb-2 text-body text-foreground">
+            Tool <code className="font-mono text-label">{request.toolName}</code>
           </div>
-          <pre className="mb-3 overflow-x-auto rounded-lg bg-black/30 p-2.5 text-xs text-foreground/70">
+          <pre className="mb-3 overflow-x-auto rounded-lg bg-black/30 p-2.5 text-label text-foreground/70">
             {JSON.stringify(request.input, null, 2)}
           </pre>
           <div className="flex gap-2">
@@ -263,15 +268,15 @@ function PermissionCard({
     <Card className="border-warning/40 bg-warning/5">
       <div className="flex items-center gap-2 px-4 pt-3.5 pb-1">
         <Send className="h-3.5 w-3.5 text-warning" />
-        <span className="text-sm font-medium text-warning">{action}</span>
+        <span className="text-body font-medium text-warning">{action}</span>
         {request.expiresAt && (
-          <span className="ml-auto text-[11px]">
+          <span className="ml-auto text-micro">
             <TimeRemaining expiresAt={request.expiresAt} />
           </span>
         )}
       </div>
       <div className="px-4 pb-4">
-        <p className="mb-3 text-xs text-muted">
+        <p className="mb-3 text-label text-muted">
           Nothing has been sent yet. Review it, edit if you want, then approve.
           {request.estimatedCostUsd ? (
             <>
@@ -285,25 +290,25 @@ function PermissionCard({
             const multiline = key === "text" || key === "body";
             return (
               <div key={key}>
-                <label className="text-[11px] font-medium text-muted">
+                <label className="text-micro font-medium text-muted">
                   {FIELD_LABELS[key] ?? key}
                 </label>
                 {multiline ? (
                   <Textarea
-                    className="mt-1 w-full text-sm"
+                    className="mt-1 w-full text-body"
                     rows={Math.min(8, Math.max(3, value.split("\n").length + 1))}
                     value={value}
                     onChange={(e) => setDraft((p) => ({ ...p, [key]: e.target.value }))}
                   />
                 ) : (
                   <Input
-                    className="mt-1 w-full text-sm"
+                    className="mt-1 w-full text-body"
                     value={value}
                     onChange={(e) => setDraft((p) => ({ ...p, [key]: e.target.value }))}
                   />
                 )}
                 {key === "text" && (
-                  <div className="mt-1 text-right text-[11px] text-muted">
+                  <div className="mt-1 text-right text-micro text-muted">
                     {value.length} characters
                   </div>
                 )}
@@ -328,7 +333,7 @@ function PermissionCard({
             <X className="h-3.5 w-3.5" />
             Reject
           </Button>
-          {edited && <span className="text-[11px] text-muted">Edited</span>}
+          {edited && <span className="text-micro text-muted">Edited</span>}
         </div>
       </div>
     </Card>
@@ -349,7 +354,9 @@ function TranscriptEntry({
     // would put empty bubbles through the conversation.
     if (!text.trim()) return null;
     return (
-      <div className="max-w-[80%] self-end rounded-xl bg-accent px-4 py-2.5 text-sm whitespace-pre-wrap text-white">
+      // Asymmetric corner points back at the sender — the small visual cue that
+      // makes a thread readable at a glance without avatars or name labels.
+      <div className="animate-message-in max-w-[80%] self-end rounded-2xl rounded-br-md bg-gradient-to-br from-accent-bright to-accent px-4 py-2.5 text-body whitespace-pre-wrap text-white shadow-elev-1 ring-1 ring-inset ring-white/15">
         {text}
       </div>
     );
@@ -359,7 +366,7 @@ function TranscriptEntry({
     const text = messageText(payload.message);
     if (!text) return null;
     return (
-      <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-2.5 text-sm whitespace-pre-wrap text-foreground">
+      <div className="animate-message-in max-w-[92%] self-start rounded-2xl rounded-tl-md border border-border bg-white/[0.03] px-4 py-2.5 text-body whitespace-pre-wrap text-foreground shadow-elev-1">
         {text}
       </div>
     );
@@ -369,7 +376,7 @@ function TranscriptEntry({
     // In chat, a clean turn ending is not news — but a failed one still is.
     if (compact && !payload.is_error) return null;
     return (
-      <div className={`px-1 text-xs ${payload.is_error ? "text-danger" : "text-muted"}`}>
+      <div className={`px-1 text-label ${payload.is_error ? "text-danger" : "text-muted"}`}>
         {payload.is_error ? "Turn ended with an error" : "Turn complete"} ·{" "}
         {(payload.duration_ms / 1000).toFixed(1)}s
       </div>
@@ -379,7 +386,7 @@ function TranscriptEntry({
     const payload = event.payload as { subtype?: string; model?: string };
     if (payload.subtype === "init" && !compact) {
       return (
-        <div className="px-1 text-xs text-muted">Session started · {payload.model}</div>
+        <div className="px-1 text-label text-muted">Session started · {payload.model}</div>
       );
     }
     return null;
@@ -388,12 +395,12 @@ function TranscriptEntry({
     const payload = event.payload as { decision: string; reason?: string };
     if (payload.reason === "timeout") {
       return (
-        <div className="px-1 text-xs text-warning">
+        <div className="px-1 text-label text-warning">
           Auto-denied — no response within the approval window
         </div>
       );
     }
-    return <div className="px-1 text-xs text-muted">Permission {payload.decision}</div>;
+    return <div className="px-1 text-label text-muted">Permission {payload.decision}</div>;
   }
   return null;
 }

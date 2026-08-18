@@ -72,7 +72,7 @@ export function BackupPanel() {
       <CardBody className="flex flex-col gap-5">
         <div className="flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/5 p-3">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <p className="text-xs leading-relaxed text-warning">
+          <p className="text-label leading-relaxed text-warning">
             If <code className="font-mono">jarvis.key</code> is lost — disk failure, a
             reinstall, an accidental delete — every stored credential becomes permanently
             unrecoverable. A backup re-encrypts them under a passphrase you choose, so the
@@ -81,8 +81,8 @@ export function BackupPanel() {
         </div>
 
         <div>
-          <div className="text-sm font-medium text-foreground">Create a backup</div>
-          <p className="mt-0.5 text-xs text-muted">
+          <div className="text-body font-medium text-foreground">Create a backup</div>
+          <p className="mt-0.5 text-label text-muted">
             Downloads an encrypted file containing every saved credential. Choose a
             passphrase you can recover — losing it makes the backup useless.
           </p>
@@ -109,15 +109,15 @@ export function BackupPanel() {
             </Button>
           </div>
           {!hasCredentials && (
-            <p className="mt-1.5 text-xs text-muted">
+            <p className="mt-1.5 text-label text-muted">
               Nothing to back up yet — connect a platform first.
             </p>
           )}
         </div>
 
         <div className="border-t border-border pt-4">
-          <div className="text-sm font-medium text-foreground">Restore from a backup</div>
-          <p className="mt-0.5 text-xs text-muted">
+          <div className="text-body font-medium text-foreground">Restore from a backup</div>
+          <p className="mt-0.5 text-label text-muted">
             Recovers credentials onto this machine. Each restored connection is marked
             untested until you re-run its connection test.
           </p>
@@ -156,9 +156,9 @@ export function BackupPanel() {
           </div>
         </div>
 
-        {error && <div className="text-xs text-danger">{error}</div>}
+        {error && <div className="text-label text-danger">{error}</div>}
         {notice && (
-          <div className="flex items-start gap-1.5 text-xs text-success">
+          <div className="flex items-start gap-1.5 text-label text-success">
             <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             {notice}
           </div>

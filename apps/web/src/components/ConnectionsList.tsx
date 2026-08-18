@@ -56,8 +56,8 @@ export function ConnectionsList() {
                     )}
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-foreground">{platform.name}</div>
-                    <div className="text-[11px] text-muted">
+                    <div className="text-body font-medium text-foreground">{platform.name}</div>
+                    <div className="text-micro text-muted">
                       {CATEGORY_LABEL[platform.category]}
                     </div>
                   </div>
@@ -65,16 +65,16 @@ export function ConnectionsList() {
                 <StatusBadge connection={connection} />
               </div>
 
-              <p className="mt-3 text-xs leading-relaxed text-muted">{platform.tagline}</p>
+              <p className="mt-3 text-label leading-relaxed text-muted">{platform.tagline}</p>
 
               {connection?.detail && connected && (
-                <p className="mt-2 text-xs text-success">{connection.detail}</p>
+                <p className="mt-2 text-label text-success">{connection.detail}</p>
               )}
               {connection?.errorMessage && errored && (
-                <p className="mt-2 text-xs text-danger">{connection.errorMessage}</p>
+                <p className="mt-2 text-label text-danger">{connection.errorMessage}</p>
               )}
 
-              <div className="mt-4 flex items-center gap-1 text-xs font-medium text-muted group-hover:text-foreground">
+              <div className="mt-4 flex items-center gap-1 text-label font-medium text-muted group-hover:text-foreground">
                 {connected || errored ? "Manage" : "Set up"}
                 <ArrowRight className="h-3.5 w-3.5" />
               </div>

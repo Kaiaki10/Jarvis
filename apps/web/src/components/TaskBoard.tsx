@@ -56,7 +56,7 @@ export function TaskBoard() {
       <div className="grid grid-cols-1 gap-4 px-5 pb-5 sm:grid-cols-3">
         {COLUMNS.map((col) => (
           <div key={col.status}>
-            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted">
+            <div className="mb-2 flex items-center gap-1.5 text-label font-medium text-muted">
               {col.label}
               <span className="text-muted/60">
                 {tasks.filter((t) => t.status === col.status).length}
@@ -68,7 +68,7 @@ export function TaskBoard() {
                 .map((task) => (
                   <div
                     key={task.id}
-                    className="group rounded-lg border border-border bg-white/[0.02] p-2.5 text-sm"
+                    className="group rounded-lg border border-border bg-white/[0.02] p-2.5 text-body"
                   >
                     <div className="text-foreground">{task.title}</div>
                     <div className="mt-1.5 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
@@ -76,7 +76,7 @@ export function TaskBoard() {
                         <button
                           key={c.status}
                           onClick={() => move(task, c.status)}
-                          className="flex items-center gap-1 text-[11px] text-muted hover:text-accent-foreground"
+                          className="flex items-center gap-1 text-micro text-muted hover:text-accent-foreground"
                         >
                           <ArrowRight className="h-3 w-3" />
                           {c.label}
@@ -92,7 +92,7 @@ export function TaskBoard() {
                   </div>
                 ))}
               {tasks.filter((t) => t.status === col.status).length === 0 && (
-                <div className="rounded-lg border border-dashed border-border px-2.5 py-4 text-center text-xs text-muted">
+                <div className="rounded-lg border border-dashed border-border px-2.5 py-4 text-center text-label text-muted">
                   Empty
                 </div>
               )}

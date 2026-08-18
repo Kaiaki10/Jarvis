@@ -31,7 +31,7 @@ export function AutomationHealth() {
         action={
           <Link
             href="/automations"
-            className="text-xs font-medium text-muted hover:text-foreground"
+            className="text-label font-medium text-muted hover:text-foreground"
           >
             Manage
           </Link>
@@ -39,7 +39,7 @@ export function AutomationHealth() {
       />
       <div className="flex flex-col px-2 pb-3">
         {tasks.length === 0 && (
-          <div className="flex items-center gap-2.5 px-3 py-3 text-sm text-muted">
+          <div className="flex items-center gap-2.5 px-3 py-3 text-body text-muted">
             <CalendarClock className="h-4 w-4" strokeWidth={1.75} />
             No automations yet.
             <Link href="/automations" className="text-foreground hover:underline">
@@ -56,14 +56,14 @@ export function AutomationHealth() {
           return (
             <div
               key={task.id}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-body ${
                 task.enabled ? "" : "opacity-50"
               }`}
             >
               <Icon className={`h-4 w-4 shrink-0 ${kind.color}`} strokeWidth={1.75} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-foreground">{kind.label}</div>
-                <div className="mt-0.5 text-[11px] text-muted">
+                <div className="mt-0.5 text-micro text-muted">
                   {task.timeOfDay} · {daysLabel(task.daysOfWeek)}
                   {task.lastRunAt && ` · last run ${relativeDay(task.lastRunAt)}`}
                 </div>

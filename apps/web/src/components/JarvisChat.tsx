@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, Loader2 } from "lucide-react";
+import { ArrowUp, Loader2, Sparkles } from "lucide-react";
 import type { SessionRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { useSessionStream } from "@/lib/hooks";
@@ -23,6 +23,7 @@ export function JarvisChat() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,10 +68,10 @@ export function JarvisChat() {
   });
 
   return (
-    <Card className="surface-raised flex flex-col overflow-hidden">
-      <div className="max-h-[calc(100vh-22rem)] min-h-[18rem] overflow-y-auto px-5 py-5">
+    <Card elevation={2} className="flex flex-col overflow-hidden">
+      <div className="max-h-[calc(100vh-24rem)] min-h-[19rem] overflow-y-auto px-6 py-6">
         {loading ? (
-          <div className="text-sm text-muted">Loading…</div>
+          <div className="text-body text-muted">Loading…</div>
         ) : sessionId ? (
           <ChatBody sessionId={sessionId} />
         ) : (
@@ -79,17 +80,33 @@ export function JarvisChat() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-border p-3">
-        <div className="flex items-end gap-2">
+      {/* The composer is its own plane — darker than the transcript above it, so
+          the boundary between reading and typing is unmistakable. */}
+      <div className="border-t border-border bg-black/25 p-3">
+        <div
+          className={`flex items-end gap-2 rounded-xl border px-2 py-1 transition-[border-color,box-shadow] duration-200 ${
+            focused
+              ? "border-accent/60 shadow-[0_0_0_3px_var(--accent-glow)]"
+              : "border-transparent"
+          }`}
+        >
           <Textarea
-            className="min-h-[2.5rem] flex-1 border-0 bg-transparent text-sm focus:bg-transparent"
+            className="min-h-[2.5rem] flex-1 border-0 bg-transparent px-2 text-body shadow-none focus:bg-transparent focus:shadow-none"
             placeholder="Ask Jarvis anything…"
             rows={1}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
           />
-          <Button size="sm" onClick={send} disabled={sending || !draft.trim()}>
+          <Button
+            size="icon"
+            className="mb-1 h-8 w-8 shrink-0"
+            aria-label="Send message"
+            onClick={send}
+            disabled={sending || !draft.trim()}
+          >
             {sending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
@@ -97,7 +114,14 @@ export function JarvisChat() {
             )}
           </Button>
         </div>
-        {error && <div className="mt-2 px-1 text-xs text-danger">{error}</div>}
+        {error ? (
+          <div className="mt-2 px-3 text-label text-danger">{error}</div>
+        ) : (
+          <div className="mt-1.5 px-3 text-micro text-muted">
+            <kbd className="font-mono">Enter</kbd> to send ·{" "}
+            <kbd className="font-mono">Shift+Enter</kbd> for a new line
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -118,11 +142,14 @@ function ChatBody({ sessionId }: { sessionId: string }) {
 
 function EmptyState() {
   return (
-    <div className="flex h-full flex-col items-center justify-center py-10 text-center">
-      <div className="text-sm text-foreground">Nothing said yet.</div>
-      <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted">
-        This is one continuous conversation — Jarvis keeps the context of everything
-        here. Scheduled automations run separately and appear under Automations.
+    <div className="flex h-full flex-col items-center justify-center py-12 text-center">
+      <div className="relative mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-bright to-accent text-white shadow-elev-2 ring-1 ring-inset ring-white/20">
+        <Sparkles className="h-5 w-5" strokeWidth={1.75} />
+      </div>
+      <div className="text-title text-foreground">Nothing said yet</div>
+      <p className="mt-2 max-w-sm text-label leading-relaxed text-muted">
+        One continuous conversation — Jarvis keeps the context of everything here.
+        Scheduled automations run separately, under Automations.
       </p>
     </div>
   );

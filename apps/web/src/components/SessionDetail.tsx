@@ -44,13 +44,13 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       <div className="flex items-center gap-3 border-b border-border px-8 py-4">
         <Link
           href="/sessions"
-          className="flex items-center gap-1.5 text-sm text-muted hover:text-foreground"
+          className="flex items-center gap-1.5 text-body text-muted hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           Runs
         </Link>
         {session && (
-          <div className="ml-auto flex items-center gap-3 text-xs text-muted">
+          <div className="ml-auto flex items-center gap-3 text-label text-muted">
             {session.turns != null && <span>{session.turns} turn(s)</span>}
             <Badge tone="neutral">{session.status}</Badge>
           </div>
@@ -70,7 +70,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
       <div className="border-t border-border px-8 py-4">
         {(sendError || notice) && (
-          <div className="mx-auto mb-2 max-w-2xl text-xs">
+          <div className="mx-auto mb-2 max-w-2xl text-label">
             {sendError ? (
               <span className="text-danger">{sendError}</span>
             ) : (
