@@ -53,6 +53,11 @@ import {
   markRead,
   markAllRead,
 } from "../notifications/notifier.js";
+import {
+  getStorageStats,
+  runMaintenance,
+  startMaintenance,
+} from "../db/maintenance.js";
 import { computeNextRun, startScheduler } from "../scheduler/scheduler.js";
 import { globalBus } from "../events/globalBus.js";
 import type {
@@ -417,6 +422,16 @@ app.delete("/connections/:platformId", (req: Request, res: Response) => {
   res.status(204).send();
 });
 
+// ---- Storage ----
+
+app.get("/storage", (_req: Request, res: Response) => {
+  res.json(getStorageStats());
+});
+
+app.post("/storage/compact", (_req: Request, res: Response) => {
+  res.json({ result: runMaintenance(), stats: getStorageStats() });
+});
+
 // ---- Notifications ----
 
 app.get("/notifications", (_req: Request, res: Response) => {
@@ -509,6 +524,7 @@ const server = app.listen(PORT, () => {
   console.log(`Jarvis orchestrator listening on http://localhost:${PORT}`);
   startScheduler();
   startIdleReaper();
+  startMaintenance();
 });
 
 function shutdown() {

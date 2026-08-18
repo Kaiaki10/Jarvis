@@ -138,6 +138,36 @@ function mapEvent(row: SessionEventRow): SessionEventRecord {
   };
 }
 
+/** Beyond this a single event is almost certainly bulk tool output, not signal. */
+const MAX_PAYLOAD_BYTES = 64 * 1024;
+
+/**
+ * Caps a runaway payload while keeping the shape the UI renders. Reading a large
+ * file can produce a multi-megabyte event; storing it verbatim bloats the log for
+ * no benefit, but silently dropping structure would break the transcript.
+ */
+export function truncatePayload(type: SessionEventType, serialized: string): string {
+  if (serialized.length <= MAX_PAYLOAD_BYTES) return serialized;
+
+  const note = `[truncated by Jarvis — ${(serialized.length / 1024).toFixed(0)} KB of content omitted]`;
+
+  if (type === "user" || type === "assistant") {
+    return JSON.stringify({
+      type,
+      message: { role: type === "user" ? "user" : "assistant", content: note },
+      _truncated: true,
+      _originalBytes: serialized.length,
+    });
+  }
+
+  return JSON.stringify({
+    type,
+    _truncated: true,
+    _originalBytes: serialized.length,
+    note,
+  });
+}
+
 export function appendSessionEvent(
   sessionId: string,
   type: SessionEventType,
@@ -154,12 +184,13 @@ export function appendSessionEvent(
     .prepare(
       `INSERT INTO session_events (session_id, seq, type, payload, created_at) VALUES (?, ?, ?, ?, ?)`
     )
-    .run(sessionId, seq, type, JSON.stringify(payload), now);
+    .run(sessionId, seq, type, truncatePayload(type, JSON.stringify(payload)), now);
   return {
     id: Number(result.lastInsertRowid),
     sessionId,
     seq,
     type,
+    // The live listener gets the full payload; only what's persisted is capped.
     payload,
     createdAt: now,
   };
@@ -284,6 +315,7 @@ const SETTING_DEFAULTS: SettingsRecord = {
   notifyOnDesktop: true,
   notifyEmail: "",
   approvalTimeoutMinutes: 240,
+  eventRetentionDays: 30,
 };
 
 function readSetting(key: string): string | undefined {
@@ -322,6 +354,14 @@ export function getSettings(): SettingsRecord {
         ? parsed
         : SETTING_DEFAULTS.approvalTimeoutMinutes;
     })(),
+    eventRetentionDays: (() => {
+      const raw = readSetting("event_retention_days");
+      if (raw === undefined) return SETTING_DEFAULTS.eventRetentionDays;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 0
+        ? parsed
+        : SETTING_DEFAULTS.eventRetentionDays;
+    })(),
   };
 }
 
@@ -345,6 +385,9 @@ export function updateSettings(
   }
   if (patch.approvalTimeoutMinutes !== undefined) {
     writeSetting("approval_timeout_minutes", String(patch.approvalTimeoutMinutes));
+  }
+  if (patch.eventRetentionDays !== undefined) {
+    writeSetting("event_retention_days", String(patch.eventRetentionDays));
   }
   return getSettings();
 }

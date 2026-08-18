@@ -7,6 +7,7 @@ import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Textarea, Select, Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { BackupPanel } from "@/components/BackupPanel";
+import { StoragePanel } from "@/components/StoragePanel";
 
 export function SettingsPanel() {
   const { settings, saveSettings } = useSettings();
@@ -211,6 +212,8 @@ export function SettingsPanel() {
           </div>
         </CardBody>
       </Card>
+
+      <StoragePanel />
 
       <BackupPanel />
 

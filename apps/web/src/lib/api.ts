@@ -2,8 +2,10 @@ import type {
   ConnectionRecord,
   CreateScheduledTaskRequest,
   CreateSessionRequest,
+  MaintenanceResult,
   NotificationRecord,
   PlatformDefinition,
+  StorageStats,
   TestConnectionResult,
   PermissionResponseRequest,
   ScheduledTaskRecord,
@@ -108,6 +110,12 @@ export const api = {
     ),
   deleteConnection: (platformId: string) =>
     request<void>(`/connections/${platformId}`, { method: "DELETE" }),
+
+  getStorage: () => request<StorageStats>("/storage"),
+  compactStorage: () =>
+    request<{ result: MaintenanceResult; stats: StorageStats }>("/storage/compact", {
+      method: "POST",
+    }),
 
   listNotifications: () =>
     request<{ items: NotificationRecord[]; unread: number }>("/notifications"),

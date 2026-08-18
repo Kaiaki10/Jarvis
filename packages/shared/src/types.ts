@@ -156,6 +156,22 @@ export interface SettingsRecord {
   notifyEmail: string;
   /** Auto-deny an unanswered approval after this many minutes. 0 waits forever. */
   approvalTimeoutMinutes: number;
+  /** Drop session transcripts older than this many days. 0 keeps everything. */
+  eventRetentionDays: number;
+}
+
+export interface StorageStats {
+  dbBytes: number;
+  totalEvents: number;
+  streamEvents: number;
+  compactableEvents: number;
+  sessions: number;
+}
+
+export interface MaintenanceResult {
+  compacted: number;
+  pruned: number;
+  reclaimedBytes: number;
 }
 
 export interface UpdateSettingsRequest {
@@ -165,6 +181,7 @@ export interface UpdateSettingsRequest {
   notifyOnDesktop?: boolean;
   notifyEmail?: string;
   approvalTimeoutMinutes?: number;
+  eventRetentionDays?: number;
 }
 
 export interface ScheduledTaskRecord {

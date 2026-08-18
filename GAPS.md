@@ -17,10 +17,6 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 Tool registration, gating, editing and rejection are all verified, but no real post or
 email has been sent through any platform. Until one is, the send path is unproven.
 
-### medium — `session_events` grows without bound
-Every stream event is persisted in full, including large tool outputs. Nothing prunes
-it. Fine now; a problem after months of daily automations.
-
 ### medium — The web app has no tests
 The orchestrator has coverage. `apps/web` has none — no component tests, no test for
 the store's single-EventSource invariant, which is easy to regress by accident.
@@ -60,6 +56,12 @@ disconnected until they refresh manually.
 
 ## Closed
 
+- **2026-08-18** `session_events` grew without bound — measured at 96% of rows and
+  73% of bytes being redundant `stream_event` deltas. Closed by hourly compaction
+  (`db/maintenance.ts`), a 64 KB per-event cap, and configurable retention. Real
+  database went 7517 KB → 972 KB with transcripts verified intact. Note: under WAL,
+  VACUUM alone reclaims nothing without `wal_checkpoint(TRUNCATE)`, and stats that
+  ignore the -wal file understate usage — both were wrong on the first attempt.
 - **2026-08-17** A bad working directory crashed the whole orchestrator — the SDK
   rejects asynchronously inside ProcessTransport, which Node turns into a process
   exit, taking every other session and automation with it. Closed by validating cwd
