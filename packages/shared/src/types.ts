@@ -71,3 +71,40 @@ export interface PermissionResponseRequest {
   decision: "allow" | "deny";
   updatedInput?: unknown;
 }
+
+export interface ScheduledTaskRecord {
+  id: string;
+  prompt: string;
+  cwd: string;
+  permissionMode: string;
+  allowedTools: string[] | null;
+  /** 24h local time, "HH:MM" */
+  timeOfDay: string;
+  /** 0=Sunday..6=Saturday */
+  daysOfWeek: number[];
+  enabled: boolean;
+  lastRunAt: string | null;
+  lastSessionId: string | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateScheduledTaskRequest {
+  prompt: string;
+  cwd: string;
+  permissionMode?: string;
+  allowedTools?: string[];
+  timeOfDay: string;
+  daysOfWeek: number[];
+}
+
+export interface UpdateScheduledTaskRequest {
+  prompt?: string;
+  cwd?: string;
+  permissionMode?: string;
+  allowedTools?: string[];
+  timeOfDay?: string;
+  daysOfWeek?: number[];
+  enabled?: boolean;
+}

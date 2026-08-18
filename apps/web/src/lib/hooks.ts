@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionEventRecord, SessionRecord, TaskRecord } from "@jarvis/shared";
+import type {
+  ScheduledTaskRecord,
+  SessionEventRecord,
+  SessionRecord,
+  TaskRecord,
+} from "@jarvis/shared";
 import { api, globalEventsUrl, sessionStreamUrl } from "./api";
 
 export function useTasksList() {
@@ -58,6 +63,26 @@ export function useSessionsList() {
   }, []);
 
   return { sessions, loading };
+}
+
+export function useScheduledTasksList() {
+  const [tasks, setTasks] = useState<ScheduledTaskRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(() => {
+    return api.listScheduledTasks().then((t) => {
+      setTasks(t);
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 15000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  return { tasks, loading, refresh };
 }
 
 export interface ActivityLogEntry {

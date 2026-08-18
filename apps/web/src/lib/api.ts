@@ -1,10 +1,13 @@
 import type {
+  CreateScheduledTaskRequest,
   CreateSessionRequest,
   PermissionResponseRequest,
+  ScheduledTaskRecord,
   SessionEventRecord,
   SessionRecord,
   TaskRecord,
   TaskStatus,
+  UpdateScheduledTaskRequest,
 } from "@jarvis/shared";
 
 const BASE_URL =
@@ -61,6 +64,20 @@ export const api = {
       body: JSON.stringify(patch),
     }),
   deleteTask: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
+
+  listScheduledTasks: () => request<ScheduledTaskRecord[]>("/scheduled-tasks"),
+  createScheduledTask: (body: CreateScheduledTaskRequest) =>
+    request<ScheduledTaskRecord>("/scheduled-tasks", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateScheduledTask: (id: string, patch: UpdateScheduledTaskRequest) =>
+    request<ScheduledTaskRecord>(`/scheduled-tasks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteScheduledTask: (id: string) =>
+    request<void>(`/scheduled-tasks/${id}`, { method: "DELETE" }),
 };
 
 export function sessionStreamUrl(sessionId: string, since = 0) {

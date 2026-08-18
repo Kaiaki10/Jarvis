@@ -4,6 +4,7 @@ import { ActivityLog } from "@/components/hud/ActivityLog";
 import { SessionLauncher } from "@/components/SessionLauncher";
 import { SessionList } from "@/components/SessionList";
 import { TaskBoard } from "@/components/TaskBoard";
+import { ScheduledTasksPanel } from "@/components/ScheduledTasksPanel";
 
 export default function Home() {
   return (
@@ -18,6 +19,7 @@ export default function Home() {
           <ActivityLog />
         </div>
         <SessionList />
+        <ScheduledTasksPanel />
         <TaskBoard />
       </main>
     </>

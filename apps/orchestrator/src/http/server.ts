@@ -12,6 +12,11 @@ import {
   updateTask,
   deleteTask,
   linkTaskToSession,
+  createScheduledTask,
+  getScheduledTask,
+  listScheduledTasks,
+  updateScheduledTask,
+  deleteScheduledTask,
 } from "../db/repo.js";
 import {
   startSession,
@@ -20,9 +25,12 @@ import {
   interruptSession,
   getSessionEmitter,
 } from "../sessions/sessionManager.js";
+import { computeNextRun, startScheduler } from "../scheduler/scheduler.js";
 import { globalBus } from "../events/globalBus.js";
 import type {
   CreateSessionRequest,
+  CreateScheduledTaskRequest,
+  UpdateScheduledTaskRequest,
   PermissionResponseRequest,
 } from "@jarvis/shared";
 
@@ -208,8 +216,61 @@ app.delete("/tasks/:id", (req: Request, res: Response) => {
   res.status(204).send();
 });
 
+// ---- Scheduled tasks ----
+
+app.get("/scheduled-tasks", (_req: Request, res: Response) => {
+  res.json(listScheduledTasks());
+});
+
+app.post("/scheduled-tasks", (req: Request, res: Response) => {
+  const body = req.body as CreateScheduledTaskRequest;
+  if (!body.prompt || !body.cwd || !body.timeOfDay || !body.daysOfWeek?.length) {
+    res
+      .status(400)
+      .json({ error: "prompt, cwd, timeOfDay, and at least one day of week are required" });
+    return;
+  }
+  const next = computeNextRun(body.timeOfDay, body.daysOfWeek, new Date());
+  const task = createScheduledTask({
+    prompt: body.prompt,
+    cwd: body.cwd,
+    permissionMode: body.permissionMode ?? "default",
+    allowedTools: body.allowedTools,
+    timeOfDay: body.timeOfDay,
+    daysOfWeek: body.daysOfWeek,
+    nextRunAt: next ? next.toISOString() : new Date().toISOString(),
+  });
+  res.status(201).json(task);
+});
+
+app.patch("/scheduled-tasks/:id", (req: Request, res: Response) => {
+  const body = req.body as UpdateScheduledTaskRequest;
+  const existing = getScheduledTask(req.params.id);
+  if (!existing) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  // Reschedule whenever the timing itself, or the enabled flag, changes.
+  let nextRunAt: string | null | undefined = undefined;
+  if (body.timeOfDay !== undefined || body.daysOfWeek !== undefined || body.enabled !== undefined) {
+    const enabled = body.enabled ?? existing.enabled;
+    const timeOfDay = body.timeOfDay ?? existing.timeOfDay;
+    const daysOfWeek = body.daysOfWeek ?? existing.daysOfWeek;
+    const next = enabled ? computeNextRun(timeOfDay, daysOfWeek, new Date()) : null;
+    nextRunAt = next ? next.toISOString() : null;
+  }
+  const task = updateScheduledTask(req.params.id, { ...body, nextRunAt });
+  res.json(task);
+});
+
+app.delete("/scheduled-tasks/:id", (req: Request, res: Response) => {
+  deleteScheduledTask(req.params.id);
+  res.status(204).send();
+});
+
 const server = app.listen(PORT, () => {
   console.log(`Jarvis orchestrator listening on http://localhost:${PORT}`);
+  startScheduler();
 });
 
 function shutdown() {

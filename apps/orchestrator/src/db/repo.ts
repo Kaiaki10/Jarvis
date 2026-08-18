@@ -5,6 +5,7 @@ import type {
   SessionEventRecord,
   SessionEventType,
   SessionStatus,
+  ScheduledTaskRecord,
   TaskRecord,
   TaskStatus,
 } from "@jarvis/shared";
@@ -273,4 +274,135 @@ export function linkTaskToSession(taskId: string, sessionId: string): void {
     new Date().toISOString(),
     taskId
   );
+}
+
+interface ScheduledTaskRow {
+  id: string;
+  prompt: string;
+  cwd: string;
+  permission_mode: string;
+  allowed_tools: string | null;
+  time_of_day: string;
+  days_of_week: string;
+  enabled: number;
+  last_run_at: string | null;
+  last_session_id: string | null;
+  next_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapScheduledTask(row: ScheduledTaskRow): ScheduledTaskRecord {
+  return {
+    id: row.id,
+    prompt: row.prompt,
+    cwd: row.cwd,
+    permissionMode: row.permission_mode,
+    allowedTools: row.allowed_tools ? JSON.parse(row.allowed_tools) : null,
+    timeOfDay: row.time_of_day,
+    daysOfWeek: JSON.parse(row.days_of_week),
+    enabled: row.enabled === 1,
+    lastRunAt: row.last_run_at,
+    lastSessionId: row.last_session_id,
+    nextRunAt: row.next_run_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createScheduledTask(input: {
+  prompt: string;
+  cwd: string;
+  permissionMode: string;
+  allowedTools?: string[];
+  timeOfDay: string;
+  daysOfWeek: number[];
+  nextRunAt: string;
+}): ScheduledTaskRecord {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO scheduled_tasks (id, prompt, cwd, permission_mode, allowed_tools, time_of_day, days_of_week, enabled, last_run_at, last_session_id, next_run_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL, NULL, ?, ?, ?)`
+  ).run(
+    id,
+    input.prompt,
+    input.cwd,
+    input.permissionMode,
+    input.allowedTools ? JSON.stringify(input.allowedTools) : null,
+    input.timeOfDay,
+    JSON.stringify(input.daysOfWeek),
+    input.nextRunAt,
+    now,
+    now
+  );
+  return getScheduledTask(id)!;
+}
+
+export function getScheduledTask(id: string): ScheduledTaskRecord | undefined {
+  const row = db.prepare(`SELECT * FROM scheduled_tasks WHERE id = ?`).get(id) as
+    | unknown
+    | undefined;
+  return row ? mapScheduledTask(row as ScheduledTaskRow) : undefined;
+}
+
+export function listScheduledTasks(): ScheduledTaskRecord[] {
+  const rows = db
+    .prepare(`SELECT * FROM scheduled_tasks ORDER BY time_of_day ASC`)
+    .all() as unknown as ScheduledTaskRow[];
+  return rows.map(mapScheduledTask);
+}
+
+export function listEnabledScheduledTasks(): ScheduledTaskRecord[] {
+  const rows = db
+    .prepare(`SELECT * FROM scheduled_tasks WHERE enabled = 1`)
+    .all() as unknown as ScheduledTaskRow[];
+  return rows.map(mapScheduledTask);
+}
+
+export function updateScheduledTask(
+  id: string,
+  patch: Partial<{
+    prompt: string;
+    cwd: string;
+    permissionMode: string;
+    allowedTools: string[] | null;
+    timeOfDay: string;
+    daysOfWeek: number[];
+    enabled: boolean;
+    lastRunAt: string;
+    lastSessionId: string;
+    nextRunAt: string | null;
+  }>
+): ScheduledTaskRecord | undefined {
+  const current = getScheduledTask(id);
+  if (!current) return undefined;
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE scheduled_tasks SET prompt = ?, cwd = ?, permission_mode = ?, allowed_tools = ?, time_of_day = ?, days_of_week = ?, enabled = ?, last_run_at = ?, last_session_id = ?, next_run_at = ?, updated_at = ? WHERE id = ?`
+  ).run(
+    patch.prompt ?? current.prompt,
+    patch.cwd ?? current.cwd,
+    patch.permissionMode ?? current.permissionMode,
+    patch.allowedTools !== undefined
+      ? patch.allowedTools
+        ? JSON.stringify(patch.allowedTools)
+        : null
+      : current.allowedTools
+        ? JSON.stringify(current.allowedTools)
+        : null,
+    patch.timeOfDay ?? current.timeOfDay,
+    JSON.stringify(patch.daysOfWeek ?? current.daysOfWeek),
+    (patch.enabled ?? current.enabled) ? 1 : 0,
+    patch.lastRunAt ?? current.lastRunAt,
+    patch.lastSessionId ?? current.lastSessionId,
+    patch.nextRunAt !== undefined ? patch.nextRunAt : current.nextRunAt,
+    now,
+    id
+  );
+  return getScheduledTask(id);
+}
+
+export function deleteScheduledTask(id: string): void {
+  db.prepare(`DELETE FROM scheduled_tasks WHERE id = ?`).run(id);
 }
