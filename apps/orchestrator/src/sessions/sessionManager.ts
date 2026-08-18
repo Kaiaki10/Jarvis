@@ -18,6 +18,7 @@ import { createPushable, type Pushable } from "./pushableIterable.js";
 import { createDeferredWithTimeout } from "./deferredWithTimeout.js";
 import { globalBus } from "../events/globalBus.js";
 import { buildPlatformToolset } from "../platforms/actions.js";
+import { estimateActionCost } from "../platforms/spendGuard.js";
 import { notify } from "../notifications/notifier.js";
 
 interface PendingPermission {
@@ -239,12 +240,17 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       originalInput: toolInput,
     });
 
+    // Surfaced at approval time so a $0.20 post is a decision rather than a
+    // surprise on the invoice.
+    const estimatedCostUsd = estimateActionCost(shortName, toolInput);
+
     const event = appendSessionEvent(params.id, "permission_request", {
       requestId,
       toolName,
       input: toolInput,
       toolUseID: options.toolUseID,
       expiresAt: deferred.expiresAt?.toISOString() ?? null,
+      estimatedCostUsd,
     });
     updateSession(params.id, { status: "waiting_permission" });
     globalBus.emit("session_updated", params.id);

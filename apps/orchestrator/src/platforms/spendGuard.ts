@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { db } from "../db/db.js";
 import { getSettings } from "../db/repo.js";
 
@@ -44,12 +45,46 @@ export function countActionsToday(platformId: string): number {
 export function recordAction(
   platformId: string,
   toolName: string,
-  sessionId?: string | null
+  sessionId?: string | null,
+  contentHash?: string | null
 ): void {
   db.prepare(
-    `INSERT INTO platform_actions (platform_id, tool_name, session_id, created_at)
-     VALUES (?, ?, ?, ?)`
-  ).run(platformId, toolName, sessionId ?? null, new Date().toISOString());
+    `INSERT INTO platform_actions (platform_id, tool_name, session_id, created_at, content_hash)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(
+    platformId,
+    toolName,
+    sessionId ?? null,
+    new Date().toISOString(),
+    contentHash ?? null
+  );
+}
+
+/** Whitespace and case are not meaningful differences for "did we post this already". */
+export function contentHash(text: string): string {
+  return createHash("sha256")
+    .update(text.trim().replace(/\s+/g, " ").toLowerCase())
+    .digest("hex");
+}
+
+const DUPLICATE_WINDOW_DAYS = 30;
+
+/**
+ * X rejects a duplicate post — but the attempt is still a billed request, and for
+ * an unattended automation the rejection is invisible. Catching it locally costs
+ * nothing and stops the same content going out twice.
+ */
+export function isDuplicate(platformId: string, text: string): boolean {
+  const since = new Date(
+    Date.now() - DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM platform_actions
+       WHERE platform_id = ? AND content_hash = ? AND created_at >= ?`
+    )
+    .get(platformId, contentHash(text), since) as unknown as { n: number };
+  return row.n > 0;
 }
 
 export interface CapCheck {

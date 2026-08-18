@@ -7,7 +7,7 @@ import type {
 import { oauth1Header } from "./oauth1.js";
 import { listConnections, getConnectionCredentials } from "../db/connectionsRepo.js";
 import { getPlatform } from "./definitions.js";
-import { checkDailyCap, recordAction } from "./spendGuard.js";
+import { checkDailyCap, recordAction, isDuplicate, contentHash } from "./spendGuard.js";
 import { notify } from "../notifications/notifier.js";
 import { listImages, imagesFolder, readImage, mimeTypeFor } from "./media.js";
 import { basename } from "node:path";
@@ -43,7 +43,9 @@ function fail(text: string) {
 async function guarded(
   platformId: string,
   toolName: string,
-  send: () => Promise<{ content: { type: "text"; text: string }[]; isError?: boolean }>
+  send: () => Promise<{ content: { type: "text"; text: string }[]; isError?: boolean }>,
+  /** Post body, when there is one, for duplicate detection and the ledger. */
+  content?: string
 ) {
   const check = checkDailyCap(platformId);
   if (!check.allowed) {
@@ -56,8 +58,18 @@ async function guarded(
     return fail(check.message ?? "Daily limit reached.");
   }
 
+  if (content && isDuplicate(platformId, content)) {
+    return fail(
+      `This exact text was already posted to ${platformId} within the last 30 days. ` +
+        `${platformId === "x" ? "X rejects duplicates and still bills the attempt. " : ""}` +
+        `Write something different rather than reposting.`
+    );
+  }
+
   const result = await send();
-  if (!result.isError) recordAction(platformId, toolName);
+  if (!result.isError) {
+    recordAction(platformId, toolName, null, content ? contentHash(content) : null);
+  }
   return result;
 }
 
@@ -172,9 +184,17 @@ function buildXTools(creds: Creds): AnyTool[] {
     ),
     tool(
       "post_to_x",
-      "Publish a post to the connected X (Twitter) account, optionally with one image. Use only when the user has asked for something to be posted publicly.",
+      "Publish a post to the connected X (Twitter) account, optionally with one image. Use only when the user has asked for something to be posted publicly. " +
+        "Cost matters: X charges $0.015 per post, but $0.20 — over thirteen times more — if the text contains any URL. " +
+        "Attaching an image is free. If a link is not essential to the post, leave it out and offer to add it as a reply instead. " +
+        "Never post the same text twice; X rejects duplicates and the attempt is still billed.",
       {
-        text: z.string().max(280).describe("The post body. Max 280 characters."),
+        text: z
+          .string()
+          .max(280)
+          .describe(
+            "The post body. Max 280 characters. Avoid including a URL unless necessary — it multiplies the cost by 13."
+          ),
         imageFile: z
           .string()
           .optional()
@@ -238,7 +258,7 @@ function buildXTools(creds: Creds): AnyTool[] {
         } catch {
           return ok("Posted to X.");
         }
-      })
+      }, args.text)
     ),
   ]);
 }
@@ -265,7 +285,7 @@ function buildSlackTools(creds: Creds): AnyTool[] {
         const data = (await res.json()) as { ok?: boolean; error?: string; ts?: string };
         if (!data.ok) return fail(`Slack refused the message: ${data.error ?? "unknown error"}`);
         return ok(`Message sent to ${args.channel}.`);
-      })
+      }, args.text)
     ),
   ]);
 }
@@ -296,7 +316,7 @@ function buildDiscordTools(creds: Creds): AnyTool[] {
           return fail(`Discord refused the message (HTTP ${res.status}): ${await res.text()}`);
         }
         return ok(`Message sent to Discord channel ${args.channelId}.`);
-      })
+      }, args.text)
     ),
   ]);
 }

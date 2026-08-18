@@ -83,3 +83,30 @@ describe("checkDailyCap", () => {
     expect(x?.usedToday).toBe(3);
   });
 });
+
+describe("duplicate detection", () => {
+  it("treats identical text as a duplicate once recorded", async () => {
+    const { isDuplicate, recordAction, contentHash } = await load();
+    const text = "Our Q3 report is ready for review.";
+    expect(isDuplicate("x", text)).toBe(false);
+    recordAction("x", "post_to_x", null, contentHash(text));
+    expect(isDuplicate("x", text)).toBe(true);
+  });
+
+  it("ignores differences that are not meaningful to a reader", async () => {
+    const { isDuplicate } = await load();
+    // Same post with stray whitespace or casing should still be caught, since X
+    // would reject it and bill the attempt anyway.
+    expect(isDuplicate("x", "  Our Q3 REPORT   is ready for review.  ")).toBe(true);
+  });
+
+  it("does not flag genuinely different text", async () => {
+    const { isDuplicate } = await load();
+    expect(isDuplicate("x", "Our Q4 report is ready for review.")).toBe(false);
+  });
+
+  it("scopes duplicates to a single platform", async () => {
+    const { isDuplicate } = await load();
+    expect(isDuplicate("slack", "Our Q3 report is ready for review.")).toBe(false);
+  });
+});

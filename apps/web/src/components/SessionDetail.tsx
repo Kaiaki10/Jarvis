@@ -34,6 +34,18 @@ interface PermissionRequestPayload {
   toolName: string;
   input: Record<string, unknown>;
   expiresAt?: string | null;
+  estimatedCostUsd?: number;
+}
+
+/** Real money, unlike Claude session costs — so it belongs in front of the decision. */
+function CostNotice({ cost, text }: { cost: number; text: unknown }) {
+  const hasUrl = typeof text === "string" && /https?:\/\/\S+/i.test(text);
+  return (
+    <span className={hasUrl ? "text-warning" : "text-muted"}>
+      ~${cost.toFixed(3)}
+      {hasUrl && " — the link is what makes it $0.20 instead of $0.015"}
+    </span>
+  );
 }
 
 /** Live countdown, so it's obvious how long is left before an auto-deny. */
@@ -295,6 +307,12 @@ function PermissionCard({
       <div className="px-4 pb-4">
         <p className="mb-3 text-xs text-muted">
           Nothing has been sent yet. Review it, edit if you want, then approve.
+          {request.estimatedCostUsd ? (
+            <>
+              {" "}
+              <CostNotice cost={request.estimatedCostUsd} text={draft.text} />
+            </>
+          ) : null}
         </p>
         <div className="flex flex-col gap-3">
           {Object.entries(draft).map(([key, value]) => {

@@ -10,3 +10,18 @@ export const DB_PATH =
 export const db = new DatabaseSync(DB_PATH);
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec(readFileSync(join(__dirname, "schema.sql"), "utf-8"));
+
+/**
+ * Columns added after a table shipped. SQLite has no ADD COLUMN IF NOT EXISTS,
+ * and re-running a plain ALTER throws, so each is attempted and ignored when it
+ * is already there. Kept here so an existing database upgrades on start.
+ */
+for (const statement of [
+  "ALTER TABLE platform_actions ADD COLUMN content_hash TEXT",
+]) {
+  try {
+    db.exec(statement);
+  } catch {
+    // Already applied.
+  }
+}
