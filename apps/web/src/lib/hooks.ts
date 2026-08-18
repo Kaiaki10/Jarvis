@@ -9,6 +9,7 @@ export {
   useActivityLog,
   useTasksList,
   useScheduledTasksList,
+  useSettings,
 } from "./store";
 export type { ActivityLogEntry } from "./store";
 

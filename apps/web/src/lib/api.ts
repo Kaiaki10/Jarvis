@@ -5,9 +5,11 @@ import type {
   ScheduledTaskRecord,
   SessionEventRecord,
   SessionRecord,
+  SettingsRecord,
   TaskRecord,
   TaskStatus,
   UpdateScheduledTaskRequest,
+  UpdateSettingsRequest,
 } from "@jarvis/shared";
 
 const BASE_URL =
@@ -78,6 +80,13 @@ export const api = {
     }),
   deleteScheduledTask: (id: string) =>
     request<void>(`/scheduled-tasks/${id}`, { method: "DELETE" }),
+
+  getSettings: () => request<SettingsRecord>("/settings"),
+  updateSettings: (patch: UpdateSettingsRequest) =>
+    request<SettingsRecord>("/settings", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
 };
 
 export function sessionStreamUrl(sessionId: string, since = 0) {

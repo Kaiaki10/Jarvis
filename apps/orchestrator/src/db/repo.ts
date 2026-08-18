@@ -6,6 +6,7 @@ import type {
   SessionEventType,
   SessionStatus,
   ScheduledTaskRecord,
+  SettingsRecord,
   TaskRecord,
   TaskStatus,
 } from "@jarvis/shared";
@@ -274,6 +275,55 @@ export function linkTaskToSession(taskId: string, sessionId: string): void {
     new Date().toISOString(),
     taskId
   );
+}
+
+const SETTING_DEFAULTS: SettingsRecord = {
+  businessContext: "",
+  automationsEnabled: true,
+  maxConcurrentSessions: 3,
+};
+
+function readSetting(key: string): string | undefined {
+  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+    | unknown
+    | undefined;
+  return row ? (row as { value: string }).value : undefined;
+}
+
+function writeSetting(key: string, value: string): void {
+  db.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).run(key, value, new Date().toISOString());
+}
+
+export function getSettings(): SettingsRecord {
+  const maxRaw = readSetting("max_concurrent_sessions");
+  const parsedMax = maxRaw ? Number(maxRaw) : NaN;
+  return {
+    businessContext: readSetting("business_context") ?? SETTING_DEFAULTS.businessContext,
+    automationsEnabled:
+      (readSetting("automations_enabled") ?? "true") === "true",
+    maxConcurrentSessions:
+      Number.isFinite(parsedMax) && parsedMax > 0
+        ? parsedMax
+        : SETTING_DEFAULTS.maxConcurrentSessions,
+  };
+}
+
+export function updateSettings(
+  patch: Partial<SettingsRecord>
+): SettingsRecord {
+  if (patch.businessContext !== undefined) {
+    writeSetting("business_context", patch.businessContext);
+  }
+  if (patch.automationsEnabled !== undefined) {
+    writeSetting("automations_enabled", patch.automationsEnabled ? "true" : "false");
+  }
+  if (patch.maxConcurrentSessions !== undefined) {
+    writeSetting("max_concurrent_sessions", String(patch.maxConcurrentSessions));
+  }
+  return getSettings();
 }
 
 interface ScheduledTaskRow {

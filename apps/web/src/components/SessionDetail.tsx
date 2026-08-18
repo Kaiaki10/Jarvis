@@ -117,7 +117,6 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         </Link>
         {session && (
           <div className="ml-auto flex items-center gap-3 text-xs text-muted">
-            {session.costUsd != null && <span>${session.costUsd.toFixed(4)}</span>}
             {session.turns != null && <span>{session.turns} turn(s)</span>}
             <Badge tone="neutral">{session.status}</Badge>
           </div>
@@ -202,15 +201,11 @@ function TranscriptEntry({ event }: { event: SessionEventRecord }) {
     );
   }
   if (event.type === "result") {
-    const payload = event.payload as {
-      is_error: boolean;
-      duration_ms: number;
-      total_cost_usd: number;
-    };
+    const payload = event.payload as { is_error: boolean; duration_ms: number };
     return (
       <div className="px-1 text-xs text-muted">
         {payload.is_error ? "Turn ended with an error" : "Turn complete"} ·{" "}
-        {(payload.duration_ms / 1000).toFixed(1)}s · ${payload.total_cost_usd.toFixed(4)}
+        {(payload.duration_ms / 1000).toFixed(1)}s
       </div>
     );
   }

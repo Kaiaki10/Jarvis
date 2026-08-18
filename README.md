@@ -39,9 +39,21 @@ Open http://localhost:3000.
 SQLite database at `apps/orchestrator/jarvis.db` (git-ignored) holds sessions, their full
 event/transcript log, and tasks. Delete the file to reset.
 
-## Known V1 limitations
+## Billing
+
+Sessions run through your existing Claude Code login, so they draw on your Claude
+subscription's included usage rather than metered per-token API billing. Heavy use can hit
+your plan's rate limits, but does not produce a separate bill. Setting `ANTHROPIC_API_KEY`
+in the orchestrator's environment would override subscription auth and switch you to
+pay-per-token — leave it unset.
+
+## Known limitations
 
 - Single local user, no auth — don't expose the orchestrator's port beyond localhost.
 - Restarting the orchestrator interrupts any in-flight sessions; they can't be reattached
   mid-execution (shows as `interrupted` in the sessions list).
-- No cap yet on concurrent sessions.
+- Automations only fire while the orchestrator process is running. There's no wake-from-sleep
+  or system-level trigger — leave it running (e.g. start it at login) for morning schedules.
+- Idle sessions are closed after 30 minutes to release their Claude Code subprocess. After
+  that, follow-ups fail; resuming a closed session isn't implemented yet.
+- Session transcripts grow unbounded; verbose tool output is stored in full.

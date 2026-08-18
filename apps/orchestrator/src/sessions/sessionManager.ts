@@ -7,7 +7,7 @@ import type {
   PermissionResult,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { appendSessionEvent, updateSession } from "../db/repo.js";
+import { appendSessionEvent, getSettings, updateSession } from "../db/repo.js";
 import type { SessionEventRecord } from "@jarvis/shared";
 import { createPushable, type Pushable } from "./pushableIterable.js";
 import { globalBus } from "../events/globalBus.js";
@@ -22,17 +22,54 @@ interface SessionHandle {
   pendingPermissions: Map<string, PendingPermission>;
   claudeSessionId: string | null;
   interrupt: () => Promise<void>;
+  /** Mid-turn. Idle sessions stay open for follow-ups but occupy no work slot. */
+  working: boolean;
+  lastActivityAt: number;
 }
 
 const sessions = new Map<string, SessionHandle>();
+
+/**
+ * Streaming-input sessions never end on their own — the generator stays open so
+ * follow-ups can be pushed, which keeps a Claude Code subprocess alive too. Left
+ * alone they accumulate for the life of the process, so idle ones get reaped.
+ */
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const REAP_INTERVAL_MS = 60 * 1000;
 
 export function getSessionEmitter(id: string): EventEmitter | undefined {
   return sessions.get(id)?.emitter;
 }
 
+/** Sessions actively mid-turn. Idle ones are excluded — they aren't doing work. */
+export function activeSessionCount(): number {
+  let count = 0;
+  for (const handle of sessions.values()) if (handle.working) count++;
+  return count;
+}
+
+export function atConcurrencyLimit(): boolean {
+  return activeSessionCount() >= getSettings().maxConcurrentSessions;
+}
+
+export function startIdleReaper(): void {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, handle] of sessions) {
+      if (handle.working) continue;
+      if (now - handle.lastActivityAt < IDLE_TIMEOUT_MS) continue;
+      updateSession(id, { status: "completed" });
+      globalBus.emit("session_updated", id);
+      handle.input.close();
+    }
+  }, REAP_INTERVAL_MS);
+}
+
 export function sendFollowUp(sessionId: string, text: string): boolean {
   const handle = sessions.get(sessionId);
   if (!handle) return false;
+  handle.working = true;
+  handle.lastActivityAt = Date.now();
   handle.input.push({
     type: "user",
     message: { role: "user", content: text },
@@ -96,6 +133,8 @@ export async function startSession(params: StartSessionParams): Promise<void> {
     pendingPermissions,
     claudeSessionId: null,
     interrupt: async () => {},
+    working: true,
+    lastActivityAt: Date.now(),
   };
   sessions.set(params.id, handle);
 
@@ -126,6 +165,8 @@ export async function startSession(params: StartSessionParams): Promise<void> {
   updateSession(params.id, { status: "running" });
   globalBus.emit("session_updated", params.id);
 
+  const { businessContext } = getSettings();
+
   try {
     const q = query({
       prompt: input,
@@ -135,6 +176,16 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         allowedTools: params.allowedTools,
         includePartialMessages: true,
         canUseTool,
+        // Durable business knowledge — without this every session starts amnesiac.
+        ...(businessContext.trim()
+          ? {
+              systemPrompt: {
+                type: "preset" as const,
+                preset: "claude_code" as const,
+                append: businessContext,
+              },
+            }
+          : {}),
         stderr: (data) => {
           process.stderr.write(`[claude-cli stderr] ${data}`);
         },
@@ -146,6 +197,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       if (message.session_id) {
         handle.claudeSessionId = message.session_id;
       }
+      handle.lastActivityAt = Date.now();
 
       const event: SessionEventRecord = appendSessionEvent(
         params.id,
@@ -157,6 +209,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       if (message.type === "result") {
         // Streaming-input sessions stay alive after a result, ready for a follow-up —
         // "idle" reflects that; "completed" is reserved for an explicitly closed session.
+        handle.working = false;
         updateSession(params.id, {
           status: message.is_error ? "error" : "idle",
           claudeSessionId: handle.claudeSessionId ?? undefined,

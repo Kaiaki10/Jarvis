@@ -4,7 +4,13 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Terminal, CalendarClock, ListChecks } from "lucide-react";
+import {
+  LayoutDashboard,
+  Terminal,
+  CalendarClock,
+  ListChecks,
+  Settings,
+} from "lucide-react";
 import { StoreProvider } from "@/lib/store";
 
 const NAV_ITEMS = [
@@ -12,6 +18,7 @@ const NAV_ITEMS = [
   { href: "/sessions", label: "Sessions", icon: Terminal },
   { href: "/automations", label: "Automations", icon: CalendarClock },
   { href: "/tasks", label: "Tasks", icon: ListChecks },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 function isActive(pathname: string, href: string) {

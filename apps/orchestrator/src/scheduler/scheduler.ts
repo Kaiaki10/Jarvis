@@ -1,10 +1,11 @@
 import type { ScheduledTaskRecord } from "@jarvis/shared";
 import {
   createSession,
+  getSettings,
   listEnabledScheduledTasks,
   updateScheduledTask,
 } from "../db/repo.js";
-import { startSession } from "../sessions/sessionManager.js";
+import { atConcurrencyLimit, startSession } from "../sessions/sessionManager.js";
 import { globalBus } from "../events/globalBus.js";
 
 const CHECK_INTERVAL_MS = 60_000;
@@ -56,11 +57,20 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
 }
 
 function tick(): void {
+  if (!getSettings().automationsEnabled) return;
+
   const now = new Date();
   for (const task of listEnabledScheduledTasks()) {
-    if (task.nextRunAt && new Date(task.nextRunAt) <= now) {
-      fireScheduledTask(task);
+    if (!task.nextRunAt || new Date(task.nextRunAt) > now) continue;
+    // Leave nextRunAt untouched when we're at capacity so the run isn't lost —
+    // the next tick retries it rather than silently skipping the day.
+    if (atConcurrencyLimit()) {
+      console.warn(
+        `[scheduler] at concurrency limit, deferring "${task.prompt.slice(0, 60)}"`
+      );
+      return;
     }
+    fireScheduledTask(task);
   }
 }
 

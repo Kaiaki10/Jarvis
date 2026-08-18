@@ -9,7 +9,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ScheduledTaskRecord, SessionRecord, TaskRecord } from "@jarvis/shared";
+import type {
+  ScheduledTaskRecord,
+  SessionRecord,
+  SettingsRecord,
+  TaskRecord,
+  UpdateSettingsRequest,
+} from "@jarvis/shared";
 import { api, globalEventsUrl } from "./api";
 
 export interface ActivityLogEntry {
@@ -27,6 +33,8 @@ interface StoreValue {
   refreshTasks: () => Promise<void>;
   scheduledTasks: ScheduledTaskRecord[];
   refreshScheduledTasks: () => Promise<void>;
+  settings: SettingsRecord | null;
+  saveSettings: (patch: UpdateSettingsRequest) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -52,6 +60,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [activity, setActivity] = useState<ActivityLogEntry[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTaskRecord[]>([]);
+  const [settings, setSettings] = useState<SettingsRecord | null>(null);
 
   const refreshTasks = useCallback(async () => {
     setTasks(await api.listTasks());
@@ -59,6 +68,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const refreshScheduledTasks = useCallback(async () => {
     setScheduledTasks(await api.listScheduledTasks());
+  }, []);
+
+  const saveSettings = useCallback(async (patch: UpdateSettingsRequest) => {
+    setSettings(await api.updateSettings(patch));
+  }, []);
+
+  useEffect(() => {
+    api.getSettings().then(setSettings).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -129,6 +146,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshTasks,
       scheduledTasks,
       refreshScheduledTasks,
+      settings,
+      saveSettings,
     }),
     [
       sessions,
@@ -139,6 +158,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshTasks,
       scheduledTasks,
       refreshScheduledTasks,
+      settings,
+      saveSettings,
     ]
   );
 
@@ -168,4 +189,9 @@ export function useTasksList() {
 export function useScheduledTasksList() {
   const { scheduledTasks, refreshScheduledTasks } = useStore();
   return { tasks: scheduledTasks, refresh: refreshScheduledTasks };
+}
+
+export function useSettings() {
+  const { settings, saveSettings } = useStore();
+  return { settings, saveSettings };
 }

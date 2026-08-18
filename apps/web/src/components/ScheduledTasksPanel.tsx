@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { CalendarPlus, Pause, Play, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useScheduledTasksList } from "@/lib/hooks";
+import { useScheduledTasksList, useSettings } from "@/lib/hooks";
 import { DAY_LABELS, daysLabel } from "@/lib/runStatus";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input, Select, Textarea } from "@/components/ui/Input";
@@ -29,6 +29,7 @@ function formatNextRun(iso: string | null): string {
 
 export function ScheduledTasksPanel() {
   const { tasks, refresh } = useScheduledTasksList();
+  const { settings } = useSettings();
   const [prompt, setPrompt] = useState("");
   const [cwd, setCwd] = useState("");
   const [timeOfDay, setTimeOfDay] = useState("08:00");
@@ -77,6 +78,15 @@ export function ScheduledTasksPanel() {
         title="Automations"
         description="Recurring tasks Jarvis runs on its own"
       />
+      {settings && !settings.automationsEnabled && (
+        <div className="mx-5 mb-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-xs text-warning">
+          All automations are paused by the master switch in{" "}
+          <Link href="/settings" className="underline">
+            Settings
+          </Link>
+          . Nothing below will run until it&apos;s turned back on.
+        </div>
+      )}
       <div className="mx-5 mb-4 flex flex-col gap-2.5 rounded-lg border border-border bg-white/[0.02] p-3">
         <Textarea
           className="border-0 bg-transparent p-0 text-sm focus:bg-transparent"

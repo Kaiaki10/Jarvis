@@ -72,6 +72,21 @@ export interface PermissionResponseRequest {
   updatedInput?: unknown;
 }
 
+export interface SettingsRecord {
+  /** Durable business context appended to every session's system prompt. */
+  businessContext: string;
+  /** Global kill switch for all scheduled automations. */
+  automationsEnabled: boolean;
+  /** Guardrail against burning through subscription rate limits. */
+  maxConcurrentSessions: number;
+}
+
+export interface UpdateSettingsRequest {
+  businessContext?: string;
+  automationsEnabled?: boolean;
+  maxConcurrentSessions?: number;
+}
+
 export interface ScheduledTaskRecord {
   id: string;
   prompt: string;

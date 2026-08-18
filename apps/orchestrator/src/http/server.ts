@@ -17,6 +17,8 @@ import {
   listScheduledTasks,
   updateScheduledTask,
   deleteScheduledTask,
+  getSettings,
+  updateSettings,
 } from "../db/repo.js";
 import {
   startSession,
@@ -24,6 +26,9 @@ import {
   resolvePermission,
   interruptSession,
   getSessionEmitter,
+  activeSessionCount,
+  atConcurrencyLimit,
+  startIdleReaper,
 } from "../sessions/sessionManager.js";
 import { computeNextRun, startScheduler } from "../scheduler/scheduler.js";
 import { globalBus } from "../events/globalBus.js";
@@ -31,6 +36,7 @@ import type {
   CreateSessionRequest,
   CreateScheduledTaskRequest,
   UpdateScheduledTaskRequest,
+  UpdateSettingsRequest,
   PermissionResponseRequest,
 } from "@jarvis/shared";
 
@@ -63,6 +69,12 @@ app.post("/sessions", (req: Request, res: Response) => {
   const body = req.body as CreateSessionRequest;
   if (!body.prompt || !body.cwd) {
     res.status(400).json({ error: "prompt and cwd are required" });
+    return;
+  }
+  if (atConcurrencyLimit()) {
+    res.status(429).json({
+      error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}). Wait for one to finish, or raise the limit in Settings.`,
+    });
     return;
   }
   const session = createSession({
@@ -268,9 +280,30 @@ app.delete("/scheduled-tasks/:id", (req: Request, res: Response) => {
   res.status(204).send();
 });
 
+// ---- Settings ----
+
+app.get("/settings", (_req: Request, res: Response) => {
+  res.json(getSettings());
+});
+
+app.patch("/settings", (req: Request, res: Response) => {
+  const body = req.body as UpdateSettingsRequest;
+  if (
+    body.maxConcurrentSessions !== undefined &&
+    (!Number.isInteger(body.maxConcurrentSessions) ||
+      body.maxConcurrentSessions < 1 ||
+      body.maxConcurrentSessions > 10)
+  ) {
+    res.status(400).json({ error: "maxConcurrentSessions must be an integer from 1 to 10" });
+    return;
+  }
+  res.json(updateSettings(body));
+});
+
 const server = app.listen(PORT, () => {
   console.log(`Jarvis orchestrator listening on http://localhost:${PORT}`);
   startScheduler();
+  startIdleReaper();
 });
 
 function shutdown() {
