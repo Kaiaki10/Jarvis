@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { oauth1Header, type OAuth1Credentials } from "./oauth1.js";
-import { createHmac } from "node:crypto";
 
 // Test credentials matching OAuth 1.0a spec examples
 const testCreds: OAuth1Credentials = {

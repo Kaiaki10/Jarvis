@@ -19,17 +19,29 @@ export interface OAuth1Credentials {
  * OAuth 1.0a signed Authorization header (HMAC-SHA1), which is what X still
  * requires for user-context calls such as posting.
  */
+/**
+ * Nonce and timestamp are generated internally, which makes the output
+ * non-deterministic. Tests override them to check the signature against the
+ * published OAuth spec vector — the only way to prove the signing is correct
+ * rather than merely well-formed.
+ */
+export interface OAuth1Overrides {
+  nonce?: string;
+  timestamp?: string;
+}
+
 export function oauth1Header(
   method: string,
   url: string,
   creds: OAuth1Credentials,
-  extraParams: Record<string, string> = {}
+  extraParams: Record<string, string> = {},
+  overrides: OAuth1Overrides = {}
 ): string {
   const oauthParams: Record<string, string> = {
     oauth_consumer_key: creds.apiKey,
-    oauth_nonce: randomBytes(16).toString("hex"),
+    oauth_nonce: overrides.nonce ?? randomBytes(16).toString("hex"),
     oauth_signature_method: "HMAC-SHA1",
-    oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
+    oauth_timestamp: overrides.timestamp ?? Math.floor(Date.now() / 1000).toString(),
     oauth_token: creds.accessToken,
     oauth_version: "1.0",
   };

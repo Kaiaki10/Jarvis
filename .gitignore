@@ -10,3 +10,4 @@ dist/
 .env
 .env.local
 scripts/logs/
+.screenshots/
