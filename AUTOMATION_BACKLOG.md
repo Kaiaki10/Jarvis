@@ -22,6 +22,7 @@ Each run picks **one** item, completes it properly, and records the outcome here
 
 ## Done
 
+- [x] **2026-08-17** Test suite: Added comprehensive tests for `oauth1.ts` OAuth 1.0a HMAC-SHA1 signing (23 tests covering header format, RFC 3986 encoding, signature construction, parameter sorting, nonce/timestamp generation, and edge cases). All tests passing.
 - [x] **2026-08-17** Empty states: Added icons and action links to TodaySchedule, SessionList, and ScheduledTasksPanel. All empty states now follow the pattern from AutomationHealth (icon + message + clickable action).
 
 ## Notes
