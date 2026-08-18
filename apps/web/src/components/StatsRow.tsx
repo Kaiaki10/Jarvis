@@ -62,7 +62,7 @@ export function StatsRow() {
   const doneTasks = tasks.filter((t) => t.status === "done").length;
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <Stat
         icon={Activity}
         label="Running now"
