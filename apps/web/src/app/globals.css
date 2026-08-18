@@ -66,3 +66,66 @@ textarea::placeholder {
 .animate-pulse-soft {
   animation: pulse-soft 2s ease-in-out infinite;
 }
+
+/* Futuristic accents — depth and precision rather than neon.
+   Kept subtle so they read as refinement, not decoration. */
+
+.surface-raised {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 60%),
+    var(--surface);
+}
+
+/* Hairline gradient that fades out, used under section headers. */
+.rule-fade {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.05) 35%,
+    transparent 100%
+  );
+}
+
+/* Accent spine on the left edge of a row, tinted per item. */
+.accent-spine {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  opacity: 0.55;
+  transition: opacity 150ms ease;
+}
+
+.group:hover .accent-spine,
+.group[open] .accent-spine {
+  opacity: 1;
+}
+
+/* Soft halo behind an icon chip. */
+.chip-glow {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 0 12px -4px currentColor;
+}
+
+@keyframes ping-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  75%,
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.ping-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: ping-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}

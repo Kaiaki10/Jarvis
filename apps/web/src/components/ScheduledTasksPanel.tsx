@@ -13,10 +13,10 @@ import {
 import { api } from "@/lib/api";
 import { useScheduledTasksList, useSettings, useSessionsList } from "@/lib/hooks";
 import { DAY_LABELS, daysLabel } from "@/lib/runStatus";
-import { Card, CardHeader } from "@/components/ui/Card";
+import { automationKind } from "@/lib/automationKind";
+import { Card } from "@/components/ui/Card";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const PERMISSION_MODES = ["default", "acceptEdits", "plan", "dontAsk"];
@@ -34,13 +34,25 @@ function formatNextRun(iso: string | null): string {
 }
 
 /**
- * Prompts run to several hundred words, so the list shows only the opening
- * sentence. The full text stays one click away rather than being truncated away.
+ * One line describing what an automation does. The full prompt stays one click
+ * away rather than being truncated away.
+ *
+ * Every prompt opens with the same pointer to AUTOMATION_RULES.md, so taking the
+ * literal first line labelled all six rows identically. This finds the first
+ * line that actually says something specific.
  */
 function summarize(prompt: string): string {
-  const firstLine = prompt.split("\n")[0].trim();
-  const sentenceEnd = firstLine.indexOf(". ");
-  const summary = sentenceEnd > 20 ? firstLine.slice(0, sentenceEnd) : firstLine;
+  const line =
+    prompt
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0 && !/AUTOMATION_RULES\.md/i.test(l)) ?? prompt.trim();
+
+  // "Today's job: grow test coverage…" reads better without the scaffolding.
+  const withoutPrefix = line.replace(/^(today's|this run's)\s+job:\s*/i, "");
+  const sentenceEnd = withoutPrefix.indexOf(". ");
+  const summary =
+    sentenceEnd > 20 ? withoutPrefix.slice(0, sentenceEnd) : withoutPrefix;
   return summary.length > 90 ? `${summary.slice(0, 88)}…` : summary;
 }
 
@@ -93,19 +105,41 @@ export function ScheduledTasksPanel() {
     refresh();
   }
 
-  const activeCount = tasks.filter((t) => t.enabled).length;
   const { sessionById } = useSessionsList();
+  const activeCount = tasks.filter((t) => t.enabled).length;
+  const runningCount = tasks.filter((t) => {
+    const run = t.lastSessionId ? sessionById.get(t.lastSessionId) : undefined;
+    return run && ["running", "starting", "waiting_permission"].includes(run.status);
+  }).length;
 
   return (
-    <Card>
-      <CardHeader
-        title="Automations"
-        description={
-          tasks.length
-            ? `${activeCount} active of ${tasks.length}`
-            : "Recurring tasks Jarvis runs on its own"
-        }
-      />
+    <Card className="surface-raised">
+      <div className="px-5 pt-5">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">
+            Automations
+          </h2>
+          <span className="font-mono text-[11px] tabular-nums text-muted">
+            {tasks.length ? (
+              <>
+                <span className="text-foreground">{activeCount}</span>
+                <span className="text-muted"> / {tasks.length} active</span>
+                {runningCount > 0 && (
+                  <span className="ml-2 text-accent-foreground">
+                    {runningCount} running
+                  </span>
+                )}
+              </>
+            ) : (
+              "none yet"
+            )}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-muted">
+          Recurring work Jarvis does on its own
+        </p>
+        <div className="rule-fade mt-3.5" />
+      </div>
 
       {settings && !settings.automationsEnabled && (
         <div className="mx-5 mb-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-xs text-warning">
@@ -125,17 +159,43 @@ export function ScheduledTasksPanel() {
           const running =
             lastRun && ["running", "starting", "waiting_permission"].includes(lastRun.status);
 
+          const kind = automationKind(task.prompt);
+          const Icon = kind.icon;
+
           return (
           <details
             key={task.id}
-            className="group rounded-lg border border-border bg-white/[0.02]"
+            className="group surface-raised relative overflow-hidden rounded-xl border border-border transition-colors hover:border-border-strong"
           >
-            <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+            <span className={`accent-spine ${kind.spine} ${task.enabled ? "" : "opacity-20"}`} />
+
+            <summary className="flex cursor-pointer list-none items-center gap-3 py-3 pl-4 pr-3 [&::-webkit-details-marker]:hidden">
               <ChevronRight className={CHEVRON} strokeWidth={2} />
 
+              <span
+                className={`chip-glow flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] ${kind.color} ${
+                  task.enabled ? "" : "opacity-40 grayscale"
+                }`}
+              >
+                <Icon className="h-4 w-4" strokeWidth={1.75} />
+              </span>
+
               <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span
+                    className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${kind.color}`}
+                  >
+                    {kind.label}
+                  </span>
+                  {running && (
+                    <span className="relative flex h-1.5 w-1.5 text-accent">
+                      <span className="ping-ring absolute inset-0 rounded-full" />
+                      <span className="relative h-1.5 w-1.5 rounded-full bg-accent" />
+                    </span>
+                  )}
+                </span>
                 <span
-                  className={`block truncate text-sm ${
+                  className={`mt-0.5 block truncate text-sm ${
                     task.enabled ? "text-foreground" : "text-muted line-through"
                   }`}
                 >
@@ -143,23 +203,26 @@ export function ScheduledTasksPanel() {
                 </span>
                 {/* What it is doing now, or what it did last time. */}
                 {running && lastRun?.currentActivity ? (
-                  <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-accent-foreground">
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent animate-pulse-soft" />
+                  <span className="mt-1 flex items-center gap-1.5 text-[11px] text-accent-foreground">
                     <span className="truncate">{lastRun.currentActivity}</span>
                   </span>
                 ) : lastRun?.summary ? (
-                  <span className="mt-0.5 block truncate text-[11px] text-muted">
+                  <span className="mt-1 block truncate text-[11px] text-muted">
                     {lastRun.summary}
                   </span>
                 ) : null}
               </span>
 
-              <span className="hidden shrink-0 items-center gap-1.5 sm:flex">
-                <Badge tone="neutral">{task.timeOfDay}</Badge>
-                <Badge tone="neutral">{daysLabel(task.daysOfWeek)}</Badge>
+              <span className="hidden shrink-0 flex-col items-end gap-0.5 md:flex">
+                <span className="font-mono text-xs tabular-nums text-foreground/80">
+                  {task.timeOfDay}
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-muted">
+                  {daysLabel(task.daysOfWeek)}
+                </span>
               </span>
 
-              <span className="hidden w-32 shrink-0 text-right text-[11px] text-muted md:block">
+              <span className="hidden w-28 shrink-0 text-right text-[11px] text-muted lg:block">
                 {task.enabled ? formatNextRun(task.nextRunAt) : "Paused"}
               </span>
 
