@@ -24,14 +24,19 @@ the store's single-EventSource invariant, which is easy to regress by accident.
 Playwright is installed in `apps/web/package.json` but no `*.test.ts` or `*.spec.ts`
 files exist anywhere under `apps/web`.
 
-### medium — Missed schedules may stampede
-`startScheduler` fires everything overdue on the first tick. If the machine was off
-for several days, multiple automations could fire at once and immediately collide with
-the concurrency cap. Behaviour under that case is untested.
+### critical — Scheduler references nonexistent retry_count column
+`scheduler.ts:36-49` references `task.retryCount` to implement retry logic after
+failure, but the `scheduled_tasks` table has no `retry_count` column (confirmed in
+`schema.sql:60-74` and `types.ts:209-225`). The first time an automation fails and
+reaches the retry path at line 36, `updateScheduledTask` will attempt to write a
+nonexistent column and crash. The retry logic exists in code but is unusable.
 
-### medium — No retry on failure
-A transient network error fails an automation for the whole day. There is no retry and
-no distinction between transient and permanent failure.
+### high — No backup of the database itself
+`portableBackup.ts` exports and restores platform credentials, but session history,
+scheduled automations, and tasks have no export path. Losing `jarvis.db` destroys
+everything except credentials. The database lives beside the compiled output in the
+production directory with no automated backup, so a single accidental deletion or disk
+failure loses all history permanently.
 
 ### low — Orchestrator API is unauthenticated
 Anything that can reach `localhost:4317` can launch sessions and read transcripts.
@@ -69,6 +74,10 @@ must remember to do the same or risk orphaning rows.
 
 ## Closed
 
+- **2026-08-19** Missed schedules may stampede — closed by explicit pacing in
+  `scheduler.ts:79-80`. After firing one overdue task, the tick function returns
+  immediately rather than continuing the loop, so catch-up work after downtime fires
+  one task per minute instead of launching everything at once. Verified in code.
 - **2026-08-18** EventSource has no error handler — closed by automatic reconnection with
   exponential backoff (1s → 30s max) in `apps/web/src/lib/store.tsx:150-158`. The global
   EventSource now recovers from orchestrator restarts or network drops without manual
