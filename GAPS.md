@@ -14,12 +14,12 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 ## Open
 
 ### high — Attribution and marketing allocation are not autonomous yet
-The Campaign Studio now generates, reviews, schedules, and dispatches X content through
-the real approval and platform guardrails, but it does not yet ingest impressions, clicks,
-leads, or revenue. Without reliable attribution Jarvis cannot safely decide what content
-won or shift marketing allocation toward it. The next increment is a normalized measurement
-ledger and campaign experiments; allocation must remain bounded and approval-gated until
-that evidence is trustworthy.
+Paid Growth can ingest ad-platform performance, but Campaign Studio does not yet connect
+organic impressions and clicks through leads and revenue in one attribution model. Without
+that cross-channel evidence Jarvis cannot safely decide what content won or shift the full
+marketing allocation toward it. The next increment is a normalized measurement ledger and
+campaign experiments; allocation must remain bounded and approval-gated until that evidence
+is trustworthy.
 
 ### medium — Automatic publishing currently supports X only
 The publication worker is adapter-based, but LinkedIn, Instagram, Facebook, and blog
@@ -34,11 +34,13 @@ which use simpler single-request uploads.
 
 ### medium — Orchestrator API has no per-agent authorization
 Every request now carries a shared token, so the API is no longer open to anything running
-locally. That token is single-tenant: it proves the caller is the dashboard, not *which*
-agent the caller is acting as. Once v2 increment 2 scopes routes by `agent_id`, a caller
-holding the token can still name any agent in a request, so agent isolation remains a UI
-convention rather than an enforced boundary. Closing this means either a per-agent grant or
-server-side derivation of the acting agent from something the caller cannot choose.
+locally. Repository queries, mutations, child-resource checks, notifications, and frontend
+refreshes are scoped by `agent_id`; a selected agent cannot accidentally see or change a
+different agent's records. The token is still single-tenant, however: it proves the caller
+is the dashboard, not *which* agent the caller is entitled to act as. A caller holding it can
+deliberately name any valid agent. Closing that distinct authorization gap means either a
+per-agent grant or server-side derivation of the acting agent from something the caller
+cannot choose.
 
 Remote access remains out of scope: both services bind to `127.0.0.1` and the token is a
 same-machine trust boundary, not user authentication.
@@ -52,6 +54,14 @@ Every platform requires manually copying tokens. Proper OAuth flows would be fri
 but need a public redirect URL.
 
 ## Closed
+
+- **2026-08-19** Multi-agent data isolation was incomplete outside the original dashboard
+  roots — closed by ownership on campaigns, paid growth, customers, evolution, and
+  notifications; parent-joined filtering for every child collection; ownership checks on
+  mutations; agent-scoped memory reflections; session-attributed alerts; full workspace
+  refresh on agent switch; and repository/store regression tests. System schedulers and
+  maintenance still intentionally use unscoped repository calls so unattended work spans
+  every agent. Per-agent caller authorization remains the separate open gap above.
 
 - **2026-08-19** The orchestrator API was unauthenticated — closed by a generated
   `jarvis.token` presented as a bearer token on every request, plus a server-side origin

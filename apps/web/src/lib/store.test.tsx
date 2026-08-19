@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
 import { SELECTED_AGENT_KEY, StoreProvider, useStore } from "./store";
@@ -57,6 +57,12 @@ function mockInitialRequests() {
       businessHoursStart: "08:00", businessHoursEnd: "18:00", businessDays: [1, 2, 3, 4, 5],
       escalationKeywords: ["refund"], widgetName: "Jarvis Support", widgetWelcome: "Hi — how can we help?",
       allowedOrigins: [], updatedAt: null,
+    },
+  });
+  vi.spyOn(api, "getPaidGrowth").mockResolvedValue({
+    campaigns: [], decisions: [], totals: {
+      currency: "USD", approvedBudgetMinor: 0, spentMinor: 0,
+      revenueMinor: 0, active: 0, waitingApproval: 0,
     },
   });
   vi.spyOn(api, "listMemories").mockResolvedValue([]);
@@ -179,5 +185,40 @@ describe("StoreProvider", () => {
       expect(screen.getByTestId("runs").textContent).toContain("alice run")
     );
     expect(screen.getByTestId("runs").textContent).not.toContain("bob run");
+  });
+
+  it("reloads every agent-owned workspace collection when the active agent changes", async () => {
+    mockInitialRequests();
+    mockTokenEndpoint();
+    vi.stubGlobal("EventSource", FakeEventSource);
+    window.localStorage.setItem(SELECTED_AGENT_KEY, "agent-alice");
+    vi.spyOn(api, "listAgents").mockResolvedValue([
+      { id: "agent-alice", name: "Alice", status: "active" } as never,
+      { id: "agent-bob", name: "Bob", status: "active" } as never,
+    ]);
+
+    function Switcher() {
+      const { selectAgent } = useStore();
+      return <button onClick={() => selectAgent("agent-bob")}>switch</button>;
+    }
+    render(<StoreProvider><Switcher /></StoreProvider>);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    const before = {
+      campaigns: vi.mocked(api.getCampaigns).mock.calls.length,
+      customers: vi.mocked(api.getCustomerOperations).mock.calls.length,
+      growth: vi.mocked(api.getPaidGrowth).mock.calls.length,
+      evolution: vi.mocked(api.getEvolution).mock.calls.length,
+      memories: vi.mocked(api.listMemories).mock.calls.length,
+      notifications: vi.mocked(api.listNotifications).mock.calls.length,
+    };
+    fireEvent.click(screen.getByRole("button", { name: "switch" }));
+
+    await waitFor(() => expect(vi.mocked(api.getCampaigns).mock.calls.length).toBeGreaterThan(before.campaigns));
+    expect(vi.mocked(api.getCustomerOperations).mock.calls.length).toBeGreaterThan(before.customers);
+    expect(vi.mocked(api.getPaidGrowth).mock.calls.length).toBeGreaterThan(before.growth);
+    expect(vi.mocked(api.getEvolution).mock.calls.length).toBeGreaterThan(before.evolution);
+    expect(vi.mocked(api.listMemories).mock.calls.length).toBeGreaterThan(before.memories);
+    expect(vi.mocked(api.listNotifications).mock.calls.length).toBeGreaterThan(before.notifications);
   });
 });

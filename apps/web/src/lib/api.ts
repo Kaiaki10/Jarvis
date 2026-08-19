@@ -192,15 +192,15 @@ export const api = {
   archiveAgent: (id: string) => request<AgentRecord>(`/agents/${id}`, { method: "DELETE" }),
 
   listMemories: (status?: "active" | "archived") =>
-    request<MemoryRecord[]>(`/memories${status ? `?status=${status}` : ""}`),
-  listMemoryReflections: () => request<MemoryReflectionRecord[]>("/memory-reflections"),
+    request<MemoryRecord[]>(scoped(`/memories${status ? `?status=${status}` : ""}`)),
+  listMemoryReflections: () => request<MemoryReflectionRecord[]>(scoped("/memory-reflections")),
   createMemory: (body: CreateMemoryRequest) =>
-    request<MemoryRecord>("/memories", { method: "POST", body: JSON.stringify(body) }),
+    request<MemoryRecord>(scoped("/memories"), { method: "POST", body: JSON.stringify(body) }),
   updateMemory: (id: string, patch: UpdateMemoryRequest) =>
-    request<MemoryRecord>(`/memories/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    request<MemoryRecord>(scoped(`/memories/${id}`), { method: "PATCH", body: JSON.stringify(patch) }),
   listSessions: () => request<SessionRecord[]>(scoped("/sessions")),
   deleteSession: (id: string) =>
-    request<void>(`/sessions/${id}`, { method: "DELETE" }),
+    request<void>(scoped(`/sessions/${id}`), { method: "DELETE" }),
 
   getChat: () => request<{ session: SessionRecord | null }>(scoped("/chat")),
   sendChat: (text: string) =>
@@ -208,26 +208,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ text, agentId: getActiveAgentId() ?? undefined }),
     }),
-  getSession: (id: string) => request<SessionRecord>(`/sessions/${id}`),
+  getSession: (id: string) => request<SessionRecord>(scoped(`/sessions/${id}`)),
   createSession: (body: CreateSessionRequest) =>
     request<SessionRecord>("/sessions", {
       method: "POST",
       body: JSON.stringify({ ...body, agentId: getActiveAgentId() ?? undefined }),
     }),
   getSessionEvents: (id: string, since = 0) =>
-    request<SessionEventRecord[]>(`/sessions/${id}/events?since=${since}`),
+    request<SessionEventRecord[]>(scoped(`/sessions/${id}/events?since=${since}`)),
   sendMessage: (id: string, text: string) =>
-    request<{ ok: boolean; resumed: boolean }>(`/sessions/${id}/messages`, {
+    request<{ ok: boolean; resumed: boolean }>(scoped(`/sessions/${id}/messages`), {
       method: "POST",
       body: JSON.stringify({ text }),
     }),
   respondToPermission: (id: string, body: PermissionResponseRequest) =>
-    request<{ ok: boolean }>(`/sessions/${id}/permission-response`, {
+    request<{ ok: boolean }>(scoped(`/sessions/${id}/permission-response`), {
       method: "POST",
       body: JSON.stringify(body),
     }),
   interruptSession: (id: string) =>
-    request<{ ok: boolean }>(`/sessions/${id}/interrupt`, { method: "POST" }),
+    request<{ ok: boolean }>(scoped(`/sessions/${id}/interrupt`), { method: "POST" }),
 
   listTasks: () => request<TaskRecord[]>(scoped("/tasks")),
   createTask: (title: string, description?: string, missionId?: string) =>
@@ -239,46 +239,46 @@ export const api = {
     id: string,
     patch: Partial<{ title: string; description: string; status: TaskStatus; position: number; missionId: string | null }>
   ) =>
-    request<TaskRecord>(`/tasks/${id}`, {
+    request<TaskRecord>(scoped(`/tasks/${id}`), {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
-  deleteTask: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
+  deleteTask: (id: string) => request<void>(scoped(`/tasks/${id}`), { method: "DELETE" }),
 
   listMissions: () => request<MissionRecord[]>(scoped("/missions")),
-  getMission: (id: string) => request<{ mission: MissionRecord; tasks: TaskRecord[]; deliverables: DeliverableRecord[]; updates: MissionUpdateRecord[] }>(`/missions/${id}`),
+  getMission: (id: string) => request<{ mission: MissionRecord; tasks: TaskRecord[]; deliverables: DeliverableRecord[]; updates: MissionUpdateRecord[] }>(scoped(`/missions/${id}`)),
   createMission: (body: CreateMissionRequest) => request<MissionRecord>("/missions", {
     method: "POST",
     body: JSON.stringify({ ...body, agentId: getActiveAgentId() ?? undefined }),
   }),
-  updateMission: (id: string, patch: UpdateMissionRequest) => request<MissionRecord>(`/missions/${id}`, {
+  updateMission: (id: string, patch: UpdateMissionRequest) => request<MissionRecord>(scoped(`/missions/${id}`), {
     method: "PATCH",
     body: JSON.stringify(patch),
   }),
-  advanceMission: (id: string) => request<{ mission: MissionRecord; task: TaskRecord; session: SessionRecord }>(`/missions/${id}/advance`, { method: "POST" }),
-  deleteMission: (id: string) => request<void>(`/missions/${id}`, { method: "DELETE" }),
-  listDeliverables: () => request<DeliverableRecord[]>("/deliverables"),
-  createDeliverable: (missionId: string, body: CreateDeliverableRequest) => request<DeliverableRecord>(`/missions/${missionId}/deliverables`, {
+  advanceMission: (id: string) => request<{ mission: MissionRecord; task: TaskRecord; session: SessionRecord }>(scoped(`/missions/${id}/advance`), { method: "POST" }),
+  deleteMission: (id: string) => request<void>(scoped(`/missions/${id}`), { method: "DELETE" }),
+  listDeliverables: () => request<DeliverableRecord[]>(scoped("/deliverables")),
+  createDeliverable: (missionId: string, body: CreateDeliverableRequest) => request<DeliverableRecord>(scoped(`/missions/${missionId}/deliverables`), {
     method: "POST",
     body: JSON.stringify(body),
   }),
-  updateDeliverable: (id: string, patch: Partial<{ title: string; description: string | null; uri: string | null; status: DeliverableStatus }>) => request<DeliverableRecord>(`/deliverables/${id}`, {
+  updateDeliverable: (id: string, patch: Partial<{ title: string; description: string | null; uri: string | null; status: DeliverableStatus }>) => request<DeliverableRecord>(scoped(`/deliverables/${id}`), {
     method: "PATCH",
     body: JSON.stringify(patch),
   }),
-  deleteDeliverable: (id: string) => request<void>(`/deliverables/${id}`, { method: "DELETE" }),
-  listMissionUpdates: () => request<MissionUpdateRecord[]>("/mission-updates"),
-  reviewMissionUpdate: (id: string, decision: "apply" | "dismiss") => request<{ update: MissionUpdateRecord; mission: MissionRecord }>(`/mission-updates/${id}/review`, {
+  deleteDeliverable: (id: string) => request<void>(scoped(`/deliverables/${id}`), { method: "DELETE" }),
+  listMissionUpdates: () => request<MissionUpdateRecord[]>(scoped("/mission-updates")),
+  reviewMissionUpdate: (id: string, decision: "apply" | "dismiss") => request<{ update: MissionUpdateRecord; mission: MissionRecord }>(scoped(`/mission-updates/${id}/review`), {
     method: "POST",
     body: JSON.stringify({ decision }),
   }),
 
-  getEvolution: () => request<EvolutionOverview>("/evolution"),
-  createEvolutionProposal: (body: CreateEvolutionProposalRequest) => request<EvolutionProposalRecord>("/evolution/proposals", {
+  getEvolution: () => request<EvolutionOverview>(scoped("/evolution")),
+  createEvolutionProposal: (body: CreateEvolutionProposalRequest) => request<EvolutionProposalRecord>(scoped("/evolution/proposals"), {
     method: "POST",
     body: JSON.stringify(body),
   }),
-  updateEvolutionProposal: (id: string, patch: Partial<CreateEvolutionProposalRequest & { stage: "observed" | "planned" }>) => request<EvolutionProposalRecord>(`/evolution/proposals/${id}`, {
+  updateEvolutionProposal: (id: string, patch: Partial<CreateEvolutionProposalRequest & { stage: "observed" | "planned" }>) => request<EvolutionProposalRecord>(scoped(`/evolution/proposals/${id}`), {
     method: "PATCH",
     body: JSON.stringify(patch),
   }),
@@ -286,51 +286,51 @@ export const api = {
     method: "PATCH",
     body: JSON.stringify({ autonomy }),
   }),
-  startEvolutionBuild: (id: string) => request<{ proposal: EvolutionProposalRecord; session: SessionRecord }>(`/evolution/proposals/${id}/start-build`, { method: "POST" }),
+  startEvolutionBuild: (id: string) => request<{ proposal: EvolutionProposalRecord; session: SessionRecord }>(scoped(`/evolution/proposals/${id}/start-build`), { method: "POST" }),
 
-  getCampaigns: () => request<CampaignOverview>("/campaigns"),
-  getCampaign: (id: string) => request<{ campaign: CampaignRecord; content: ContentItemRecord[]; generationRuns: CampaignGenerationRunRecord[]; publicationRuns: ContentPublicationRunRecord[] }>(`/campaigns/${id}`),
-  createCampaign: (body: CreateCampaignRequest) => request<CampaignRecord>("/campaigns", {
+  getCampaigns: () => request<CampaignOverview>(scoped("/campaigns")),
+  getCampaign: (id: string) => request<{ campaign: CampaignRecord; content: ContentItemRecord[]; generationRuns: CampaignGenerationRunRecord[]; publicationRuns: ContentPublicationRunRecord[] }>(scoped(`/campaigns/${id}`)),
+  createCampaign: (body: CreateCampaignRequest) => request<CampaignRecord>(scoped("/campaigns"), {
     method: "POST",
     body: JSON.stringify(body),
   }),
-  updateCampaign: (id: string, patch: UpdateCampaignRequest) => request<CampaignRecord>(`/campaigns/${id}`, {
+  updateCampaign: (id: string, patch: UpdateCampaignRequest) => request<CampaignRecord>(scoped(`/campaigns/${id}`), {
     method: "PATCH",
     body: JSON.stringify(patch),
   }),
-  deleteCampaign: (id: string) => request<void>(`/campaigns/${id}`, { method: "DELETE" }),
-  createContentItem: (campaignId: string, body: CreateContentItemRequest) => request<ContentItemRecord>(`/campaigns/${campaignId}/content`, {
+  deleteCampaign: (id: string) => request<void>(scoped(`/campaigns/${id}`), { method: "DELETE" }),
+  createContentItem: (campaignId: string, body: CreateContentItemRequest) => request<ContentItemRecord>(scoped(`/campaigns/${campaignId}/content`), {
     method: "POST",
     body: JSON.stringify(body),
   }),
-  updateContentItem: (id: string, patch: UpdateContentItemRequest) => request<ContentItemRecord>(`/content/${id}`, {
+  updateContentItem: (id: string, patch: UpdateContentItemRequest) => request<ContentItemRecord>(scoped(`/content/${id}`), {
     method: "PATCH",
     body: JSON.stringify(patch),
   }),
-  deleteContentItem: (id: string) => request<void>(`/content/${id}`, { method: "DELETE" }),
-  publishContentItem: (id: string) => request<{ sessionId: string; runId: string }>(`/content/${id}/publish`, { method: "POST" }),
-  generateCampaignContent: (id: string, body: GenerateCampaignContentRequest) => request<{ campaign: CampaignRecord; session: SessionRecord; generationRun: CampaignGenerationRunRecord }>(`/campaigns/${id}/generate`, {
+  deleteContentItem: (id: string) => request<void>(scoped(`/content/${id}`), { method: "DELETE" }),
+  publishContentItem: (id: string) => request<{ sessionId: string; runId: string }>(scoped(`/content/${id}/publish`), { method: "POST" }),
+  generateCampaignContent: (id: string, body: GenerateCampaignContentRequest) => request<{ campaign: CampaignRecord; session: SessionRecord; generationRun: CampaignGenerationRunRecord }>(scoped(`/campaigns/${id}/generate`), {
     method: "POST",
     body: JSON.stringify(body),
   }),
 
-  getPaidGrowth: () => request<PaidGrowthOverview>("/paid-growth"),
+  getPaidGrowth: () => request<PaidGrowthOverview>(scoped("/paid-growth")),
   createPaidGrowthCampaign: (body: CreatePaidGrowthCampaignRequest) =>
-    request<PaidGrowthCampaignRecord>("/paid-growth/campaigns", { method: "POST", body: JSON.stringify(body) }),
+    request<PaidGrowthCampaignRecord>(scoped("/paid-growth/campaigns"), { method: "POST", body: JSON.stringify(body) }),
   updatePaidGrowthCampaign: (id: string, patch: UpdatePaidGrowthCampaignRequest) =>
-    request<PaidGrowthCampaignRecord>(`/paid-growth/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    request<PaidGrowthCampaignRecord>(scoped(`/paid-growth/campaigns/${id}`), { method: "PATCH", body: JSON.stringify(patch) }),
   updatePaidGrowthPerformance: (id: string, body: UpdatePaidGrowthPerformanceRequest) =>
-    request<PaidGrowthCampaignRecord>(`/paid-growth/campaigns/${id}/performance`, { method: "POST", body: JSON.stringify(body) }),
+    request<PaidGrowthCampaignRecord>(scoped(`/paid-growth/campaigns/${id}/performance`), { method: "POST", body: JSON.stringify(body) }),
   syncPaidGrowthCampaign: (id: string) =>
-    request<{ campaign: PaidGrowthCampaignRecord; decisions: PaidGrowthDecisionRecord[]; overview: PaidGrowthOverview }>(`/paid-growth/campaigns/${id}/sync`, { method: "POST" }),
+    request<{ campaign: PaidGrowthCampaignRecord; decisions: PaidGrowthDecisionRecord[]; overview: PaidGrowthOverview }>(scoped(`/paid-growth/campaigns/${id}/sync`), { method: "POST" }),
   requestPaidGrowthLaunch: (id: string) =>
-    request<PaidGrowthDecisionRecord>(`/paid-growth/campaigns/${id}/request-launch`, { method: "POST" }),
+    request<PaidGrowthDecisionRecord>(scoped(`/paid-growth/campaigns/${id}/request-launch`), { method: "POST" }),
   refreshPaidGrowthRecommendations: () =>
-    request<{ created: PaidGrowthDecisionRecord[]; overview: PaidGrowthOverview }>("/paid-growth/recommendations/refresh", { method: "POST" }),
+    request<{ created: PaidGrowthDecisionRecord[]; overview: PaidGrowthOverview }>(scoped("/paid-growth/recommendations/refresh"), { method: "POST" }),
   reviewPaidGrowthDecision: (id: string, decision: "approve" | "reject") =>
-    request<{ decision: PaidGrowthDecisionRecord; overview: PaidGrowthOverview }>(`/paid-growth/decisions/${id}/review`, { method: "POST", body: JSON.stringify({ decision }) }),
+    request<{ decision: PaidGrowthDecisionRecord; overview: PaidGrowthOverview }>(scoped(`/paid-growth/decisions/${id}/review`), { method: "POST", body: JSON.stringify({ decision }) }),
 
-  getCustomerOperations: () => request<CustomerOperationsOverview>("/customer-operations"),
+  getCustomerOperations: () => request<CustomerOperationsOverview>(scoped("/customer-operations")),
   updateCustomerServicePolicy: (patch: UpdateCustomerServicePolicyRequest) =>
     request<CustomerServicePolicyRecord>("/customer-service-policy", {
       method: "PATCH",
@@ -340,32 +340,32 @@ export const api = {
     customer: CustomerRecord;
     conversation: CustomerConversationRecord;
     message: CustomerMessageRecord;
-  }>("/customer-conversations", { method: "POST", body: JSON.stringify(body) }),
+  }>(scoped("/customer-conversations"), { method: "POST", body: JSON.stringify(body) }),
   updateCustomerConversation: (id: string, patch: UpdateCustomerConversationRequest) =>
-    request<CustomerConversationRecord>(`/customer-conversations/${id}`, {
+    request<CustomerConversationRecord>(scoped(`/customer-conversations/${id}`), {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
   deleteCustomerConversation: (id: string) =>
-    request<void>(`/customer-conversations/${id}`, { method: "DELETE" }),
+    request<void>(scoped(`/customer-conversations/${id}`), { method: "DELETE" }),
   updateCustomer: (id: string, patch: UpdateCustomerRequest) =>
-    request<CustomerRecord>(`/customers/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    request<CustomerRecord>(scoped(`/customers/${id}`), { method: "PATCH", body: JSON.stringify(patch) }),
   sendCustomerMessage: (id: string, body: CreateCustomerMessageRequest) =>
-    request<CustomerMessageRecord>(`/customer-conversations/${id}/messages`, {
+    request<CustomerMessageRecord>(scoped(`/customer-conversations/${id}/messages`), {
       method: "POST",
       body: JSON.stringify(body),
     }),
   draftCustomerReply: (id: string) => request<{ session: SessionRecord; draft: CustomerReplyDraftRecord }>(
-    `/customer-conversations/${id}/drafts`,
+    scoped(`/customer-conversations/${id}/drafts`),
     { method: "POST" }
   ),
   escalateCustomerConversation: (id: string) =>
     request<{ conversation: CustomerConversationRecord; task: TaskRecord }>(
-      `/customer-conversations/${id}/escalate`,
+      scoped(`/customer-conversations/${id}/escalate`),
       { method: "POST" }
     ),
   createCustomerFollowUp: (id: string) =>
-    request<TaskRecord>(`/customer-conversations/${id}/follow-up`, { method: "POST" }),
+    request<TaskRecord>(scoped(`/customer-conversations/${id}/follow-up`), { method: "POST" }),
 
   listScheduledTasks: () => request<ScheduledTaskRecord[]>(scoped("/scheduled-tasks")),
   createScheduledTask: (body: CreateScheduledTaskRequest) =>
@@ -374,14 +374,14 @@ export const api = {
       body: JSON.stringify({ ...body, agentId: getActiveAgentId() ?? undefined }),
     }),
   updateScheduledTask: (id: string, patch: UpdateScheduledTaskRequest) =>
-    request<ScheduledTaskRecord>(`/scheduled-tasks/${id}`, {
+    request<ScheduledTaskRecord>(scoped(`/scheduled-tasks/${id}`), {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
   deleteScheduledTask: (id: string) =>
-    request<void>(`/scheduled-tasks/${id}`, { method: "DELETE" }),
+    request<void>(scoped(`/scheduled-tasks/${id}`), { method: "DELETE" }),
   rehearseScheduledTask: (id: string) =>
-    request<AutomationRehearsal>(`/scheduled-tasks/${id}/rehearsal`),
+    request<AutomationRehearsal>(scoped(`/scheduled-tasks/${id}/rehearsal`)),
 
   listPlatforms: () => request<PlatformDefinition[]>("/platforms"),
   listConnections: () => request<ConnectionRecord[]>("/connections"),
@@ -405,11 +405,11 @@ export const api = {
     }),
 
   listNotifications: () =>
-    request<{ items: NotificationRecord[]; unread: number }>("/notifications"),
+    request<{ items: NotificationRecord[]; unread: number }>(scoped("/notifications")),
   markNotificationRead: (id: string) =>
-    request<{ ok: boolean }>(`/notifications/${id}/read`, { method: "POST" }),
+    request<{ ok: boolean }>(scoped(`/notifications/${id}/read`), { method: "POST" }),
   markAllNotificationsRead: () =>
-    request<{ ok: boolean }>("/notifications/read-all", { method: "POST" }),
+    request<{ ok: boolean }>(scoped("/notifications/read-all"), { method: "POST" }),
 
   exportBackup: (passphrase: string) =>
     request<Record<string, unknown>>("/backup/export", {
@@ -438,7 +438,8 @@ export const api = {
  */
 export async function sessionStreamUrl(sessionId: string, since = 0) {
   const token = await ensureApiToken();
-  return `${BASE_URL}/sessions/${sessionId}/stream?since=${since}&token=${encodeURIComponent(token)}`;
+  const path = scoped(`/sessions/${sessionId}/stream?since=${since}`);
+  return `${BASE_URL}${path}&token=${encodeURIComponent(token)}`;
 }
 
 export async function globalEventsUrl() {

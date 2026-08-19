@@ -9,10 +9,11 @@ import type {
   UpdatePaidGrowthCampaignRequest,
   UpdatePaidGrowthPerformanceRequest,
 } from "@jarvis/shared";
-import { db } from "./db.js";
+import { db, DEFAULT_AGENT_ID } from "./db.js";
 
 interface CampaignRow {
   id: string;
+  agent_id: string | null;
   campaign_id: string | null;
   name: string;
   objective: string;
@@ -40,6 +41,7 @@ interface CampaignRow {
 function mapCampaign(row: CampaignRow): PaidGrowthCampaignRecord {
   return {
     id: row.id,
+    agentId: row.agent_id,
     campaignId: row.campaign_id,
     name: row.name,
     objective: row.objective,
@@ -65,18 +67,19 @@ function mapCampaign(row: CampaignRow): PaidGrowthCampaignRecord {
   };
 }
 
-export function createPaidGrowthCampaign(input: CreatePaidGrowthCampaignRequest): PaidGrowthCampaignRecord {
+export function createPaidGrowthCampaign(input: CreatePaidGrowthCampaignRequest & { agentId?: string | null }): PaidGrowthCampaignRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO paid_growth_campaigns
-      (id, campaign_id, name, objective, platform, external_campaign_id, external_budget_entity_id, status, currency,
+      (id, agent_id, campaign_id, name, objective, platform, external_campaign_id, external_budget_entity_id, status, currency,
        daily_budget_minor, lifetime_budget_minor, approved_budget_minor, spent_minor,
        revenue_minor, impressions, clicks, conversions, target_roas, start_date, end_date,
        last_synced_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, 0, 0, 0, 0, 0, 0, ?, ?, ?, NULL, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, 0, 0, 0, 0, 0, 0, ?, ?, ?, NULL, ?, ?)`
   ).run(
     id,
+    input.agentId ?? DEFAULT_AGENT_ID,
     input.campaignId ?? null,
     input.name,
     input.objective,
@@ -95,15 +98,15 @@ export function createPaidGrowthCampaign(input: CreatePaidGrowthCampaignRequest)
   return getPaidGrowthCampaign(id)!;
 }
 
-export function getPaidGrowthCampaign(id: string): PaidGrowthCampaignRecord | undefined {
-  const row = db.prepare(`SELECT * FROM paid_growth_campaigns WHERE id = ?`).get(id) as unknown as CampaignRow | undefined;
+export function getPaidGrowthCampaign(id: string, agentId?: string): PaidGrowthCampaignRecord | undefined {
+  const row = (agentId ? db.prepare(`SELECT * FROM paid_growth_campaigns WHERE id = ? AND agent_id = ?`).get(id, agentId) : db.prepare(`SELECT * FROM paid_growth_campaigns WHERE id = ?`).get(id)) as unknown as CampaignRow | undefined;
   return row ? mapCampaign(row) : undefined;
 }
 
-export function listPaidGrowthCampaigns(): PaidGrowthCampaignRecord[] {
-  return (db.prepare(
-    `SELECT * FROM paid_growth_campaigns ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'pending_approval' THEN 1 WHEN 'approved' THEN 2 WHEN 'draft' THEN 3 WHEN 'paused' THEN 4 ELSE 5 END, updated_at DESC`
-  ).all() as unknown as CampaignRow[]).map(mapCampaign);
+export function listPaidGrowthCampaigns(agentId?: string): PaidGrowthCampaignRecord[] {
+  const order = `ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'pending_approval' THEN 1 WHEN 'approved' THEN 2 WHEN 'draft' THEN 3 WHEN 'paused' THEN 4 ELSE 5 END, updated_at DESC`;
+  const rows = agentId ? db.prepare(`SELECT * FROM paid_growth_campaigns WHERE agent_id = ? ${order}`).all(agentId) : db.prepare(`SELECT * FROM paid_growth_campaigns ${order}`).all();
+  return (rows as unknown as CampaignRow[]).map(mapCampaign);
 }
 
 export function updatePaidGrowthCampaign(
@@ -196,8 +199,11 @@ export function getPaidGrowthDecision(id: string): PaidGrowthDecisionRecord | un
   return row ? mapDecision(row) : undefined;
 }
 
-export function listPaidGrowthDecisions(): PaidGrowthDecisionRecord[] {
-  return (db.prepare(`SELECT * FROM paid_growth_decisions ORDER BY created_at DESC`).all() as unknown as DecisionRow[]).map(mapDecision);
+export function listPaidGrowthDecisions(agentId?: string): PaidGrowthDecisionRecord[] {
+  const rows = agentId
+    ? db.prepare(`SELECT d.* FROM paid_growth_decisions d JOIN paid_growth_campaigns c ON c.id = d.paid_campaign_id WHERE c.agent_id = ? ORDER BY d.created_at DESC`).all(agentId)
+    : db.prepare(`SELECT * FROM paid_growth_decisions ORDER BY created_at DESC`).all();
+  return (rows as unknown as DecisionRow[]).map(mapDecision);
 }
 
 export function hasOpenPaidGrowthDecision(paidCampaignId: string, kind: PaidGrowthDecisionKind): boolean {

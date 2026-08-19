@@ -136,14 +136,21 @@ export function recordMemoryReflection(input: {
   return listMemoryReflections(1)[0];
 }
 
-export function listMemoryReflections(limit = 20): MemoryReflectionRecord[] {
-  const rows = db.prepare(
+export function listMemoryReflections(limit = 20, agentId?: string): MemoryReflectionRecord[] {
+  const rows = (agentId ? db.prepare(
+    `SELECT r.id, r.session_id, COALESCE(s.title, 'Jarvis session') AS session_title,
+            r.status, r.memories_added, r.memories_confirmed, r.created_at
+     FROM memory_reflections r
+     JOIN sessions s ON s.id = r.session_id
+     WHERE s.agent_id = ?
+     ORDER BY r.created_at DESC LIMIT ?`
+  ).all(agentId, limit) : db.prepare(
     `SELECT r.id, r.session_id, COALESCE(s.title, 'Jarvis session') AS session_title,
             r.status, r.memories_added, r.memories_confirmed, r.created_at
      FROM memory_reflections r
      LEFT JOIN sessions s ON s.id = r.session_id
      ORDER BY r.created_at DESC LIMIT ?`
-  ).all(limit) as unknown as Array<{
+  ).all(limit)) as unknown as Array<{
     id: string; session_id: string; session_title: string; status: string;
     memories_added: number; memories_confirmed: number; created_at: string;
   }>;

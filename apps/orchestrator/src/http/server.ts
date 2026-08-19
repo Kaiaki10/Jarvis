@@ -13,6 +13,7 @@ import {
   listSessionEvents,
   markInterruptedIfActive,
   createTask,
+  getTask,
   listTasks,
   updateTask,
   deleteTask,
@@ -136,6 +137,7 @@ import {
 import {
   createPaidGrowthCampaign,
   getPaidGrowthCampaign,
+  listPaidGrowthDecisions,
   updatePaidGrowthCampaign,
   updatePaidGrowthPerformance,
 } from "../db/paidGrowthRepo.js";
@@ -518,7 +520,8 @@ app.post("/chat", (req: Request, res: Response) => {
 
 app.delete("/sessions/:id", (req: Request, res: Response) => {
   const session = getSession(req.params.id);
-  if (!session) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!session || (agentId && session.agentId !== agentId)) {
     res.status(404).json({ error: "no such session" });
     return;
   }
@@ -534,7 +537,8 @@ app.delete("/sessions/:id", (req: Request, res: Response) => {
 
 app.get("/sessions/:id", (req: Request, res: Response) => {
   const session = getSession(req.params.id);
-  if (!session) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!session || (agentId && session.agentId !== agentId)) {
     res.status(404).json({ error: "not found" });
     return;
   }
@@ -542,6 +546,8 @@ app.get("/sessions/:id", (req: Request, res: Response) => {
 });
 
 app.get("/sessions/:id/events", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getSession(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "not found" }); return; }
   const since = validatedSince(req, res);
   if (since === undefined) return;
   res.json(listSessionEvents(req.params.id, since));
@@ -549,6 +555,8 @@ app.get("/sessions/:id/events", (req: Request, res: Response) => {
 
 app.get("/sessions/:id/stream", (req: Request, res: Response) => {
   const sessionId = req.params.id;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getSession(sessionId)?.agentId !== agentId) { res.status(404).json({ error: "not found" }); return; }
   const since = validatedSince(req, res);
   if (since === undefined) return;
   sseHeaders(res);
@@ -760,8 +768,9 @@ app.get("/memories", (req: Request, res: Response) => {
   res.json(listMemories(status as "active" | "archived" | undefined, agentId));
 });
 
-app.get("/memory-reflections", (_req: Request, res: Response) => {
-  res.json(listMemoryReflections());
+app.get("/memory-reflections", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(listMemoryReflections(20, agentId));
 });
 
 app.post("/memories", (req: Request, res: Response) => {
@@ -779,6 +788,10 @@ app.post("/memories", (req: Request, res: Response) => {
 app.patch("/memories/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateMemorySchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && !listMemories(undefined, agentId).some((item) => item.id === req.params.id)) {
+    res.status(404).json({ error: "memory not found" }); return;
+  }
   try {
     const memory = updateMemory(req.params.id, body);
     if (!memory) {
@@ -895,8 +908,9 @@ for (const channel of ["facebook", "instagram"] as const) {
   });
 }
 
-app.get("/customer-operations", (_req: Request, res: Response) => {
-  res.json(listCustomerOperations());
+app.get("/customer-operations", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(listCustomerOperations(agentId));
 });
 
 app.patch("/customer-service-policy", (req: Request, res: Response) => {
@@ -910,7 +924,8 @@ app.patch("/customer-service-policy", (req: Request, res: Response) => {
 app.post("/customer-conversations", (req: Request, res: Response) => {
   const body = validatedBody(createCustomerConversationSchema, req, res);
   if (!body) return;
-  const created = createCustomerConversation(body);
+  const agentId = owningAgentId(req, res); if (agentId === null) return;
+  const created = createCustomerConversation({ ...body, agentId });
   globalBus.emit("customers_changed");
   res.status(201).json(created);
 });
@@ -918,6 +933,8 @@ app.post("/customer-conversations", (req: Request, res: Response) => {
 app.patch("/customer-conversations/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateCustomerConversationSchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getCustomerConversation(req.params.id, agentId)) { res.status(404).json({ error: "conversation not found" }); return; }
   const conversation = updateCustomerConversation(req.params.id, body);
   if (!conversation) {
     res.status(404).json({ error: "conversation not found" });
@@ -928,7 +945,8 @@ app.patch("/customer-conversations/:id", (req: Request, res: Response) => {
 });
 
 app.delete("/customer-conversations/:id", (req: Request, res: Response) => {
-  if (!getCustomerConversation(req.params.id)) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getCustomerConversation(req.params.id, agentId)) {
     res.status(404).json({ error: "conversation not found" });
     return;
   }
@@ -940,6 +958,8 @@ app.delete("/customer-conversations/:id", (req: Request, res: Response) => {
 app.patch("/customers/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateCustomerSchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getCustomer(req.params.id, agentId)) { res.status(404).json({ error: "customer not found" }); return; }
   const customer = updateCustomer(req.params.id, body);
   if (!customer) {
     res.status(404).json({ error: "customer not found" });
@@ -952,7 +972,8 @@ app.patch("/customers/:id", (req: Request, res: Response) => {
 app.post("/customer-conversations/:id/messages", async (req: Request, res: Response) => {
   const body = validatedBody(createCustomerMessageSchema, req, res);
   if (!body) return;
-  if (!getCustomerConversation(req.params.id)) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getCustomerConversation(req.params.id, agentId)) {
     res.status(404).json({ error: "conversation not found" });
     return;
   }
@@ -968,6 +989,8 @@ app.post("/customer-conversations/:id/messages", async (req: Request, res: Respo
 });
 
 app.post("/customer-conversations/:id/drafts", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getCustomerConversation(req.params.id, agentId)) { res.status(404).json({ error: "Conversation not found." }); return; }
   try {
     res.status(201).json(startCustomerReplyDraft(req.params.id));
   } catch (error) {
@@ -977,7 +1000,8 @@ app.post("/customer-conversations/:id/drafts", (req: Request, res: Response) => 
 });
 
 app.post("/customer-conversations/:id/escalate", (req: Request, res: Response) => {
-  const conversation = getCustomerConversation(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const conversation = getCustomerConversation(req.params.id, agentId);
   if (!conversation) {
     res.status(404).json({ error: "conversation not found" });
     return;
@@ -997,12 +1021,14 @@ app.post("/customer-conversations/:id/escalate", (req: Request, res: Response) =
   const task = createTask({
     title: `Customer escalation: ${conversation.subject}`,
     description: `Review the ${conversation.channel} conversation with ${customer?.name ?? "customer"}. Open Customer Operations and resolve or reply.`,
+    agentId,
   });
   notify({
     type: "customer_escalation",
     severity: "warning",
     title: `Customer needs attention: ${customer?.name ?? conversation.subject}`,
     body: conversation.subject,
+    agentId,
   });
   globalBus.emit("customers_changed");
   globalBus.emit("missions_changed");
@@ -1010,7 +1036,8 @@ app.post("/customer-conversations/:id/escalate", (req: Request, res: Response) =
 });
 
 app.post("/customer-conversations/:id/follow-up", (req: Request, res: Response) => {
-  const conversation = getCustomerConversation(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const conversation = getCustomerConversation(req.params.id, agentId);
   if (!conversation) {
     res.status(404).json({ error: "conversation not found" });
     return;
@@ -1019,6 +1046,7 @@ app.post("/customer-conversations/:id/follow-up", (req: Request, res: Response) 
   const task = createTask({
     title: `Follow up with ${customer?.name ?? "customer"}`,
     description: `${conversation.subject} · ${conversation.channel} · Customer Operations`,
+    agentId,
   });
   createCustomerMessage({
     conversationId: conversation.id,
@@ -1087,6 +1115,8 @@ app.get("/events", (req: Request, res: Response) => {
 app.post("/sessions/:id/messages", (req: Request, res: Response) => {
   const body = validatedBody(messageSchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getSession(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "no such session" }); return; }
   const { text } = body;
   const outcome = sendFollowUp(req.params.id, text);
   if (outcome.ok) {
@@ -1111,6 +1141,8 @@ app.post("/sessions/:id/messages", (req: Request, res: Response) => {
 app.post("/sessions/:id/permission-response", (req: Request, res: Response) => {
   const body = validatedBody(permissionResponseSchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getSession(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "no such session" }); return; }
   const ok = resolvePermission(
     req.params.id,
     body.requestId,
@@ -1125,6 +1157,8 @@ app.post("/sessions/:id/permission-response", (req: Request, res: Response) => {
 });
 
 app.post("/sessions/:id/interrupt", async (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getSession(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "no such session" }); return; }
   try {
     const ok = await interruptSession(req.params.id);
     if (!ok) {
@@ -1151,12 +1185,12 @@ app.post("/tasks", (req: Request, res: Response) => {
   const body = validatedBody(createTaskSchema, req, res);
   if (!body) return;
   const { title, description, missionId } = body;
-  if (missionId && !getMission(missionId)) {
+  const agentId = owningAgentId(req, res);
+  if (agentId === null) return;
+  if (missionId && getMission(missionId)?.agentId !== agentId) {
     res.status(404).json({ error: "Mission not found" });
     return;
   }
-  const agentId = owningAgentId(req, res);
-  if (agentId === null) return;
   const task = createTask({ title, description, missionId, agentId });
   globalBus.emit("missions_changed");
   res.status(201).json(task);
@@ -1165,7 +1199,9 @@ app.post("/tasks", (req: Request, res: Response) => {
 app.patch("/tasks/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateTaskSchema, req, res);
   if (!body) return;
-  if (body.missionId && !getMission(body.missionId)) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getTask(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "not found" }); return; }
+  if (body.missionId && (agentId ? getMission(body.missionId)?.agentId !== agentId : !getMission(body.missionId))) {
     res.status(404).json({ error: "Mission not found" });
     return;
   }
@@ -1179,6 +1215,8 @@ app.patch("/tasks/:id", (req: Request, res: Response) => {
 });
 
 app.delete("/tasks/:id", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getTask(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "not found" }); return; }
   deleteTask(req.params.id);
   globalBus.emit("missions_changed");
   res.status(204).send();
@@ -1204,21 +1242,24 @@ app.post("/missions", (req: Request, res: Response) => {
 
 app.get("/missions/:id", (req: Request, res: Response) => {
   const mission = getMission(req.params.id);
-  if (!mission) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!mission || (agentId && mission.agentId !== agentId)) {
     res.status(404).json({ error: "Mission not found" });
     return;
   }
   res.json({
     mission,
-    tasks: listTasks().filter((task) => task.missionId === mission.id),
-    deliverables: listDeliverables(mission.id),
-    updates: listMissionUpdates(mission.id),
+    tasks: listTasks(agentId).filter((task) => task.missionId === mission.id),
+    deliverables: listDeliverables(mission.id, agentId),
+    updates: listMissionUpdates(mission.id, agentId),
   });
 });
 
 app.patch("/missions/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateMissionSchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getMission(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "Mission not found" }); return; }
   const mission = updateMission(req.params.id, body);
   if (!mission) {
     res.status(404).json({ error: "Mission not found" });
@@ -1230,7 +1271,8 @@ app.patch("/missions/:id", (req: Request, res: Response) => {
 
 app.post("/missions/:id/advance", (req: Request, res: Response) => {
   const mission = getMission(req.params.id);
-  if (!mission) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!mission || (agentId && mission.agentId !== agentId)) {
     res.status(404).json({ error: "Mission not found" });
     return;
   }
@@ -1249,6 +1291,7 @@ app.post("/missions/:id/advance", (req: Request, res: Response) => {
     title: `Advance: ${mission.title}`,
     description: `Work toward this outcome: ${mission.outcome}`,
     missionId: mission.id,
+    agentId: mission.agentId,
   });
   const prompt = `Advance the mission "${mission.title}".\n\nDesired outcome: ${mission.outcome}\n\nCurrent next action: ${mission.nextAction || "Determine the best next action."}\n\nMake concrete progress, explain what changed, and identify any deliverable or decision that needs my review.`;
   const session = createSession({
@@ -1256,6 +1299,7 @@ app.post("/missions/:id/advance", (req: Request, res: Response) => {
     cwd,
     permissionMode: "default",
     taskId: task.id,
+    agentId: mission.agentId,
   });
   linkTaskToSession(task.id, session.id);
   updateMission(mission.id, { status: "active" });
@@ -1272,7 +1316,8 @@ app.post("/missions/:id/advance", (req: Request, res: Response) => {
 });
 
 app.delete("/missions/:id", (req: Request, res: Response) => {
-  if (!getMission(req.params.id)) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getMission(req.params.id) || (agentId && getMission(req.params.id)?.agentId !== agentId)) {
     res.status(404).json({ error: "Mission not found" });
     return;
   }
@@ -1283,11 +1328,13 @@ app.delete("/missions/:id", (req: Request, res: Response) => {
 
 app.get("/deliverables", (req: Request, res: Response) => {
   const missionId = typeof req.query.missionId === "string" ? req.query.missionId : undefined;
-  res.json(listDeliverables(missionId));
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(listDeliverables(missionId, agentId));
 });
 
 app.post("/missions/:id/deliverables", (req: Request, res: Response) => {
-  if (!getMission(req.params.id)) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getMission(req.params.id)?.agentId !== agentId) {
     res.status(404).json({ error: "Mission not found" });
     return;
   }
@@ -1301,6 +1348,8 @@ app.post("/missions/:id/deliverables", (req: Request, res: Response) => {
 app.patch("/deliverables/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateDeliverableSchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && !listDeliverables(undefined, agentId).some((item) => item.id === req.params.id)) { res.status(404).json({ error: "Deliverable not found" }); return; }
   const deliverable = updateDeliverable(req.params.id, body);
   if (!deliverable) {
     res.status(404).json({ error: "Deliverable not found" });
@@ -1311,20 +1360,24 @@ app.patch("/deliverables/:id", (req: Request, res: Response) => {
 });
 
 app.delete("/deliverables/:id", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && !listDeliverables(undefined, agentId).some((item) => item.id === req.params.id)) { res.status(404).json({ error: "Deliverable not found" }); return; }
   deleteDeliverable(req.params.id);
   globalBus.emit("missions_changed");
   res.status(204).send();
 });
 
-app.get("/mission-updates", (_req: Request, res: Response) => {
-  res.json(listMissionUpdates());
+app.get("/mission-updates", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(listMissionUpdates(undefined, agentId));
 });
 
 app.post("/mission-updates/:id/review", (req: Request, res: Response) => {
   const body = validatedBody(reviewMissionUpdateSchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
   const update = getMissionUpdate(req.params.id);
-  if (!update) {
+  if (!update || (agentId && getMission(update.missionId)?.agentId !== agentId)) {
     res.status(404).json({ error: "Mission update not found" });
     return;
   }
@@ -1345,48 +1398,54 @@ app.post("/mission-updates/:id/review", (req: Request, res: Response) => {
 
 // ---- Campaigns and Content Studio ----
 
-app.get("/campaigns", (_req: Request, res: Response) => {
+app.get("/campaigns", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
   res.json({
-    campaigns: listCampaigns(),
-    content: listContentItems(),
-    generationRuns: listCampaignGenerationRuns(),
-    publicationRuns: listContentPublicationRuns(),
+    campaigns: listCampaigns(agentId),
+    content: listContentItems(undefined, agentId),
+    generationRuns: listCampaignGenerationRuns(undefined, agentId),
+    publicationRuns: listContentPublicationRuns(undefined, agentId),
   });
 });
 
 app.post("/campaigns", (req: Request, res: Response) => {
   const body = validatedBody(createCampaignSchema, req, res);
   if (!body) return;
-  if (body.missionId && !getMission(body.missionId)) {
+  const agentId = owningAgentId(req, res); if (agentId === null) return;
+  if (body.missionId && getMission(body.missionId)?.agentId !== agentId) {
     res.status(400).json({ error: "Mission not found" });
     return;
   }
   const campaign = createCampaign({
     ...body,
     approvalPolicy: body.approvalPolicy ?? "each_item",
+    agentId,
   });
   globalBus.emit("campaigns_changed");
   res.status(201).json(campaign);
 });
 
 app.get("/campaigns/:id", (req: Request, res: Response) => {
-  const campaign = getCampaign(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const campaign = getCampaign(req.params.id, agentId);
   if (!campaign) {
     res.status(404).json({ error: "Campaign not found" });
     return;
   }
   res.json({
     campaign,
-    content: listContentItems(campaign.id),
-    generationRuns: listCampaignGenerationRuns(campaign.id),
-    publicationRuns: listContentPublicationRuns(campaign.id),
+    content: listContentItems(campaign.id, agentId),
+    generationRuns: listCampaignGenerationRuns(campaign.id, agentId),
+    publicationRuns: listContentPublicationRuns(campaign.id, agentId),
   });
 });
 
 app.patch("/campaigns/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateCampaignSchema, req, res);
   if (!body) return;
-  if (body.missionId && !getMission(body.missionId)) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getCampaign(req.params.id, agentId)) { res.status(404).json({ error: "Campaign not found" }); return; }
+  if (body.missionId && getMission(body.missionId)?.agentId !== agentId) {
     res.status(400).json({ error: "Mission not found" });
     return;
   }
@@ -1400,7 +1459,8 @@ app.patch("/campaigns/:id", (req: Request, res: Response) => {
 });
 
 app.delete("/campaigns/:id", (req: Request, res: Response) => {
-  if (!getCampaign(req.params.id)) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getCampaign(req.params.id, agentId)) {
     res.status(404).json({ error: "Campaign not found" });
     return;
   }
@@ -1412,7 +1472,8 @@ app.delete("/campaigns/:id", (req: Request, res: Response) => {
 app.post("/campaigns/:id/content", (req: Request, res: Response) => {
   const body = validatedBody(createContentItemSchema, req, res);
   if (!body) return;
-  const campaign = getCampaign(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const campaign = getCampaign(req.params.id, agentId);
   if (!campaign) {
     res.status(404).json({ error: "Campaign not found" });
     return;
@@ -1429,7 +1490,8 @@ app.post("/campaigns/:id/content", (req: Request, res: Response) => {
 app.patch("/content/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateContentItemSchema, req, res);
   if (!body) return;
-  const current = getContentItem(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const current = getContentItem(req.params.id, agentId);
   if (!current) {
     res.status(404).json({ error: "Content item not found" });
     return;
@@ -1470,7 +1532,8 @@ app.patch("/content/:id", (req: Request, res: Response) => {
 });
 
 app.delete("/content/:id", (req: Request, res: Response) => {
-  if (!getContentItem(req.params.id)) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getContentItem(req.params.id, agentId)) {
     res.status(404).json({ error: "Content item not found" });
     return;
   }
@@ -1480,7 +1543,8 @@ app.delete("/content/:id", (req: Request, res: Response) => {
 });
 
 app.post("/content/:id/publish", (req: Request, res: Response) => {
-  const item = getContentItem(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const item = getContentItem(req.params.id, agentId);
   if (!item) {
     res.status(404).json({ error: "Content item not found" });
     return;
@@ -1496,7 +1560,8 @@ app.post("/content/:id/publish", (req: Request, res: Response) => {
 app.post("/campaigns/:id/generate", (req: Request, res: Response) => {
   const body = validatedBody(generateCampaignContentSchema, req, res);
   if (!body) return;
-  const campaign = getCampaign(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const campaign = getCampaign(req.params.id, agentId);
   if (!campaign) {
     res.status(404).json({ error: "Campaign not found" });
     return;
@@ -1519,6 +1584,7 @@ app.post("/campaigns/:id/generate", (req: Request, res: Response) => {
     cwd: process.cwd(),
     permissionMode: "default",
     allowedTools: [],
+    agentId,
   });
   const generationRun = createCampaignGenerationRun({
     campaignId: campaign.id,
@@ -1580,7 +1646,8 @@ app.patch("/scheduled-tasks/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateScheduledTaskSchema, req, res);
   if (!body) return;
   const existing = getScheduledTask(req.params.id);
-  if (!existing) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!existing || (agentId && existing.agentId !== agentId)) {
     res.status(404).json({ error: "not found" });
     return;
   }
@@ -1604,7 +1671,8 @@ app.patch("/scheduled-tasks/:id", (req: Request, res: Response) => {
 
 app.get("/scheduled-tasks/:id/rehearsal", (req: Request, res: Response) => {
   const task = getScheduledTask(req.params.id);
-  if (!task) {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!task || (agentId && task.agentId !== agentId)) {
     res.status(404).json({ error: "not found" });
     return;
   }
@@ -1630,6 +1698,8 @@ app.get("/scheduled-tasks/:id/rehearsal", (req: Request, res: Response) => {
 });
 
 app.delete("/scheduled-tasks/:id", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (agentId && getScheduledTask(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "not found" }); return; }
   deleteScheduledTask(req.params.id);
   globalBus.emit("automations_changed");
   res.status(204).send();
@@ -1637,10 +1707,11 @@ app.delete("/scheduled-tasks/:id", (req: Request, res: Response) => {
 
 // ---- Jarvis evolution and Lab ----
 
-app.get("/evolution", (_req: Request, res: Response) => {
+app.get("/evolution", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
   ensureEvolutionBootstrap();
   res.json({
-    proposals: listEvolutionProposals(),
+    proposals: listEvolutionProposals(agentId),
     policies: listEvolutionPolicies(),
     readiness: evolutionReadiness(),
   });
@@ -1649,7 +1720,8 @@ app.get("/evolution", (_req: Request, res: Response) => {
 app.post("/evolution/proposals", (req: Request, res: Response) => {
   const body = validatedBody(createEvolutionProposalSchema, req, res);
   if (!body) return;
-  const proposal = createEvolutionProposal(body);
+  const agentId = owningAgentId(req, res); if (agentId === null) return;
+  const proposal = createEvolutionProposal({ ...body, agentId });
   globalBus.emit("evolution_changed");
   res.status(201).json(proposal);
 });
@@ -1657,6 +1729,8 @@ app.post("/evolution/proposals", (req: Request, res: Response) => {
 app.patch("/evolution/proposals/:id", (req: Request, res: Response) => {
   const body = validatedBody(updateEvolutionProposalSchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getEvolutionProposal(req.params.id, agentId)) { res.status(404).json({ error: "Evolution proposal not found" }); return; }
   const proposal = updateEvolutionProposal(req.params.id, body);
   if (!proposal) {
     res.status(404).json({ error: "Evolution proposal not found" });
@@ -1691,7 +1765,8 @@ app.patch("/evolution/policies/:changeClass", (req: Request, res: Response) => {
 });
 
 app.post("/evolution/proposals/:id/start-build", (req: Request, res: Response) => {
-  const proposal = getEvolutionProposal(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const proposal = getEvolutionProposal(req.params.id, agentId);
   if (!proposal) {
     res.status(404).json({ error: "Evolution proposal not found" });
     return;
@@ -1713,6 +1788,7 @@ app.post("/evolution/proposals/:id/start-build", (req: Request, res: Response) =
     title: `[Lab] ${proposal.title}`,
     cwd: LAB_PATH,
     permissionMode: "default",
+    agentId,
   });
   updateEvolutionProposal(proposal.id, { stage: "building", labSessionId: session.id });
   globalBus.emit("session_updated", session.id);
@@ -1733,18 +1809,20 @@ app.post("/evolution/proposals/:id/start-build", (req: Request, res: Response) =
 
 // ---- Paid Growth Control ----
 
-app.get("/paid-growth", (_req: Request, res: Response) => {
-  res.json(paidGrowthOverview());
+app.get("/paid-growth", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(paidGrowthOverview(agentId));
 });
 
 app.post("/paid-growth/campaigns", (req: Request, res: Response) => {
   const body = validatedBody(createPaidGrowthCampaignSchema, req, res);
   if (!body) return;
-  if (body.campaignId && !getCampaign(body.campaignId)) {
+  const agentId = owningAgentId(req, res); if (agentId === null) return;
+  if (body.campaignId && !getCampaign(body.campaignId, agentId)) {
     res.status(400).json({ error: "Linked campaign not found" });
     return;
   }
-  const campaign = createPaidGrowthCampaign(body);
+  const campaign = createPaidGrowthCampaign({ ...body, agentId });
   globalBus.emit("paid_growth_changed");
   res.status(201).json(campaign);
 });
@@ -1752,7 +1830,8 @@ app.post("/paid-growth/campaigns", (req: Request, res: Response) => {
 app.patch("/paid-growth/campaigns/:id", (req: Request, res: Response) => {
   const body = validatedBody(updatePaidGrowthCampaignSchema, req, res);
   if (!body) return;
-  const current = getPaidGrowthCampaign(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const current = getPaidGrowthCampaign(req.params.id, agentId);
   if (!current) {
     res.status(404).json({ error: "Paid campaign not found" });
     return;
@@ -1783,7 +1862,8 @@ app.patch("/paid-growth/campaigns/:id", (req: Request, res: Response) => {
 app.post("/paid-growth/campaigns/:id/performance", (req: Request, res: Response) => {
   const body = validatedBody(updatePaidGrowthPerformanceSchema, req, res);
   if (!body) return;
-  const current = getPaidGrowthCampaign(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const current = getPaidGrowthCampaign(req.params.id, agentId);
   if (!current) {
     res.status(404).json({ error: "Paid campaign not found" });
     return;
@@ -1798,32 +1878,36 @@ app.post("/paid-growth/campaigns/:id/performance", (req: Request, res: Response)
 });
 
 app.post("/paid-growth/campaigns/:id/sync", async (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
   try {
-    const result = await syncPaidGrowthCampaign(req.params.id);
+    const result = await syncPaidGrowthCampaign(req.params.id, agentId);
     for (const decision of result.decisions) {
       notify({
         type: "paid_growth_approval",
         severity: decision.kind === "pause" ? "warning" : "info",
         title: "Paid growth decision ready",
         body: `${result.campaign.name}: ${decision.reason}`,
+        agentId: result.campaign.agentId,
       });
     }
     globalBus.emit("paid_growth_changed");
-    res.json({ ...result, overview: paidGrowthOverview() });
+    res.json({ ...result, overview: paidGrowthOverview(agentId) });
   } catch (error) {
     res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 
 app.post("/paid-growth/campaigns/:id/request-launch", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
   try {
-    const decision = requestPaidGrowthLaunch(req.params.id);
-    const campaign = getPaidGrowthCampaign(req.params.id)!;
+    const decision = requestPaidGrowthLaunch(req.params.id, agentId);
+    const campaign = getPaidGrowthCampaign(req.params.id, agentId)!;
     notify({
       type: "paid_growth_approval",
       severity: "warning",
       title: "Paid campaign needs approval",
       body: `${campaign.name} is ready for a ${campaign.dailyBudgetMinor} ${campaign.currency} minor-unit daily envelope.`,
+      agentId: campaign.agentId,
     });
     globalBus.emit("paid_growth_changed");
     res.status(201).json(decision);
@@ -1832,8 +1916,9 @@ app.post("/paid-growth/campaigns/:id/request-launch", (req: Request, res: Respon
   }
 });
 
-app.post("/paid-growth/recommendations/refresh", (_req: Request, res: Response) => {
-  const decisions = refreshPaidGrowthRecommendations();
+app.post("/paid-growth/recommendations/refresh", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const decisions = refreshPaidGrowthRecommendations(agentId);
   for (const decision of decisions) {
     const campaign = getPaidGrowthCampaign(decision.paidCampaignId);
     notify({
@@ -1841,19 +1926,23 @@ app.post("/paid-growth/recommendations/refresh", (_req: Request, res: Response) 
       severity: decision.kind === "pause" ? "warning" : "info",
       title: "Paid growth decision ready",
       body: `${campaign?.name ?? "A paid campaign"}: ${decision.reason}`,
+      agentId: campaign?.agentId,
     });
   }
   globalBus.emit("paid_growth_changed");
-  res.json({ created: decisions, overview: paidGrowthOverview() });
+  res.json({ created: decisions, overview: paidGrowthOverview(agentId) });
 });
 
 app.post("/paid-growth/decisions/:id/review", async (req: Request, res: Response) => {
   const body = validatedBody(reviewPaidGrowthDecisionSchema, req, res);
   if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const owned = listPaidGrowthDecisions(agentId).some((item) => item.id === req.params.id);
+  if (!owned) { res.status(404).json({ error: "Paid growth decision not found" }); return; }
   try {
     const decision = await decidePaidGrowthRecommendation(req.params.id, body.decision);
     globalBus.emit("paid_growth_changed");
-    res.json({ decision, overview: paidGrowthOverview() });
+    res.json({ decision, overview: paidGrowthOverview(agentId) });
   } catch (error) {
     res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
   }
@@ -1969,17 +2058,20 @@ app.post("/storage/compact", (_req: Request, res: Response) => {
 
 // ---- Notifications ----
 
-app.get("/notifications", (_req: Request, res: Response) => {
-  res.json({ items: listNotifications(), unread: unreadCount() });
+app.get("/notifications", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json({ items: listNotifications(100, agentId), unread: unreadCount(agentId) });
 });
 
 app.post("/notifications/:id/read", (req: Request, res: Response) => {
-  markRead(req.params.id);
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  markRead(req.params.id, agentId);
   res.status(202).json({ ok: true });
 });
 
-app.post("/notifications/read-all", (_req: Request, res: Response) => {
-  markAllRead();
+app.post("/notifications/read-all", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  markAllRead(agentId);
   res.status(202).json({ ok: true });
 });
 

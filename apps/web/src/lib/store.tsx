@@ -452,9 +452,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshMissions(),
         refreshScheduledTasks(),
         refreshPrimaryChat(),
+        refreshCampaigns(),
+        refreshCustomerOperations(),
+        refreshPaidGrowth(),
+        refreshEvolution(),
+        refreshMemories(),
+        refreshNotifications(),
       ]);
     },
-    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat]
+    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat, refreshCampaigns, refreshCustomerOperations, refreshPaidGrowth, refreshEvolution, refreshMemories, refreshNotifications]
   );
 
   const removeSession = useCallback(async (id: string) => {

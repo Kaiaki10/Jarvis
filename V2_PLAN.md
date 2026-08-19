@@ -9,7 +9,10 @@ Written 2026-08-18, all four increments delivered 2026-08-19. This is the plan
 of record; when reality diverges, change this file in the same commit and say
 why.
 
-**Status: complete.** What remains open is recorded in `GAPS.md` — per-agent
+**Status: complete.** A full isolation audit on 2026-08-19 verified repository,
+HTTP, client-store, and real-time refresh boundaries across runs, tasks, missions,
+automations, memory, campaigns/content, paid growth, customers, evolution, and
+notifications. What remains open is recorded in `GAPS.md` — per-agent caller
 authorization, and the design-system question of per-agent colour.
 
 ## What "Jarvis" actually is today

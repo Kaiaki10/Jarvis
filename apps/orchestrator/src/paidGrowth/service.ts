@@ -15,13 +15,13 @@ import { paidGrowthMetrics, recommendPaidGrowthActions } from "./engine.js";
 import { syncPaidGrowthPerformance } from "./adapters.js";
 import { executePaidGrowthAction } from "./executor.js";
 
-export function paidGrowthOverview(): PaidGrowthOverview {
-  const campaigns = listPaidGrowthCampaigns().map((campaign) => ({
+export function paidGrowthOverview(agentId?: string): PaidGrowthOverview {
+  const campaigns = listPaidGrowthCampaigns(agentId).map((campaign) => ({
     ...campaign,
     metrics: paidGrowthMetrics(campaign),
     connectionReady: getConnection(campaign.platform)?.status === "connected",
   }));
-  const decisions = listPaidGrowthDecisions();
+  const decisions = listPaidGrowthDecisions(agentId);
   const currencies = new Set(campaigns.map((campaign) => campaign.currency));
   return {
     campaigns,
@@ -37,8 +37,8 @@ export function paidGrowthOverview(): PaidGrowthOverview {
   };
 }
 
-export function requestPaidGrowthLaunch(id: string) {
-  const campaign = getPaidGrowthCampaign(id);
+export function requestPaidGrowthLaunch(id: string, agentId?: string) {
+  const campaign = getPaidGrowthCampaign(id, agentId);
   if (!campaign) throw new Error("Paid campaign not found");
   if (!campaign.externalCampaignId) throw new Error("Link the existing platform campaign ID before requesting activation");
   if (getConnection(campaign.platform)?.status !== "connected") {
@@ -58,17 +58,17 @@ export function requestPaidGrowthLaunch(id: string) {
   return decision;
 }
 
-export function refreshPaidGrowthRecommendations() {
+export function refreshPaidGrowthRecommendations(agentId?: string) {
   const created = [];
-  for (const recommendation of recommendPaidGrowthActions(listPaidGrowthCampaigns())) {
+  for (const recommendation of recommendPaidGrowthActions(listPaidGrowthCampaigns(agentId))) {
     if (hasOpenPaidGrowthDecision(recommendation.paidCampaignId, recommendation.kind)) continue;
     created.push(createPaidGrowthDecision(recommendation));
   }
   return created;
 }
 
-export async function syncPaidGrowthCampaign(id: string) {
-  const campaign = getPaidGrowthCampaign(id);
+export async function syncPaidGrowthCampaign(id: string, agentId?: string) {
+  const campaign = getPaidGrowthCampaign(id, agentId);
   if (!campaign) throw new Error("Paid campaign not found");
   if (getConnection(campaign.platform)?.status !== "connected") {
     throw new Error(`Test the ${campaign.platform} connection before syncing performance`);
@@ -90,7 +90,7 @@ export async function syncPaidGrowthCampaign(id: string) {
     throw new Error("The platform returned less cumulative spend than Jarvis has already recorded");
   }
   const updated = updatePaidGrowthPerformance(id, performance, true)!;
-  const decisions = refreshPaidGrowthRecommendations();
+  const decisions = refreshPaidGrowthRecommendations(agentId);
   return { campaign: updated, decisions };
 }
 

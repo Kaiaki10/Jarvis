@@ -117,4 +117,40 @@ describe("agent scoping", () => {
     // no longer exists, which reads as the conversation having vanished.
     expect(getAgentChatSessionId(heidi.id)).toBeNull();
   });
+
+  it("isolates marketing, growth, customers, evolution, and notifications with their children", async () => {
+    const { createAgent } = await import("./agentRepo.js");
+    const { createCampaign, createContentItem, listCampaigns, listContentItems } = await import("./campaignRepo.js");
+    const { createPaidGrowthCampaign, listPaidGrowthCampaigns } = await import("./paidGrowthRepo.js");
+    const { createCustomerConversation, listCustomerOperations } = await import("./customerRepo.js");
+    const { createEvolutionProposal, listEvolutionProposals } = await import("./repo.js");
+    const { notify, listNotifications, markAllRead, unreadCount } = await import("../notifications/notifier.js");
+    const ivy = createAgent({ name: "Ivy" });
+    const jude = createAgent({ name: "Jude" });
+
+    const ivyCampaign = createCampaign({ name: "Ivy launch", objective: "Grow", audience: "Teams", offer: "Demo", channels: ["blog"], primaryMetric: "leads", approvalPolicy: "campaign", agentId: ivy.id });
+    const judeCampaign = createCampaign({ name: "Jude launch", objective: "Sell", audience: "Founders", offer: "Trial", channels: ["email"], primaryMetric: "trials", approvalPolicy: "each_item", agentId: jude.id });
+    createContentItem({ campaignId: ivyCampaign.id, title: "Ivy article", body: "Body", format: "article", channel: "blog" });
+    createContentItem({ campaignId: judeCampaign.id, title: "Jude email", body: "Body", format: "email", channel: "email" });
+    createPaidGrowthCampaign({ name: "Ivy ads", objective: "Leads", platform: "google_ads", currency: "USD", dailyBudgetMinor: 100, lifetimeBudgetMinor: 1000, startDate: "2026-08-19", agentId: ivy.id });
+    createPaidGrowthCampaign({ name: "Jude ads", objective: "Trials", platform: "meta_ads", currency: "USD", dailyBudgetMinor: 200, lifetimeBudgetMinor: 2000, startDate: "2026-08-19", agentId: jude.id });
+    createCustomerConversation({ customerName: "Ivy Customer", customerEmail: "same@example.com", channel: "email", subject: "Ivy", message: "Hello", agentId: ivy.id });
+    createCustomerConversation({ customerName: "Jude Customer", customerEmail: "same@example.com", channel: "email", subject: "Jude", message: "Hello", agentId: jude.id });
+    createEvolutionProposal({ title: "Ivy idea", problem: "P", expectedValue: "V", changeClass: "product", risk: "low", agentId: ivy.id });
+    createEvolutionProposal({ title: "Jude idea", problem: "P", expectedValue: "V", changeClass: "behavior", risk: "medium", agentId: jude.id });
+    notify({ type: "session_failed", severity: "error", title: "Ivy alert", body: "Ivy only", agentId: ivy.id });
+    notify({ type: "session_failed", severity: "error", title: "Jude alert", body: "Jude only", agentId: jude.id });
+
+    expect(listCampaigns(ivy.id).map((item) => item.name)).toEqual(["Ivy launch"]);
+    expect(listContentItems(undefined, ivy.id).map((item) => item.title)).toEqual(["Ivy article"]);
+    expect(listPaidGrowthCampaigns(ivy.id).map((item) => item.name)).toEqual(["Ivy ads"]);
+    expect(listCustomerOperations(ivy.id).customers.map((item) => item.name)).toEqual(["Ivy Customer"]);
+    expect(listCustomerOperations(ivy.id).messages).toHaveLength(1);
+    expect(listEvolutionProposals(ivy.id).map((item) => item.title)).toEqual(["Ivy idea"]);
+    expect(listNotifications(100, ivy.id).map((item) => item.title)).toEqual(["Ivy alert"]);
+    expect(unreadCount(jude.id)).toBe(1);
+    markAllRead(ivy.id);
+    expect(unreadCount(ivy.id)).toBe(0);
+    expect(unreadCount(jude.id)).toBe(1);
+  });
 });

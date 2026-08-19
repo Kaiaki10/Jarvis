@@ -21,10 +21,11 @@ import type {
   UpdateCustomerConversationRequest,
   UpdateCustomerRequest,
 } from "@jarvis/shared";
-import { db } from "./db.js";
+import { db, DEFAULT_AGENT_ID } from "./db.js";
 
 interface CustomerRow {
   id: string;
+  agent_id: string | null;
   name: string;
   email: string | null;
   company: string | null;
@@ -95,6 +96,7 @@ export interface CustomerChannelThread {
 function mapCustomer(row: CustomerRow): CustomerRecord {
   return {
     id: row.id,
+    agentId: row.agent_id,
     name: row.name,
     email: row.email,
     company: row.company,
@@ -227,16 +229,18 @@ export function updateCustomerServicePolicy(patch: UpdateCustomerServicePolicyRe
   return getCustomerServicePolicy();
 }
 
-export function listCustomerOperations(): CustomerOperationsOverview {
-  const customers = db.prepare(`SELECT * FROM customers ORDER BY updated_at DESC`).all() as unknown as CustomerRow[];
-  const conversations = db.prepare(
-    `SELECT * FROM customer_conversations
+export function listCustomerOperations(agentId?: string): CustomerOperationsOverview {
+  const customers = (agentId
+    ? db.prepare(`SELECT * FROM customers WHERE agent_id = ? ORDER BY updated_at DESC`).all(agentId)
+    : db.prepare(`SELECT * FROM customers ORDER BY updated_at DESC`).all()) as unknown as CustomerRow[];
+  const conversations = (agentId ? db.prepare(
+    `SELECT c.* FROM customer_conversations c JOIN customers u ON u.id = c.customer_id WHERE u.agent_id = ?
      ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
               last_message_at DESC`
-  ).all() as unknown as ConversationRow[];
-  const messages = db.prepare(`SELECT * FROM customer_messages ORDER BY created_at ASC`).all() as unknown as MessageRow[];
-  const drafts = db.prepare(`SELECT * FROM customer_reply_drafts ORDER BY created_at DESC`).all() as unknown as DraftRow[];
-  const deliveries = db.prepare(`SELECT * FROM customer_message_deliveries ORDER BY created_at DESC`).all() as unknown as DeliveryRow[];
+  ).all(agentId) : db.prepare(`SELECT * FROM customer_conversations ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, last_message_at DESC`).all()) as unknown as ConversationRow[];
+  const messages = (agentId ? db.prepare(`SELECT m.* FROM customer_messages m JOIN customer_conversations c ON c.id = m.conversation_id JOIN customers u ON u.id = c.customer_id WHERE u.agent_id = ? ORDER BY m.created_at ASC`).all(agentId) : db.prepare(`SELECT * FROM customer_messages ORDER BY created_at ASC`).all()) as unknown as MessageRow[];
+  const drafts = (agentId ? db.prepare(`SELECT d.* FROM customer_reply_drafts d JOIN customer_conversations c ON c.id = d.conversation_id JOIN customers u ON u.id = c.customer_id WHERE u.agent_id = ? ORDER BY d.created_at DESC`).all(agentId) : db.prepare(`SELECT * FROM customer_reply_drafts ORDER BY created_at DESC`).all()) as unknown as DraftRow[];
+  const deliveries = (agentId ? db.prepare(`SELECT d.* FROM customer_message_deliveries d JOIN customer_messages m ON m.id = d.message_id JOIN customer_conversations c ON c.id = m.conversation_id JOIN customers u ON u.id = c.customer_id WHERE u.agent_id = ? ORDER BY d.created_at DESC`).all(agentId) : db.prepare(`SELECT * FROM customer_message_deliveries ORDER BY created_at DESC`).all()) as unknown as DeliveryRow[];
   return {
     customers: customers.map(mapCustomer),
     conversations: conversations.map(mapConversation),
@@ -247,13 +251,15 @@ export function listCustomerOperations(): CustomerOperationsOverview {
   };
 }
 
-export function getCustomer(id: string): CustomerRecord | undefined {
-  const row = db.prepare(`SELECT * FROM customers WHERE id = ?`).get(id) as unknown as CustomerRow | undefined;
+export function getCustomer(id: string, agentId?: string): CustomerRecord | undefined {
+  const row = (agentId ? db.prepare(`SELECT * FROM customers WHERE id = ? AND agent_id = ?`).get(id, agentId) : db.prepare(`SELECT * FROM customers WHERE id = ?`).get(id)) as unknown as CustomerRow | undefined;
   return row ? mapCustomer(row) : undefined;
 }
 
-export function getCustomerConversation(id: string): CustomerConversationRecord | undefined {
-  const row = db.prepare(`SELECT * FROM customer_conversations WHERE id = ?`).get(id) as unknown as ConversationRow | undefined;
+export function getCustomerConversation(id: string, agentId?: string): CustomerConversationRecord | undefined {
+  const row = (agentId
+    ? db.prepare(`SELECT c.* FROM customer_conversations c JOIN customers u ON u.id = c.customer_id WHERE c.id = ? AND u.agent_id = ?`).get(id, agentId)
+    : db.prepare(`SELECT * FROM customer_conversations WHERE id = ?`).get(id)) as unknown as ConversationRow | undefined;
   return row ? mapConversation(row) : undefined;
 }
 
@@ -264,10 +270,12 @@ export function listCustomerMessages(conversationId: string): CustomerMessageRec
   return rows.map(mapMessage);
 }
 
-function findOrCreateCustomer(input: Pick<CreateCustomerConversationRequest, "customerName" | "customerEmail" | "company">): CustomerRecord {
+function findOrCreateCustomer(input: Pick<CreateCustomerConversationRequest, "customerName" | "customerEmail" | "company"> & { agentId?: string | null }): CustomerRecord {
   const email = input.customerEmail?.trim() || null;
   if (email) {
-    const existing = db.prepare(`SELECT * FROM customers WHERE lower(email) = lower(?) LIMIT 1`).get(email) as unknown as CustomerRow | undefined;
+    const existing = (input.agentId
+      ? db.prepare(`SELECT * FROM customers WHERE lower(email) = lower(?) AND agent_id = ? LIMIT 1`).get(email, input.agentId)
+      : db.prepare(`SELECT * FROM customers WHERE lower(email) = lower(?) LIMIT 1`).get(email)) as unknown as CustomerRow | undefined;
     if (existing) {
       const now = new Date().toISOString();
       db.prepare(`UPDATE customers SET name = ?, company = COALESCE(?, company), updated_at = ? WHERE id = ?`)
@@ -279,18 +287,18 @@ function findOrCreateCustomer(input: Pick<CreateCustomerConversationRequest, "cu
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO customers (id, name, email, company, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, ?, ?)`
-  ).run(id, input.customerName.trim(), email, input.company?.trim() || null, now, now);
+    `INSERT INTO customers (id, agent_id, name, email, company, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`
+  ).run(id, input.agentId ?? null, input.customerName.trim(), email, input.company?.trim() || null, now, now);
   return getCustomer(id)!;
 }
 
-export function createCustomerConversation(input: CreateCustomerConversationRequest): {
+export function createCustomerConversation(input: CreateCustomerConversationRequest & { agentId?: string | null }): {
   customer: CustomerRecord;
   conversation: CustomerConversationRecord;
   message: CustomerMessageRecord;
 } {
-  const customer = findOrCreateCustomer(input);
+  const customer = findOrCreateCustomer({ ...input, agentId: input.agentId ?? DEFAULT_AGENT_ID });
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(

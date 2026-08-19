@@ -1,5 +1,5 @@
 ﻿import { randomUUID } from "node:crypto";
-import { db } from "./db.js";
+import { db, DEFAULT_AGENT_ID } from "./db.js";
 import type {
   SessionRecord,
   SessionEventRecord,
@@ -454,10 +454,14 @@ function mapDeliverable(row: DeliverableRow): DeliverableRecord {
   };
 }
 
-export function listDeliverables(missionId?: string): DeliverableRecord[] {
-  const rows = missionId
-    ? db.prepare(`SELECT * FROM deliverables WHERE mission_id = ? ORDER BY updated_at DESC`).all(missionId)
-    : db.prepare(`SELECT * FROM deliverables ORDER BY updated_at DESC`).all();
+export function listDeliverables(missionId?: string, agentId?: string): DeliverableRecord[] {
+  const rows = agentId
+    ? missionId
+      ? db.prepare(`SELECT d.* FROM deliverables d JOIN missions m ON m.id = d.mission_id WHERE d.mission_id = ? AND m.agent_id = ? ORDER BY d.updated_at DESC`).all(missionId, agentId)
+      : db.prepare(`SELECT d.* FROM deliverables d JOIN missions m ON m.id = d.mission_id WHERE m.agent_id = ? ORDER BY d.updated_at DESC`).all(agentId)
+    : missionId
+      ? db.prepare(`SELECT * FROM deliverables WHERE mission_id = ? ORDER BY updated_at DESC`).all(missionId)
+      : db.prepare(`SELECT * FROM deliverables ORDER BY updated_at DESC`).all();
   return (rows as unknown as DeliverableRow[]).map(mapDeliverable);
 }
 
@@ -561,10 +565,14 @@ export function getMissionUpdate(id: string): MissionUpdateRecord | undefined {
   return row ? mapMissionUpdate(row) : undefined;
 }
 
-export function listMissionUpdates(missionId?: string): MissionUpdateRecord[] {
-  const rows = missionId
-    ? db.prepare(`SELECT * FROM mission_updates WHERE mission_id = ? ORDER BY created_at DESC`).all(missionId)
-    : db.prepare(`SELECT * FROM mission_updates ORDER BY created_at DESC`).all();
+export function listMissionUpdates(missionId?: string, agentId?: string): MissionUpdateRecord[] {
+  const rows = agentId
+    ? missionId
+      ? db.prepare(`SELECT u.* FROM mission_updates u JOIN missions m ON m.id = u.mission_id WHERE u.mission_id = ? AND m.agent_id = ? ORDER BY u.created_at DESC`).all(missionId, agentId)
+      : db.prepare(`SELECT u.* FROM mission_updates u JOIN missions m ON m.id = u.mission_id WHERE m.agent_id = ? ORDER BY u.created_at DESC`).all(agentId)
+    : missionId
+      ? db.prepare(`SELECT * FROM mission_updates WHERE mission_id = ? ORDER BY created_at DESC`).all(missionId)
+      : db.prepare(`SELECT * FROM mission_updates ORDER BY created_at DESC`).all();
   return (rows as unknown as MissionUpdateRow[]).map(mapMissionUpdate);
 }
 
@@ -577,6 +585,7 @@ export function reviewMissionUpdate(id: string, status: Exclude<MissionUpdateSta
 
 interface EvolutionProposalRow {
   id: string;
+  agent_id: string | null;
   title: string;
   problem: string;
   expected_value: string;
@@ -594,6 +603,7 @@ interface EvolutionProposalRow {
 function mapEvolutionProposal(row: EvolutionProposalRow): EvolutionProposalRecord {
   return {
     id: row.id,
+    agentId: row.agent_id,
     title: row.title,
     problem: row.problem,
     expectedValue: row.expected_value,
@@ -617,25 +627,26 @@ export function createEvolutionProposal(input: {
   risk: EvolutionRisk;
   evidence?: string;
   rollbackPlan?: string;
+  agentId?: string | null;
 }): EvolutionProposalRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO evolution_proposals (id, title, problem, expected_value, change_class, risk, stage, evidence, rollback_plan, lab_session_id, created_at, updated_at, promoted_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'observed', ?, ?, NULL, ?, ?, NULL)`
-  ).run(id, input.title, input.problem, input.expectedValue, input.changeClass, input.risk, input.evidence ?? null, input.rollbackPlan ?? null, now, now);
-  return getEvolutionProposal(id)!;
+    `INSERT INTO evolution_proposals (id, agent_id, title, problem, expected_value, change_class, risk, stage, evidence, rollback_plan, lab_session_id, created_at, updated_at, promoted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'observed', ?, ?, NULL, ?, ?, NULL)`
+  ).run(id, input.agentId ?? DEFAULT_AGENT_ID, input.title, input.problem, input.expectedValue, input.changeClass, input.risk, input.evidence ?? null, input.rollbackPlan ?? null, now, now);
+  return getEvolutionProposal(id, input.agentId ?? DEFAULT_AGENT_ID)!;
 }
 
-export function getEvolutionProposal(id: string): EvolutionProposalRecord | undefined {
-  const row = db.prepare(`SELECT * FROM evolution_proposals WHERE id = ?`).get(id) as unknown as EvolutionProposalRow | undefined;
+export function getEvolutionProposal(id: string, agentId?: string): EvolutionProposalRecord | undefined {
+  const row = (agentId ? db.prepare(`SELECT * FROM evolution_proposals WHERE id = ? AND agent_id = ?`).get(id, agentId) : db.prepare(`SELECT * FROM evolution_proposals WHERE id = ?`).get(id)) as unknown as EvolutionProposalRow | undefined;
   return row ? mapEvolutionProposal(row) : undefined;
 }
 
-export function listEvolutionProposals(): EvolutionProposalRecord[] {
-  return (db.prepare(
-    `SELECT * FROM evolution_proposals ORDER BY CASE stage WHEN 'review' THEN 0 WHEN 'building' THEN 1 WHEN 'planned' THEN 2 WHEN 'observed' THEN 3 WHEN 'promoted' THEN 4 ELSE 5 END, updated_at DESC`
-  ).all() as unknown as EvolutionProposalRow[]).map(mapEvolutionProposal);
+export function listEvolutionProposals(agentId?: string): EvolutionProposalRecord[] {
+  const order = `ORDER BY CASE stage WHEN 'review' THEN 0 WHEN 'building' THEN 1 WHEN 'planned' THEN 2 WHEN 'observed' THEN 3 WHEN 'promoted' THEN 4 ELSE 5 END, updated_at DESC`;
+  const rows = agentId ? db.prepare(`SELECT * FROM evolution_proposals WHERE agent_id = ? ${order}`).all(agentId) : db.prepare(`SELECT * FROM evolution_proposals ${order}`).all();
+  return (rows as unknown as EvolutionProposalRow[]).map(mapEvolutionProposal);
 }
 
 export function updateEvolutionProposal(id: string, patch: Partial<{

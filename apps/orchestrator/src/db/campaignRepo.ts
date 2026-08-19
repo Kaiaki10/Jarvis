@@ -12,10 +12,11 @@ import type {
   ContentPublicationStatus,
   MarketingChannel,
 } from "@jarvis/shared";
-import { db } from "./db.js";
+import { db, DEFAULT_AGENT_ID } from "./db.js";
 
 interface CampaignRow {
   id: string;
+  agent_id: string | null;
   name: string;
   objective: string;
   audience: string;
@@ -33,6 +34,7 @@ interface CampaignRow {
 function mapCampaign(row: CampaignRow): CampaignRecord {
   return {
     id: row.id,
+    agentId: row.agent_id,
     name: row.name,
     objective: row.objective,
     audience: row.audience,
@@ -57,25 +59,30 @@ export function createCampaign(input: {
   primaryMetric: string;
   approvalPolicy: CampaignApprovalPolicy;
   missionId?: string;
+  agentId?: string | null;
 }): CampaignRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO campaigns (id, name, objective, audience, offer, channels, primary_metric, approval_policy, status, mission_id, created_at, updated_at, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, NULL)`
-  ).run(id, input.name, input.objective, input.audience, input.offer, JSON.stringify(input.channels), input.primaryMetric, input.approvalPolicy, input.missionId ?? null, now, now);
-  return getCampaign(id)!;
+    `INSERT INTO campaigns (id, agent_id, name, objective, audience, offer, channels, primary_metric, approval_policy, status, mission_id, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, NULL)`
+  ).run(id, input.agentId ?? DEFAULT_AGENT_ID, input.name, input.objective, input.audience, input.offer, JSON.stringify(input.channels), input.primaryMetric, input.approvalPolicy, input.missionId ?? null, now, now);
+  return getCampaign(id, input.agentId ?? DEFAULT_AGENT_ID)!;
 }
 
-export function getCampaign(id: string): CampaignRecord | undefined {
-  const row = db.prepare(`SELECT * FROM campaigns WHERE id = ?`).get(id) as unknown as CampaignRow | undefined;
-  return row ? mapCampaign(row) : undefined;
+export function getCampaign(id: string, agentId?: string): CampaignRecord | undefined {
+  const row = agentId
+    ? db.prepare(`SELECT * FROM campaigns WHERE id = ? AND agent_id = ?`).get(id, agentId)
+    : db.prepare(`SELECT * FROM campaigns WHERE id = ?`).get(id);
+  return row ? mapCampaign(row as unknown as CampaignRow) : undefined;
 }
 
-export function listCampaigns(): CampaignRecord[] {
-  return (db.prepare(
-    `SELECT * FROM campaigns ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 WHEN 'paused' THEN 2 WHEN 'completed' THEN 3 ELSE 4 END, updated_at DESC`
-  ).all() as unknown as CampaignRow[]).map(mapCampaign);
+export function listCampaigns(agentId?: string): CampaignRecord[] {
+  const order = `ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 WHEN 'paused' THEN 2 WHEN 'completed' THEN 3 ELSE 4 END, updated_at DESC`;
+  const rows = agentId
+    ? db.prepare(`SELECT * FROM campaigns WHERE agent_id = ? ${order}`).all(agentId)
+    : db.prepare(`SELECT * FROM campaigns ${order}`).all();
+  return (rows as unknown as CampaignRow[]).map(mapCampaign);
 }
 
 export function updateCampaign(id: string, patch: Partial<{
@@ -153,15 +160,21 @@ function mapContentItem(row: ContentItemRow): ContentItemRecord {
   };
 }
 
-export function getContentItem(id: string): ContentItemRecord | undefined {
-  const row = db.prepare(`SELECT * FROM content_items WHERE id = ?`).get(id) as unknown as ContentItemRow | undefined;
-  return row ? mapContentItem(row) : undefined;
+export function getContentItem(id: string, agentId?: string): ContentItemRecord | undefined {
+  const row = agentId
+    ? db.prepare(`SELECT c.* FROM content_items c JOIN campaigns p ON p.id = c.campaign_id WHERE c.id = ? AND p.agent_id = ?`).get(id, agentId)
+    : db.prepare(`SELECT * FROM content_items WHERE id = ?`).get(id);
+  return row ? mapContentItem(row as unknown as ContentItemRow) : undefined;
 }
 
-export function listContentItems(campaignId?: string): ContentItemRecord[] {
-  const rows = campaignId
-    ? db.prepare(`SELECT * FROM content_items WHERE campaign_id = ? ORDER BY updated_at DESC`).all(campaignId)
-    : db.prepare(`SELECT * FROM content_items ORDER BY updated_at DESC`).all();
+export function listContentItems(campaignId?: string, agentId?: string): ContentItemRecord[] {
+  const rows = agentId
+    ? campaignId
+      ? db.prepare(`SELECT c.* FROM content_items c JOIN campaigns p ON p.id = c.campaign_id WHERE c.campaign_id = ? AND p.agent_id = ? ORDER BY c.updated_at DESC`).all(campaignId, agentId)
+      : db.prepare(`SELECT c.* FROM content_items c JOIN campaigns p ON p.id = c.campaign_id WHERE p.agent_id = ? ORDER BY c.updated_at DESC`).all(agentId)
+    : campaignId
+      ? db.prepare(`SELECT * FROM content_items WHERE campaign_id = ? ORDER BY updated_at DESC`).all(campaignId)
+      : db.prepare(`SELECT * FROM content_items ORDER BY updated_at DESC`).all();
   return (rows as unknown as ContentItemRow[]).map(mapContentItem);
 }
 
@@ -259,10 +272,14 @@ export function getCampaignGenerationRunBySession(sessionId: string): CampaignGe
   return row ? mapGenerationRun(row) : undefined;
 }
 
-export function listCampaignGenerationRuns(campaignId?: string): CampaignGenerationRunRecord[] {
-  const rows = campaignId
-    ? db.prepare(`SELECT * FROM campaign_generation_runs WHERE campaign_id = ? ORDER BY created_at DESC`).all(campaignId)
-    : db.prepare(`SELECT * FROM campaign_generation_runs ORDER BY created_at DESC`).all();
+export function listCampaignGenerationRuns(campaignId?: string, agentId?: string): CampaignGenerationRunRecord[] {
+  const rows = agentId
+    ? campaignId
+      ? db.prepare(`SELECT r.* FROM campaign_generation_runs r JOIN campaigns c ON c.id = r.campaign_id WHERE r.campaign_id = ? AND c.agent_id = ? ORDER BY r.created_at DESC`).all(campaignId, agentId)
+      : db.prepare(`SELECT r.* FROM campaign_generation_runs r JOIN campaigns c ON c.id = r.campaign_id WHERE c.agent_id = ? ORDER BY r.created_at DESC`).all(agentId)
+    : campaignId
+      ? db.prepare(`SELECT * FROM campaign_generation_runs WHERE campaign_id = ? ORDER BY created_at DESC`).all(campaignId)
+      : db.prepare(`SELECT * FROM campaign_generation_runs ORDER BY created_at DESC`).all();
   return (rows as unknown as GenerationRunRow[]).map(mapGenerationRun);
 }
 
@@ -312,8 +329,13 @@ export function getContentPublicationRunBySession(sessionId: string): ContentPub
   return row ? mapPublicationRun(row) : undefined;
 }
 
-export function listContentPublicationRuns(campaignId?: string): ContentPublicationRunRecord[] {
-  const rows = campaignId
+export function listContentPublicationRuns(campaignId?: string, agentId?: string): ContentPublicationRunRecord[] {
+  const rows = agentId
+    ? db.prepare(
+        `SELECT r.* FROM content_publication_runs r JOIN content_items c ON c.id = r.content_item_id JOIN campaigns p ON p.id = c.campaign_id
+         WHERE p.agent_id = ? ${campaignId ? "AND c.campaign_id = ?" : ""} ORDER BY r.created_at DESC`
+      ).all(...(campaignId ? [agentId, campaignId] : [agentId]))
+    : campaignId
     ? db.prepare(
         `SELECT r.* FROM content_publication_runs r JOIN content_items c ON c.id = r.content_item_id
          WHERE c.campaign_id = ? ORDER BY r.created_at DESC`

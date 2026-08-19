@@ -304,6 +304,7 @@ export type NotificationSeverity = "info" | "warning" | "error";
 
 export interface NotificationRecord {
   id: string;
+  agentId: string | null;
   type: NotificationType;
   severity: NotificationSeverity;
   title: string;
@@ -431,6 +432,7 @@ export type EvolutionAutonomy = "automatic" | "after_checks" | "approval_require
 
 export interface EvolutionProposalRecord {
   id: string;
+  agentId: string | null;
   title: string;
   problem: string;
   expectedValue: string;
@@ -485,6 +487,7 @@ export type ContentPublicationStatus = "running" | "published" | "failed";
 
 export interface CampaignRecord {
   id: string;
+  agentId: string | null;
   name: string;
   objective: string;
   audience: string;
@@ -605,6 +608,7 @@ export type PaidGrowthDecisionStatus = "proposed" | "approved" | "rejected" | "a
 
 export interface PaidGrowthCampaignRecord {
   id: string;
+  agentId: string | null;
   campaignId: string | null;
   name: string;
   objective: string;
@@ -715,6 +719,7 @@ export type CustomerReplyDraftStatus = "running" | "ready" | "used" | "failed";
 
 export interface CustomerRecord {
   id: string;
+  agentId: string | null;
   name: string;
   email: string | null;
   company: string | null;

@@ -6,6 +6,8 @@ import { db } from "../db/db.js";
 import { getSettings } from "../db/repo.js";
 import { getConnectionCredentials, getConnection } from "../db/connectionsRepo.js";
 import { globalBus } from "../events/globalBus.js";
+import { getSession } from "../db/repo.js";
+import { getDefaultAgent } from "../db/agentRepo.js";
 import type {
   NotificationRecord,
   NotificationSeverity,
@@ -17,6 +19,7 @@ const TOAST_SCRIPT = join(__dirname, "..", "..", "..", "..", "scripts", "toast.p
 
 interface NotificationRow {
   id: string;
+  agent_id: string | null;
   type: string;
   severity: string;
   title: string;
@@ -29,6 +32,7 @@ interface NotificationRow {
 function mapNotification(row: NotificationRow): NotificationRecord {
   return {
     id: row.id,
+    agentId: row.agent_id,
     type: row.type as NotificationType,
     severity: row.severity as NotificationSeverity,
     title: row.title,
@@ -39,27 +43,27 @@ function mapNotification(row: NotificationRow): NotificationRecord {
   };
 }
 
-export function listNotifications(limit = 100): NotificationRecord[] {
-  const rows = db
-    .prepare(`SELECT * FROM notifications ORDER BY created_at DESC LIMIT ?`)
-    .all(limit) as unknown as NotificationRow[];
+export function listNotifications(limit = 100, agentId?: string): NotificationRecord[] {
+  const rows = (agentId
+    ? db.prepare(`SELECT * FROM notifications WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?`).all(agentId, limit)
+    : db.prepare(`SELECT * FROM notifications ORDER BY created_at DESC LIMIT ?`).all(limit)) as unknown as NotificationRow[];
   return rows.map(mapNotification);
 }
 
-export function unreadCount(): number {
-  const row = db
-    .prepare(`SELECT COUNT(*) as n FROM notifications WHERE read = 0`)
-    .get() as unknown as { n: number };
+export function unreadCount(agentId?: string): number {
+  const row = (agentId ? db.prepare(`SELECT COUNT(*) as n FROM notifications WHERE read = 0 AND agent_id = ?`).get(agentId) : db.prepare(`SELECT COUNT(*) as n FROM notifications WHERE read = 0`).get()) as unknown as { n: number };
   return row.n;
 }
 
-export function markRead(id: string): void {
-  db.prepare(`UPDATE notifications SET read = 1 WHERE id = ?`).run(id);
+export function markRead(id: string, agentId?: string): void {
+  if (agentId) db.prepare(`UPDATE notifications SET read = 1 WHERE id = ? AND agent_id = ?`).run(id, agentId);
+  else db.prepare(`UPDATE notifications SET read = 1 WHERE id = ?`).run(id);
   globalBus.emit("notifications_changed");
 }
 
-export function markAllRead(): void {
-  db.prepare(`UPDATE notifications SET read = 1 WHERE read = 0`).run();
+export function markAllRead(agentId?: string): void {
+  if (agentId) db.prepare(`UPDATE notifications SET read = 1 WHERE read = 0 AND agent_id = ?`).run(agentId);
+  else db.prepare(`UPDATE notifications SET read = 1 WHERE read = 0`).run();
   globalBus.emit("notifications_changed");
 }
 
@@ -68,13 +72,13 @@ export function markAllRead(): void {
  * Without this, a session that blocks, gets approved, then blocks again would
  * stack up duplicates for the same underlying situation.
  */
-function alreadyPending(type: NotificationType, sessionId: string | null): boolean {
+function alreadyPending(type: NotificationType, sessionId: string | null, agentId: string | null): boolean {
   if (!sessionId) return false;
   const row = db
     .prepare(
-      `SELECT COUNT(*) as n FROM notifications WHERE type = ? AND session_id = ? AND read = 0`
+      `SELECT COUNT(*) as n FROM notifications WHERE type = ? AND session_id = ? AND agent_id IS ? AND read = 0`
     )
-    .get(type, sessionId) as unknown as { n: number };
+    .get(type, sessionId, agentId) as unknown as { n: number };
   return row.n > 0;
 }
 
@@ -149,6 +153,7 @@ export interface NotifyInput {
   title: string;
   body: string;
   sessionId?: string | null;
+  agentId?: string | null;
 }
 
 /**
@@ -157,10 +162,12 @@ export interface NotifyInput {
  */
 export function notify(input: NotifyInput): NotificationRecord | null {
   const sessionId = input.sessionId ?? null;
-  if (alreadyPending(input.type, sessionId)) return null;
+  const agentId = input.agentId ?? (sessionId ? getSession(sessionId)?.agentId : null) ?? getDefaultAgent()?.id ?? null;
+  if (alreadyPending(input.type, sessionId, agentId)) return null;
 
   const record: NotificationRecord = {
     id: randomUUID(),
+    agentId,
     type: input.type,
     severity: input.severity,
     title: input.title,
@@ -171,10 +178,11 @@ export function notify(input: NotifyInput): NotificationRecord | null {
   };
 
   db.prepare(
-    `INSERT INTO notifications (id, type, severity, title, body, session_id, read, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?)`
+    `INSERT INTO notifications (id, agent_id, type, severity, title, body, session_id, read, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`
   ).run(
     record.id,
+    record.agentId,
     record.type,
     record.severity,
     record.title,
