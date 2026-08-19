@@ -8,6 +8,20 @@ here, the rule is what's wrong — update this file in the same commit, and say
 why. A change that silently violates it is a regression even if it looks nice in
 isolation.
 
+## Two experience modes
+
+The root experience has two intentionally different densities over the same live data:
+
+- **Simple** is the default front door. It removes navigation chrome, centers the active
+  agent as an animated presence, and gives conversation and voice input visual priority.
+- **Under the hood** is the full operating system: the existing sidebar, command center,
+  operational metrics, approvals, missions, and configuration surfaces.
+
+This is a presentation boundary, not a data boundary. Both modes use the selected agent,
+the same continuous chat session, durable memory, permission gates, and shared event stream.
+Never create a demo-only assistant or a second conversation ledger for Simple mode. The
+mode choice is local and persistent; changing it must not start, stop, or mutate agent work.
+
 ## The idea
 
 A dark, quiet control room. Dense with information, calm to sit in front of.

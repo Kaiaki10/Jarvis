@@ -26,6 +26,7 @@ import {
   ChevronsUpDown,
 } from "lucide-react";
 import { StoreProvider, useAgents, useConnectionStatus, useNotifications } from "@/lib/store";
+import { ExperienceModeProvider, useExperienceMode } from "@/lib/experienceMode";
 
 const NAV_GROUPS = [
   {
@@ -264,13 +265,25 @@ function Sidebar() {
   );
 }
 
+function ShellFrame({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const { mode } = useExperienceMode();
+  const simpleHome = pathname === "/" && mode === "simple";
+
+  return (
+    <div className="flex min-h-screen">
+      {!simpleHome && <Sidebar />}
+      <main className="min-w-0 flex-1">{children}</main>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <StoreProvider>
-      <div className="flex min-h-screen">
-        <Sidebar />
-        <main className="flex-1 min-w-0">{children}</main>
-      </div>
+      <ExperienceModeProvider>
+        <ShellFrame>{children}</ShellFrame>
+      </ExperienceModeProvider>
     </StoreProvider>
   );
 }

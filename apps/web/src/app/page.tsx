@@ -1,3 +1,5 @@
+"use client";
+
 import { PageHeader } from "@/components/PageHeader";
 import { JarvisChat } from "@/components/JarvisChat";
 import { AttentionQueue } from "@/components/AttentionQueue";
@@ -8,11 +10,20 @@ import { ActivityFeed } from "@/components/ActivityFeed";
 import { DailyBriefing } from "@/components/DailyBriefing";
 import { CapabilityMap } from "@/components/CapabilityMap";
 import { Reveal, Stagger } from "@/components/motion";
+import { SimpleJarvisHome } from "@/components/SimpleJarvisHome";
+import { ExperienceModeToggle } from "@/components/ExperienceModeToggle";
+import { useExperienceMode } from "@/lib/experienceMode";
 
 export default function Home() {
+  const { mode } = useExperienceMode();
+  if (mode === "simple") return <SimpleJarvisHome />;
+
   return (
     <>
-      <PageHeader eyebrow="Command center" title="Jarvis" description="One ongoing conversation" />
+      <div className="flex items-start justify-between gap-4 pr-8">
+        <PageHeader eyebrow="Command center" title="Jarvis" description="One ongoing conversation" />
+        <div className="pt-6"><ExperienceModeToggle /></div>
+      </div>
       <div className="flex flex-col gap-6 px-8 pb-12">
         {/* Above the fold: staggered on load. Anything you need immediately is
             never gated behind a scroll. */}
