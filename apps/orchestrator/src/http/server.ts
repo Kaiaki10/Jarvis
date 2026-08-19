@@ -641,7 +641,9 @@ app.get("/memories", (req: Request, res: Response) => {
     res.status(400).json({ error: "status must be active or archived" });
     return;
   }
-  res.json(listMemories(status as "active" | "archived" | undefined));
+  const agentId = scopedAgentId(req, res);
+  if (agentId === null) return;
+  res.json(listMemories(status as "active" | "archived" | undefined, agentId));
 });
 
 app.get("/memory-reflections", (_req: Request, res: Response) => {
@@ -651,7 +653,11 @@ app.get("/memory-reflections", (_req: Request, res: Response) => {
 app.post("/memories", (req: Request, res: Response) => {
   const body = validatedBody(createMemorySchema, req, res);
   if (!body) return;
-  const result = remember(body);
+  const owner = owningAgentId(req, res);
+  if (owner === null) return;
+  // Shared memories have no owner; that absence is what makes them visible to
+  // every agent.
+  const result = remember({ ...body, agentId: body.shared ? null : owner });
   globalBus.emit("memories_changed");
   res.status(result.created ? 201 : 200).json(result.memory);
 });

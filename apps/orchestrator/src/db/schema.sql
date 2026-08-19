@@ -288,11 +288,13 @@ CREATE TABLE IF NOT EXISTS platform_actions (
 CREATE INDEX IF NOT EXISTS idx_platform_actions_lookup
   ON platform_actions(platform_id, created_at);
 
+-- agent_id NULL means the shared pool every agent reads.
 CREATE TABLE IF NOT EXISTS memories (
   id TEXT PRIMARY KEY,
+  agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
   content TEXT NOT NULL,
-  normalized_content TEXT NOT NULL UNIQUE,
+  normalized_content TEXT NOT NULL,
   source_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL,
@@ -302,6 +304,9 @@ CREATE TABLE IF NOT EXISTS memories (
 
 CREATE INDEX IF NOT EXISTS idx_memories_active_updated
   ON memories(status, updated_at DESC);
+
+-- The uniqueness indexes live in db.ts, not here: this file runs before the
+-- migrations, and on a pre-v2 database `memories` has no agent_id column yet.
 
 CREATE TABLE IF NOT EXISTS memory_reflections (
   id TEXT PRIMARY KEY,

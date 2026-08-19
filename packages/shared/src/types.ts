@@ -102,6 +102,8 @@ export type MemoryStatus = "active" | "archived";
 
 export interface MemoryRecord {
   id: string;
+  /** Null means the shared pool that every agent reads. */
+  agentId: string | null;
   kind: MemoryKind;
   content: string;
   sourceSessionId: string | null;
@@ -126,6 +128,8 @@ export interface MemoryReflectionRecord {
 export interface CreateMemoryRequest {
   kind: MemoryKind;
   content: string;
+  /** True stores it in the shared pool instead of the active agent. */
+  shared?: boolean;
 }
 
 export interface UpdateMemoryRequest {

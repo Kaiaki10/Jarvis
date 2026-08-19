@@ -83,8 +83,9 @@ describe("v2 migration", () => {
     for (const table of ["deliverables", "content_items", "customer_messages"]) {
       expect(hasAgentId(table)).toBe(false);
     }
-    // Deferred to the memory split, which needs a table rebuild.
-    expect(hasAgentId("memories")).toBe(false);
+    // Memories gained their owner later, via a table rebuild rather than an
+    // ALTER, because the old UNIQUE constraint could not be dropped in place.
+    expect(hasAgentId("memories")).toBe(true);
   });
 
   it("does not mint a second Jarvis when it runs again", async () => {

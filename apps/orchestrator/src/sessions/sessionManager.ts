@@ -363,9 +363,9 @@ export async function startSession(params: StartSessionParams): Promise<void> {
     ? buildMemoryToolset(params.id, (created) => {
         if (created) memoriesAddedThisTurn += 1;
         else memoriesConfirmedThisTurn += 1;
-      })
+      }, params.agentId)
     : null;
-  const memoryContext = params.isolated ? "" : buildMemoryContext();
+  const memoryContext = params.isolated ? "" : buildMemoryContext(40, params.agentId);
   const systemPromptAppend = [
     businessContext.trim(),
     memoryContext,

@@ -123,8 +123,8 @@ Each increment ships on its own and leaves the app working.
    - **API authentication**, inserted before increment 2 rather than after. See
      "Consequences elsewhere". *(Done 2026-08-19.)*
 2. **Agent-scoped dashboard.** Thread `agent_id` through the API, the store, and
-   the pages; add the agent switcher to `AppShell`.
-3. **Memory split.** The `memories` rebuild, private plus shared pool.
+   the pages; add the agent switcher to `AppShell`. *(Done 2026-08-19.)*
+3. **Memory split.** The `memories` rebuild, private plus shared pool. *(Done 2026-08-19.)*
 4. **Conversations.** Rooms, the turn engine, the caps, the merged transcript.
 
 ## Consequences elsewhere

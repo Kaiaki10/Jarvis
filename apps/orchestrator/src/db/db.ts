@@ -117,5 +117,71 @@ for (const table of AGENT_SCOPED_TABLES) {
   db.prepare(`UPDATE ${table} SET agent_id = ? WHERE agent_id IS NULL`).run(DEFAULT_AGENT_ID);
 }
 
+/**
+ * Gives memories an owner. The one migration in v2 that rebuilds a table.
+ *
+ * `normalized_content` was declared `TEXT NOT NULL UNIQUE` inline, and SQLite
+ * implements an inline UNIQUE as an implicit index that cannot be dropped — so
+ * moving to a per-agent constraint is not an ALTER. Create, copy, drop, rename.
+ *
+ * Existing memories become the default agent's private memories rather than
+ * shared ones. They were learned by the single pre-v2 Jarvis, and promoting
+ * them to shared would silently broadcast one agent's preferences to every
+ * agent created later. Nothing is lost either way — Jarvis still sees all of
+ * them — and a memory can be moved to the shared pool deliberately.
+ *
+ * Foreign keys are suspended for the swap: rows are copied verbatim, and a
+ * `source_session_id` pointing at a session deleted long ago would otherwise
+ * abort a migration that is only moving data it already trusted.
+ */
+if (!hasColumn("memories", "agent_id")) {
+  db.exec("PRAGMA foreign_keys = OFF;");
+  db.exec(`
+    BEGIN;
+    CREATE TABLE memories_v2 (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      content TEXT NOT NULL,
+      normalized_content TEXT NOT NULL,
+      source_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_used_at TEXT
+    );
+    INSERT INTO memories_v2 (id, agent_id, kind, content, normalized_content,
+                             source_session_id, status, created_at, updated_at, last_used_at)
+      SELECT id, '${DEFAULT_AGENT_ID}', kind, content, normalized_content,
+             source_session_id, status, created_at, updated_at, last_used_at
+      FROM memories;
+    DROP TABLE memories;
+    ALTER TABLE memories_v2 RENAME TO memories;
+    CREATE INDEX idx_memories_active_updated ON memories(status, updated_at DESC);
+    CREATE UNIQUE INDEX idx_memories_agent_normalized
+      ON memories(agent_id, normalized_content);
+    CREATE UNIQUE INDEX idx_memories_shared_normalized
+      ON memories(normalized_content) WHERE agent_id IS NULL;
+    COMMIT;
+  `);
+  db.exec("PRAGMA foreign_keys = ON;");
+}
+
+/**
+ * Memory uniqueness, in two indexes rather than one, and created here rather
+ * than in schema.sql because that file runs before the rebuild above.
+ *
+ * SQLite treats NULLs as distinct in a UNIQUE index, so
+ * UNIQUE(agent_id, normalized_content) does not constrain shared rows at all —
+ * every shared memory would look unique and the pool would fill with copies of
+ * the same fact. The partial index covers exactly those rows.
+ */
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_agent_normalized
+    ON memories(agent_id, normalized_content);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_shared_normalized
+    ON memories(normalized_content) WHERE agent_id IS NULL;
+`);
+
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_session_events_session_seq_unique ON session_events(session_id, seq);");
 db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_mission ON tasks(mission_id);");

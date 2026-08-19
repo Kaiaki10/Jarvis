@@ -69,6 +69,9 @@ const memoryKind = z.enum(["preference", "business", "relationship", "decision",
 export const createMemorySchema = z.object({
   kind: memoryKind,
   content: z.string().trim().min(3).max(1_000),
+  agentId: z.string().uuid().optional(),
+  /** Stores it in the pool every agent reads, rather than against one agent. */
+  shared: z.boolean().optional(),
 }).strict();
 export const updateMemorySchema = z.object({
   kind: memoryKind.optional(),

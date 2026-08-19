@@ -18,7 +18,11 @@ export interface MemoryToolset {
   autoAllowTools: string[];
 }
 
-export function buildMemoryToolset(sessionId: string, onRemember?: (created: boolean) => void): MemoryToolset {
+export function buildMemoryToolset(
+  sessionId: string,
+  onRemember?: (created: boolean) => void,
+  agentId?: string | null
+): MemoryToolset {
   const tools = [
     tool(
       "remember",
@@ -26,12 +30,20 @@ export function buildMemoryToolset(sessionId: string, onRemember?: (created: boo
       {
         kind: z.enum(["preference", "business", "relationship", "decision", "fact"]),
         content: z.string().trim().min(3).max(1_000),
+        shared: z
+          .boolean()
+          .optional()
+          .describe(
+            "True for a fact about the business that every agent should know. False or absent keeps it private to this agent."
+          ),
       },
-      async ({ kind, content }) => {
+      async ({ kind, content, shared }) => {
         const result = remember({
           kind: kind as MemoryKind,
           content,
           sourceSessionId: sessionId,
+          // A shared memory has no owner; that is what makes it visible to all.
+          agentId: shared ? null : agentId,
         });
         onRemember?.(result.created);
         globalBus.emit("memories_changed");
@@ -56,8 +68,8 @@ export function buildMemoryToolset(sessionId: string, onRemember?: (created: boo
           {
             type: "text" as const,
             text:
-              listMemories("active")
-                .map((memory) => `[${memory.kind}] ${memory.content}`)
+              listMemories("active", agentId ?? undefined)
+                .map((memory) => `[${memory.kind}${memory.agentId ? "" : ", shared"}] ${memory.content}`)
                 .join("\n") || "No active memories.",
           },
         ],
