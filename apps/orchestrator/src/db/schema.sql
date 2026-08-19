@@ -22,6 +22,54 @@ CREATE TABLE IF NOT EXISTS agents (
 
 CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status, name);
 
+-- A room where two or more agents talk to each other.
+--
+-- The caps are columns, not constants: two agents talking is an infinite
+-- generator running unattended, and a room must carry its own limits so a
+-- change of default can never silently unbound a room already in flight.
+CREATE TABLE IF NOT EXISTS agent_conversations (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  topic TEXT NOT NULL,
+  -- idle | running | completed | stopped | error
+  status TEXT NOT NULL DEFAULT 'idle',
+  turn_cap INTEGER NOT NULL DEFAULT 12,
+  budget_seconds INTEGER NOT NULL DEFAULT 900,
+  turns_used INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT,
+  ended_at TEXT,
+  -- Why it stopped, in words, so a finished room explains itself.
+  stop_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Each participant keeps its own session, so it speaks with its own persona,
+-- memory, and tools rather than as a voice in someone else's context.
+CREATE TABLE IF NOT EXISTS agent_conversation_participants (
+  conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (conversation_id, agent_id)
+);
+
+-- The authoritative room transcript. speaker_agent_id NULL means the human.
+CREATE TABLE IF NOT EXISTS agent_conversation_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+  turn INTEGER NOT NULL,
+  speaker_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+  speaker_name TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_conversation_messages_room
+  ON agent_conversation_messages(conversation_id, turn ASC);
+CREATE INDEX IF NOT EXISTS idx_agent_conversations_status
+  ON agent_conversations(status, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   claude_session_id TEXT,

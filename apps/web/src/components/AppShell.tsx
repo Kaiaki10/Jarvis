@@ -21,6 +21,7 @@ import {
   Orbit,
   BadgeDollarSign,
   Bot,
+  MessagesSquare,
   Check,
   ChevronsUpDown,
 } from "lucide-react";
@@ -46,6 +47,7 @@ const NAV_GROUPS = [
     label: "Jarvis",
     items: [
       { href: "/agents", label: "Agents", icon: Bot },
+      { href: "/conversations", label: "Conversations", icon: MessagesSquare },
       { href: "/memory", label: "Memory", icon: Brain },
       { href: "/sessions", label: "Runs", icon: Terminal },
       { href: "/automations", label: "Automations", icon: CalendarClock },

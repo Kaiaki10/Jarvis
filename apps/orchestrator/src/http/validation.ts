@@ -389,3 +389,26 @@ export function formatValidationError(error: z.ZodError): string {
     .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
     .join("; ");
 }
+
+export const createConversationSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    topic: z.string().trim().min(1).max(20_000),
+    // Two is the minimum for a conversation; the upper bound keeps one room
+    // from monopolising the machine and makes the transcript readable.
+    agentIds: z
+      .array(z.string().uuid())
+      .min(2)
+      .max(5)
+      .refine((ids) => new Set(ids).size === ids.length, "an agent cannot appear twice"),
+    // Bounded here as well as in the runner: these are what stop two agents
+    // talking all night, so an out-of-range value is rejected rather than
+    // clamped somewhere the caller cannot see.
+    turnCap: z.number().int().min(2).max(40).optional(),
+    budgetSeconds: z.number().int().min(60).max(3_600).optional(),
+  })
+  .strict();
+
+export const conversationMessageSchema = z
+  .object({ text: z.string().trim().min(1).max(20_000) })
+  .strict();

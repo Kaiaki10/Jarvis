@@ -5,8 +5,12 @@ spread across global singletons rather than held in a record. v2 gives agents a
 first-class existence, isolates their work from each other, and lets two or more
 of them hold a conversation.
 
-Written 2026-08-18. This is the plan of record; when reality diverges, change
-this file in the same commit and say why.
+Written 2026-08-18, all four increments delivered 2026-08-19. This is the plan
+of record; when reality diverges, change this file in the same commit and say
+why.
+
+**Status: complete.** What remains open is recorded in `GAPS.md` — per-agent
+authorization, and the design-system question of per-agent colour.
 
 ## What "Jarvis" actually is today
 
@@ -125,7 +129,7 @@ Each increment ships on its own and leaves the app working.
 2. **Agent-scoped dashboard.** Thread `agent_id` through the API, the store, and
    the pages; add the agent switcher to `AppShell`. *(Done 2026-08-19.)*
 3. **Memory split.** The `memories` rebuild, private plus shared pool. *(Done 2026-08-19.)*
-4. **Conversations.** Rooms, the turn engine, the caps, the merged transcript.
+4. **Conversations.** Rooms, the turn engine, the caps, the merged transcript. *(Done 2026-08-19.)*
 
 ## Consequences elsewhere
 

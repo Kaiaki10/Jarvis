@@ -848,3 +848,68 @@ export interface UpdateCustomerRequest {
   company?: string | null;
   notes?: string | null;
 }
+
+export type AgentConversationStatus =
+  | "idle"
+  | "running"
+  | "completed"
+  | "stopped"
+  | "error";
+
+/**
+ * A room where two or more agents talk to each other.
+ *
+ * The caps live on the record rather than in config: two agents talking is an
+ * infinite generator running unattended, and a room carries its own limits so
+ * changing a default can never unbound a room already in flight.
+ */
+export interface AgentConversationRecord {
+  id: string;
+  title: string;
+  topic: string;
+  status: AgentConversationStatus;
+  turnCap: number;
+  budgetSeconds: number;
+  turnsUsed: number;
+  startedAt: string | null;
+  endedAt: string | null;
+  /** Why it ended, in words, so a finished room explains itself. */
+  stopReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentConversationParticipantRecord {
+  conversationId: string;
+  agentId: string;
+  /** The session carrying this agent's side of the room. */
+  sessionId: string | null;
+  position: number;
+  name: string;
+  avatar: string;
+}
+
+export interface AgentConversationMessageRecord {
+  id: string;
+  conversationId: string;
+  turn: number;
+  /** Null means the human interjected. */
+  speakerAgentId: string | null;
+  speakerName: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface CreateAgentConversationRequest {
+  title: string;
+  topic: string;
+  agentIds: string[];
+  turnCap?: number;
+  budgetSeconds?: number;
+}
+
+export interface AgentConversationDetail {
+  conversation: AgentConversationRecord;
+  participants: AgentConversationParticipantRecord[];
+  messages: AgentConversationMessageRecord[];
+}

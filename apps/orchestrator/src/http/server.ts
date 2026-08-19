@@ -117,6 +117,8 @@ import {
   generateCampaignContentSchema,
   createAgentSchema,
   updateAgentSchema,
+  createConversationSchema,
+  conversationMessageSchema,
   createMemorySchema,
   updateMemorySchema,
   createCustomerConversationSchema,
@@ -147,6 +149,20 @@ import {
 import { startPaidGrowthMonitor } from "../paidGrowth/monitor.js";
 import { apiToken, isValidToken, tokenFromRequest } from "../security/apiToken.js";
 import { isAllowedOrigin, isUnauthenticatedPath } from "./authGuard.js";
+import {
+  appendConversationMessage,
+  createConversation,
+  deleteConversation,
+  getConversation,
+  listConversationMessages,
+  listConversations,
+  listParticipants,
+} from "../db/conversationRepo.js";
+import {
+  isConversationRunning,
+  runConversation,
+  stopConversation,
+} from "../conversations/conversationRunner.js";
 import { listMemories, listMemoryReflections, remember, updateMemory } from "../db/memoryRepo.js";
 import {
   archiveAgent,
@@ -633,6 +649,104 @@ app.delete("/agents/:id", (req: Request, res: Response) => {
   res.json(outcome.agent);
 });
 
+// ---- Agent conversations ----
+
+app.get("/conversations", (_req: Request, res: Response) => {
+  res.json(listConversations());
+});
+
+app.get("/conversations/:id", (req: Request, res: Response) => {
+  const conversation = getConversation(req.params.id);
+  if (!conversation) {
+    res.status(404).json({ error: "conversation not found" });
+    return;
+  }
+  res.json({
+    conversation,
+    participants: listParticipants(conversation.id),
+    messages: listConversationMessages(conversation.id),
+  });
+});
+
+app.post("/conversations", (req: Request, res: Response) => {
+  const body = validatedBody(createConversationSchema, req, res);
+  if (!body) return;
+  const unknown = body.agentIds.filter((id) => !getAgent(id));
+  if (unknown.length) {
+    res.status(400).json({ error: "One or more agents do not exist." });
+    return;
+  }
+  const conversation = createConversation(body);
+  globalBus.emit("conversations_changed");
+  res.status(201).json(conversation);
+});
+
+app.post("/conversations/:id/start", (req: Request, res: Response) => {
+  const conversation = getConversation(req.params.id);
+  if (!conversation) {
+    res.status(404).json({ error: "conversation not found" });
+    return;
+  }
+  if (isConversationRunning(conversation.id)) {
+    res.status(409).json({ error: "This conversation is already running." });
+    return;
+  }
+  if (conversation.turnsUsed >= conversation.turnCap) {
+    res.status(409).json({
+      error: "This conversation has used all of its turns. Create a new one to continue.",
+    });
+    return;
+  }
+  // Fire-and-forget: the room runs for as long as its caps allow, independent
+  // of this request.
+  void runConversation(conversation.id);
+  res.status(202).json({ ok: true });
+});
+
+app.post("/conversations/:id/stop", async (req: Request, res: Response) => {
+  const conversation = getConversation(req.params.id);
+  if (!conversation) {
+    res.status(404).json({ error: "conversation not found" });
+    return;
+  }
+  await stopConversation(conversation.id);
+  res.json(getConversation(conversation.id));
+});
+
+/** Lets a human interject between turns rather than only watching. */
+app.post("/conversations/:id/messages", (req: Request, res: Response) => {
+  const body = validatedBody(conversationMessageSchema, req, res);
+  if (!body) return;
+  const conversation = getConversation(req.params.id);
+  if (!conversation) {
+    res.status(404).json({ error: "conversation not found" });
+    return;
+  }
+  const message = appendConversationMessage({
+    conversationId: conversation.id,
+    turn: conversation.turnsUsed,
+    speakerAgentId: null,
+    speakerName: "You",
+    body: body.text,
+  });
+  globalBus.emit("conversations_changed");
+  res.status(201).json(message);
+});
+
+app.delete("/conversations/:id", async (req: Request, res: Response) => {
+  const conversation = getConversation(req.params.id);
+  if (!conversation) {
+    res.status(404).json({ error: "conversation not found" });
+    return;
+  }
+  // Stop first: deleting a room out from under a running turn would leave the
+  // loop writing to rows that no longer exist.
+  if (isConversationRunning(conversation.id)) await stopConversation(conversation.id);
+  deleteConversation(conversation.id);
+  globalBus.emit("conversations_changed");
+  res.status(204).end();
+});
+
 // ---- Durable memory ----
 
 app.get("/memories", (req: Request, res: Response) => {
@@ -948,6 +1062,8 @@ app.get("/events", (req: Request, res: Response) => {
   globalBus.on("paid_growth_changed", onPaidGrowth);
   const onAgents = () => sseSend(res, "agents-changed", {});
   globalBus.on("agents_changed", onAgents);
+  const onConversations = () => sseSend(res, "conversations-changed", {});
+  globalBus.on("conversations_changed", onConversations);
 
   const heartbeat = setInterval(() => res.write(": ping\n\n"), 15000);
 
@@ -964,6 +1080,7 @@ app.get("/events", (req: Request, res: Response) => {
     globalBus.off("customers_changed", onCustomers);
     globalBus.off("paid_growth_changed", onPaidGrowth);
     globalBus.off("agents_changed", onAgents);
+    globalBus.off("conversations_changed", onConversations);
   });
 });
 

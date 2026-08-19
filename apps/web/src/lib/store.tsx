@@ -12,6 +12,7 @@ import {
 } from "react";
 import type {
   AgentRecord,
+  AgentConversationRecord,
   ConnectionRecord,
   NotificationRecord,
   PlatformDefinition,
@@ -45,6 +46,8 @@ interface StoreValue {
   /** Whose workspace is on screen. Null only before the first agent list lands. */
   activeAgent: AgentRecord | null;
   selectAgent: (id: string) => void;
+  conversations: AgentConversationRecord[];
+  refreshConversations: () => Promise<void>;
   memories: MemoryRecord[];
   memoryReflections: MemoryReflectionRecord[];
   refreshMemories: () => Promise<void>;
@@ -128,6 +131,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     activeAgentIdRef.current = activeAgentId;
   }, [activeAgentId]);
 
+  const [conversations, setConversations] = useState<AgentConversationRecord[]>([]);
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
   const [memoryReflections, setMemoryReflections] = useState<MemoryReflectionRecord[]>([]);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -180,6 +184,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem(SELECTED_AGENT_KEY, fallback);
     }
     setActiveAgentIdState(fallback);
+  }, []);
+
+  const refreshConversations = useCallback(async () => {
+    setConversations(await api.listConversations());
   }, []);
 
   const refreshMemories = useCallback(async () => {
@@ -312,6 +320,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshMemories().catch(() => {});
       });
 
+      // Fires on every turn a room takes, which is what makes an agent
+      // conversation watchable rather than something you refresh to follow.
+      source.addEventListener("conversations-changed", () => {
+        refreshConversations().catch(() => {});
+      });
+
       source.addEventListener("agents-changed", () => {
         refreshAgents().catch(() => {});
       });
@@ -369,6 +383,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           refreshEvolution(),
           refreshCampaigns(),
             refreshMemories(),
+            refreshConversations(),
             refreshPrimaryChat(),
             refreshCustomerOperations(),
             refreshPaidGrowth(),
@@ -402,6 +417,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refreshConnections,
     refreshEvolution,
     refreshAgents,
+    refreshConversations,
     refreshMemories,
     refreshMissions,
     refreshNotifications,
@@ -458,6 +474,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshAgents,
       activeAgent,
       selectAgent,
+      conversations,
+      refreshConversations,
       memories,
       memoryReflections,
       refreshMemories,
@@ -498,6 +516,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshAgents,
       activeAgent,
       selectAgent,
+      conversations,
+      refreshConversations,
       memories,
       memoryReflections,
       refreshMemories,
@@ -611,6 +631,11 @@ export function usePaidGrowth() {
 
 export function useConnectionStatus() {
   return useStore().connectionStatus;
+}
+
+export function useConversations() {
+  const { conversations, refreshConversations } = useStore();
+  return { conversations, refresh: refreshConversations };
 }
 
 export function useAgents() {

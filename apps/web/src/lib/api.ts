@@ -1,5 +1,9 @@
 import type {
   AgentRecord,
+  AgentConversationRecord,
+  AgentConversationDetail,
+  AgentConversationMessageRecord,
+  CreateAgentConversationRequest,
   CreateAgentRequest,
   UpdateAgentRequest,
   ConnectionRecord,
@@ -158,6 +162,25 @@ function scoped(path: string): string {
 }
 
 export const api = {
+  listConversations: () => request<AgentConversationRecord[]>("/conversations"),
+  getConversation: (id: string) => request<AgentConversationDetail>(`/conversations/${id}`),
+  createConversation: (body: CreateAgentConversationRequest) =>
+    request<AgentConversationRecord>("/conversations", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  startConversation: (id: string) =>
+    request<{ ok: boolean }>(`/conversations/${id}/start`, { method: "POST" }),
+  stopConversation: (id: string) =>
+    request<AgentConversationRecord>(`/conversations/${id}/stop`, { method: "POST" }),
+  sendConversationMessage: (id: string, text: string) =>
+    request<AgentConversationMessageRecord>(`/conversations/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  deleteConversation: (id: string) =>
+    request<void>(`/conversations/${id}`, { method: "DELETE" }),
+
   listAgents: (status?: "active" | "archived") =>
     request<AgentRecord[]>(`/agents${status ? `?status=${status}` : ""}`),
   getAgent: (id: string) => request<AgentRecord>(`/agents/${id}`),
