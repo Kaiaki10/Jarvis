@@ -32,19 +32,16 @@ published state, but only X has confirmed automatic dispatch today.
 image from the watched folder; the same could be offered for the other platforms,
 which use simpler single-request uploads.
 
-### high — Orchestrator API is unauthenticated
-Anything running locally can launch sessions and read transcripts. Both services now bind
-explicitly to `127.0.0.1`, which closes accidental LAN exposure, but authentication is still
-required before remote access can ever be supported.
+### medium — Orchestrator API has no per-agent authorization
+Every request now carries a shared token, so the API is no longer open to anything running
+locally. That token is single-tenant: it proves the caller is the dashboard, not *which*
+agent the caller is acting as. Once v2 increment 2 scopes routes by `agent_id`, a caller
+holding the token can still name any agent in a request, so agent isolation remains a UI
+convention rather than an enforced boundary. Closing this means either a per-agent grant or
+server-side derivation of the acting agent from something the caller cannot choose.
 
-Raised from low to high on 2026-08-18 by the v2 multi-agent plan (`V2_PLAN.md`). One agent
-behind an unauthenticated local API is a bounded risk: everything it can reach, the single
-user could already reach. Several agents, each holding a distinct grant over shared platform
-credentials, is a different shape — the API becomes the only thing standing between a local
-caller and *any* agent's authority, and it is currently standing there with nothing. Agent
-isolation enforced only in the UI is not isolation. This should be closed before increment 2
-of v2 threads `agent_id` through the routes, because retrofitting authorization onto routes
-that already assume a trusted caller is materially harder than building it in.
+Remote access remains out of scope: both services bind to `127.0.0.1` and the token is a
+same-machine trust boundary, not user authentication.
 
 ### low — Dashboard is desktop-only
 The sidebar is a fixed 240px with no responsive collapse, so the UI is unusable on a
@@ -55,6 +52,19 @@ Every platform requires manually copying tokens. Proper OAuth flows would be fri
 but need a public redirect URL.
 
 ## Closed
+
+- **2026-08-19** The orchestrator API was unauthenticated — closed by a generated
+  `jarvis.token` presented as a bearer token on every request, plus a server-side origin
+  guard. The attack that mattered was not remote: any web page the user visits can POST to a
+  loopback port, and CORS blocks reading the reply but not the request landing, so a drive-by
+  could launch sessions and spend real credentials. Verified live at both layers — an
+  unauthenticated call is refused, and a call carrying a *stolen* token from a foreign origin
+  is still refused. `/widget` (third-party by design), `/webhooks` (payload-signed), `/health`,
+  and `/shutdown` stay exempt; `/shutdown` because the restart script's fallback can fail
+  against an S4U-protected child, and the origin guard already puts it out of a browser's
+  reach. The dashboard fetches the token from its own server rather than a `NEXT_PUBLIC_`
+  variable, so it never enters the static bundle. Per-agent authorization is a separate,
+  still-open gap.
 
 - **2026-08-18** Customer channels stopped at a manually maintained inbox — closed with an
   embeddable, token-protected website chat; signed and idempotent Resend, X Account

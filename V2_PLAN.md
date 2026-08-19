@@ -119,7 +119,9 @@ Each increment ships on its own and leaves the app working.
 
 1. **`agents` table, migration, agent picker page.** Jarvis becomes agent #1.
    Nothing else changes visibly. The risky migration lands alone so it can be
-   verified and rolled back by itself.
+   verified and rolled back by itself. *(Done 2026-08-18.)*
+   - **API authentication**, inserted before increment 2 rather than after. See
+     "Consequences elsewhere". *(Done 2026-08-19.)*
 2. **Agent-scoped dashboard.** Thread `agent_id` through the API, the store, and
    the pages; add the agent switcher to `AppShell`.
 3. **Memory split.** The `memories` rebuild, private plus shared pool.
@@ -127,9 +129,13 @@ Each increment ships on its own and leaves the app working.
 
 ## Consequences elsewhere
 
-- **The unauthenticated orchestrator API gets materially worse.** Several agents
-  holding separate credential grants behind an API with no authentication is a
-  different risk from one agent doing so. Raised from low to high in `GAPS.md`.
+- **The unauthenticated orchestrator API had to close first, and did** (2026-08-19,
+  before increment 2). Several agents holding separate credential grants behind an
+  API with no authentication is a different risk from one agent doing so, and
+  retrofitting authorization onto routes that already assume a trusted caller is
+  harder than building it in. What remains open is *per-agent* authorization: the
+  token proves the caller is the dashboard, not which agent it is acting as, so
+  increment 2 must not treat agent isolation as enforced by the API.
 - **The SDK's built-in `agents` option does not fit.** It defines subagents that
   share one parent context; v2 needs separate personas with separate memory and
   separate credential grants. Distinct sessions per agent is the right call.

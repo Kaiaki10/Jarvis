@@ -7,6 +7,8 @@ dist/
 *.db-shm
 # Local encryption key for stored platform credentials — must never be committed.
 *.key
+# Shared secret the dashboard presents to the orchestrator. Same rule.
+*.token
 .env
 .env.local
 scripts/logs/

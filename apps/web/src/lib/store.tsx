@@ -193,10 +193,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let reconnectDelay = 1000;
     let currentSource: EventSource | null = null;
 
-    function connect() {
+    async function connect() {
       if (cancelled) return;
 
-      const source = new EventSource(globalEventsUrl());
+      let url: string;
+      try {
+        url = await globalEventsUrl();
+      } catch {
+        // No token means no stream. Report offline and retry on the same backoff
+        // as a dropped connection rather than failing silently forever.
+        if (cancelled) return;
+        setConnectionStatus("offline");
+        setSessionsLoading(false);
+        reconnectTimer = setTimeout(() => {
+          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+          void connect();
+        }, reconnectDelay);
+        return;
+      }
+      // The provider may have unmounted while the token was in flight.
+      if (cancelled) return;
+
+      const source = new EventSource(url);
       currentSource = source;
 
       source.addEventListener("session-updated", (evt) => {
@@ -301,12 +319,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         reconnectTimer = setTimeout(() => {
           reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-          connect();
+          void connect();
         }, reconnectDelay);
       };
     }
 
-    connect();
+    void connect();
 
     return () => {
       cancelled = true;

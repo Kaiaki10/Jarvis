@@ -126,10 +126,13 @@ export function useSessionStream(sessionId: string, activityKey = 0) {
     lastSeq.current = { sessionId, seq: 0 };
     lastStreamSignalAt.current = Date.now();
 
-    function connect() {
+    async function connect() {
       if (cancelled) return;
       const since = lastSeq.current.sessionId === sessionId ? lastSeq.current.seq : 0;
-      const source = new EventSource(sessionStreamUrl(sessionId, since));
+      const url = await sessionStreamUrl(sessionId, since);
+      // The effect may have been torn down while the token was in flight.
+      if (cancelled) return;
+      const source = new EventSource(url);
       currentSource = source;
       source.onopen = () => {
         reconnectDelay = 500;
@@ -165,7 +168,7 @@ export function useSessionStream(sessionId: string, activityKey = 0) {
         void catchUpEvents();
         reconnectTimer = setTimeout(() => {
           reconnectDelay = Math.min(reconnectDelay * 2, 10_000);
-          connect();
+          void connect();
         }, reconnectDelay);
       };
     }
@@ -184,7 +187,7 @@ export function useSessionStream(sessionId: string, activityKey = 0) {
         );
         setEventState({ sessionId, events: initial });
         refreshSession();
-        connect();
+        void connect();
       })
       .catch(() => {
         if (cancelled) return;

@@ -71,10 +71,44 @@ const BASE_URL =
 export const customerWidgetDemoUrl = `${BASE_URL}/widget/demo`;
 export const customerWidgetEmbedCode = `<script src="${BASE_URL}/widget/customer-chat.js" data-jarvis-url="${BASE_URL}" async></script>`;
 
+/**
+ * The orchestrator's API token, fetched once from this app's own server.
+ *
+ * Held as the in-flight promise rather than the resolved value so that the
+ * many requests fired on first paint share a single round trip instead of
+ * racing to fetch the same secret.
+ */
+let tokenPromise: Promise<string> | null = null;
+
+export function ensureApiToken(): Promise<string> {
+  if (!tokenPromise) {
+    tokenPromise = fetch("/api/token", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const { error } = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(error ?? "Could not read the orchestrator API token.");
+        }
+        return ((await res.json()) as { token: string }).token;
+      })
+      .catch((err) => {
+        // Clear the cache so a later attempt can succeed — otherwise one failure
+        // during startup would leave the dashboard permanently unauthenticated.
+        tokenPromise = null;
+        throw err;
+      });
+  }
+  return tokenPromise;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await ensureApiToken();
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...init?.headers,
+    },
   });
   if (!res.ok) {
     // The orchestrator returns { error } with a message written for a person;
@@ -350,10 +384,17 @@ export const api = {
     }),
 };
 
-export function sessionStreamUrl(sessionId: string, since = 0) {
-  return `${BASE_URL}/sessions/${sessionId}/stream?since=${since}`;
+/**
+ * EventSource cannot set an Authorization header, so the stream endpoints take
+ * the token in the query string. Both builders are async because the token is
+ * fetched once at runtime rather than baked in at build time.
+ */
+export async function sessionStreamUrl(sessionId: string, since = 0) {
+  const token = await ensureApiToken();
+  return `${BASE_URL}/sessions/${sessionId}/stream?since=${since}&token=${encodeURIComponent(token)}`;
 }
 
-export function globalEventsUrl() {
-  return `${BASE_URL}/events`;
+export async function globalEventsUrl() {
+  const token = await ensureApiToken();
+  return `${BASE_URL}/events?token=${encodeURIComponent(token)}`;
 }

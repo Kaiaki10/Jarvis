@@ -112,6 +112,28 @@ Restore a downloaded data snapshot with:
 The script stops the orchestrator, keeps a timestamped safety copy of the current database,
 restores the selected snapshot, and starts the service again.
 
+## API access
+
+The orchestrator requires a bearer token on every request. It is generated on first
+start as `jarvis.token` beside `jarvis.key` (never committed), and the dashboard reads
+it automatically — there is nothing to configure.
+
+The point is not remote access; both services bind to `127.0.0.1`. It is that any web
+page you happen to visit can issue a request to a loopback port, and CORS blocks reading
+the response but not the request taking effect. Requests are also refused outright if
+they carry a browser `Origin` other than the dashboard's, so a stolen token still does
+not let another site drive the service.
+
+`/health`, `/shutdown`, `/widget/*` (embedded on customer sites) and `/webhooks/*`
+(authenticated by provider signature) do not take the token.
+
+To call the API yourself:
+
+```
+curl -H "Authorization: Bearer $(cat apps/orchestrator/jarvis.token)" \
+  http://127.0.0.1:4317/agents
+```
+
 ## Connections
 
 The Connections page walks you through linking a platform: what to create, where to click,

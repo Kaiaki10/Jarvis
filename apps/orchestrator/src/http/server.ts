@@ -143,6 +143,8 @@ import {
   syncPaidGrowthCampaign,
 } from "../paidGrowth/service.js";
 import { startPaidGrowthMonitor } from "../paidGrowth/monitor.js";
+import { isValidToken, tokenFromRequest } from "../security/apiToken.js";
+import { isAllowedOrigin, isUnauthenticatedPath } from "./authGuard.js";
 import { listMemories, listMemoryReflections, remember, updateMemory } from "../db/memoryRepo.js";
 import {
   archiveAgent,
@@ -266,6 +268,25 @@ app.use(express.json({
   limit: "1mb",
   verify: (req, _res, buffer) => { (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer); },
 }));
+
+// The widget runs its own origin allowlist above, for third-party sites.
+app.use((req: Request, res: Response, next) => {
+  if (req.path.startsWith("/widget")) return next();
+  if (isAllowedOrigin(req.headers.origin, ALLOWED_ORIGINS)) return next();
+  res.status(403).json({ error: "Origin not allowed" });
+});
+
+app.use((req: Request, res: Response, next) => {
+  if (isUnauthenticatedPath(req.path)) return next();
+  // Preflight carries no credentials by design; the cors middleware above has
+  // already decided whether the origin may proceed to the real request.
+  if (req.method === "OPTIONS") return next();
+  if (isValidToken(tokenFromRequest(req))) return next();
+  res.status(401).json({
+    error:
+      "Missing or invalid API token. The dashboard reads it automatically; a script must send it as a Bearer token.",
+  });
+});
 
 function rawBody(req: Request): Buffer {
   return (req as Request & { rawBody?: Buffer }).rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));

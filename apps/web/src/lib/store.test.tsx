@@ -56,17 +56,41 @@ function mockInitialRequests() {
   vi.spyOn(api, "listMemories").mockResolvedValue([]);
   vi.spyOn(api, "listMemoryReflections").mockResolvedValue([]);
   vi.spyOn(api, "listScheduledTasks").mockResolvedValue([]);
+  vi.spyOn(api, "listAgents").mockResolvedValue([]);
   vi.spyOn(api, "getChat").mockResolvedValue({ session: null });
+}
+
+/**
+ * The stream URL is built by fetching the orchestrator token from this app's
+ * own server, so the provider cannot open an EventSource without it. Stubbing
+ * fetch rather than the URL builder keeps that path under test.
+ */
+const TEST_TOKEN = "test-token-value";
+
+function mockTokenEndpoint() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/token")) {
+        return new Response(JSON.stringify({ token: TEST_TOKEN }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    })
+  );
 }
 
 describe("StoreProvider", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     FakeEventSource.instances = [];
   });
 
   it("owns exactly one global EventSource", async () => {
     mockInitialRequests();
+    mockTokenEndpoint();
     vi.stubGlobal("EventSource", FakeEventSource);
 
     render(
@@ -77,6 +101,9 @@ describe("StoreProvider", () => {
 
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     expect(String(FakeEventSource.instances[0].url)).toContain("/events");
+    // EventSource cannot send an Authorization header, so an unauthenticated
+    // stream would be rejected by the orchestrator and the app would look dead.
+    expect(String(FakeEventSource.instances[0].url)).toContain(`token=${TEST_TOKEN}`);
 
     FakeEventSource.instances[0].emit("open");
     await waitFor(() => expect(api.listSessions).toHaveBeenCalledTimes(1));
