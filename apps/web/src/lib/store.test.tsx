@@ -1,7 +1,7 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
-import { StoreProvider } from "./store";
+import { SELECTED_AGENT_KEY, StoreProvider, useStore } from "./store";
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -17,6 +17,12 @@ class FakeEventSource {
   }
   emit(name: string) {
     for (const listener of this.listeners.get(name) ?? []) listener();
+  }
+  /** Delivers a payload, for listeners that parse event.data. */
+  emitData(name: string, data: unknown) {
+    for (const listener of this.listeners.get(name) ?? []) {
+      (listener as unknown as (e: MessageEvent) => void)({ data: JSON.stringify(data) } as MessageEvent);
+    }
   }
   close() {}
 }
@@ -85,6 +91,7 @@ describe("StoreProvider", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    window.localStorage.clear();
     FakeEventSource.instances = [];
   });
 
@@ -133,5 +140,44 @@ describe("StoreProvider", () => {
     FakeEventSource.instances[0].emit("customers-changed");
     await waitFor(() => expect(vi.mocked(api.getCustomerOperations).mock.calls.length).toBeGreaterThan(customerCalls));
     expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  /**
+   * One EventSource serves the whole app, so it carries every agent's sessions.
+   * Observed for real: another agent's scheduled automations streamed in and
+   * filled the run history with work the selected agent had never done.
+   */
+  it("ignores session updates belonging to another agent", async () => {
+    mockInitialRequests();
+    mockTokenEndpoint();
+    vi.stubGlobal("EventSource", FakeEventSource);
+    window.localStorage.setItem(SELECTED_AGENT_KEY, "agent-alice");
+    vi.spyOn(api, "listAgents").mockResolvedValue([
+      { id: "agent-alice", name: "Alice", status: "active" } as never,
+    ]);
+
+    function Runs() {
+      const { sessions } = useStore();
+      return <div data-testid="runs">{sessions.map((s) => s.title).join("|")}</div>;
+    }
+
+    render(
+      <StoreProvider>
+        <Runs />
+      </StoreProvider>
+    );
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    FakeEventSource.instances[0].emitData("session-updated", {
+      id: "s1", agentId: "agent-alice", title: "alice run", status: "idle", updatedAt: "2026-01-02",
+    });
+    FakeEventSource.instances[0].emitData("session-updated", {
+      id: "s2", agentId: "agent-bob", title: "bob run", status: "idle", updatedAt: "2026-01-03",
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("runs").textContent).toContain("alice run")
+    );
+    expect(screen.getByTestId("runs").textContent).not.toContain("bob run");
   });
 });

@@ -21,6 +21,9 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
     cwd: task.cwd,
     permissionMode: task.permissionMode,
     allowedTools: task.allowedTools ?? undefined,
+    // The run belongs to whichever agent owns the automation, so its persona
+    // and its history stay with that agent rather than landing in a shared pile.
+    agentId: task.agentId,
   });
   globalBus.emit("session_updated", session.id);
 
@@ -31,6 +34,7 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
     permissionMode: task.permissionMode,
     allowedTools: task.allowedTools ?? undefined,
     title: `Automation "${task.prompt.split("\n")[0].slice(0, 60)}"`,
+    agentId: task.agentId,
     onTurnFinished: (ok) => {
       if (ok) {
         if (task.retryCount) {

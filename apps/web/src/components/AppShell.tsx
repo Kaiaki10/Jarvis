@@ -21,8 +21,10 @@ import {
   Orbit,
   BadgeDollarSign,
   Bot,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
-import { StoreProvider, useConnectionStatus, useNotifications } from "@/lib/store";
+import { StoreProvider, useAgents, useConnectionStatus, useNotifications } from "@/lib/store";
 
 const NAV_GROUPS = [
   {
@@ -78,6 +80,96 @@ function LiveClock() {
   );
 }
 
+/**
+ * Which agent the whole dashboard is scoped to, and how to change it.
+ *
+ * Sits where the fixed "Jarvis" wordmark used to, because with several agents
+ * the single most important thing to know on any page is whose workspace you
+ * are looking at — a switch changes every number on screen.
+ */
+function AgentSwitcher() {
+  const { agents, activeAgent, selectAgent } = useAgents();
+  const [open, setOpen] = useState(false);
+  const active = agents.filter((agent) => agent.status === "active");
+
+  // One agent is the common case and needs no menu — showing a disclosure that
+  // opens onto a single choice would imply an option that isn't there.
+  const switchable = active.length > 1;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className={`flex w-full items-center gap-2.5 rounded-lg text-left transition-colors ${
+          switchable ? "-mx-2 px-2 py-1 hover:bg-white/[0.04]" : ""
+        }`}
+        onClick={() => switchable && setOpen((value) => !value)}
+        aria-expanded={switchable ? open : undefined}
+        aria-haspopup={switchable ? "menu" : undefined}
+        disabled={!switchable}
+      >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.6rem] bg-gradient-to-br from-accent-bright to-accent text-label font-bold text-white shadow-elev-1 ring-1 ring-inset ring-white/20">
+          {activeAgent?.avatar ?? "J"}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-title text-foreground">
+            {activeAgent?.name ?? "Jarvis"}
+          </span>
+          <span className="block truncate text-micro tracking-wide text-muted">
+            {activeAgent?.role || "Autonomous business system"}
+          </span>
+        </span>
+        {switchable && (
+          <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.75} />
+        )}
+      </button>
+
+      {open && switchable && (
+        <>
+          {/* Click-away target, behind the menu but above the page. */}
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            // Opaque, not glass: this overlaps the nav rather than the page
+            // background, and a translucent surface here leaves the menu items
+            // and the links beneath them legible through each other.
+            className="absolute top-full right-0 left-0 z-20 mt-1 overflow-hidden rounded-lg border border-border-strong bg-surface-overlay shadow-elev-2"
+          >
+            {active.map((agent) => (
+              <button
+                key={agent.id}
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.06]"
+                onClick={() => {
+                  selectAgent(agent.id);
+                  setOpen(false);
+                }}
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/[0.08] text-micro font-bold text-foreground">
+                  {agent.avatar}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-label text-foreground">
+                  {agent.name}
+                </span>
+                {agent.id === activeAgent?.id && (
+                  <Check className="h-3.5 w-3.5 shrink-0 text-accent-bright" strokeWidth={2} />
+                )}
+              </button>
+            ))}
+            <Link
+              href="/agents"
+              className="block border-t border-border px-3 py-2 text-label text-muted transition-colors hover:bg-white/[0.06] hover:text-foreground"
+              onClick={() => setOpen(false)}
+            >
+              Manage agents
+            </Link>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Inside the provider, so it can show the live unread count. */
 function Sidebar() {
   const pathname = usePathname();
@@ -92,15 +184,7 @@ function Sidebar() {
     <aside className="material-glass w-60 shrink-0 border-y-0 border-l-0 border-r-border">
       <div className="sticky top-0 flex h-screen flex-col">
       <div className="px-5 py-6">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-[0.6rem] bg-gradient-to-br from-accent-bright to-accent text-label font-bold text-white shadow-elev-1 ring-1 ring-inset ring-white/20">
-            J
-          </div>
-          <span className="text-title text-foreground">Jarvis</span>
-        </div>
-        <p className="mt-1.5 text-micro tracking-wide text-muted">
-          Autonomous business system
-        </p>
+        <AgentSwitcher />
       </div>
 
       <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 pb-3">

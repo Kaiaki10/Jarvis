@@ -57,6 +57,8 @@ export type SessionStatus =
 
 export interface SessionRecord {
   id: string;
+  /** Which agent owns this. Null only for rows that predate the agent migration. */
+  agentId: string | null;
   claudeSessionId: string | null;
   title: string;
   status: SessionStatus;
@@ -136,6 +138,7 @@ export type TaskStatus = "todo" | "in_progress" | "done";
 
 export interface TaskRecord {
   id: string;
+  agentId: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -151,6 +154,7 @@ export type MissionStatus = "planned" | "active" | "blocked" | "completed" | "ar
 
 export interface MissionRecord {
   id: string;
+  agentId: string | null;
   title: string;
   outcome: string;
   status: MissionStatus;
@@ -364,6 +368,7 @@ export interface UpdateSettingsRequest {
 
 export interface ScheduledTaskRecord {
   id: string;
+  agentId: string | null;
   prompt: string;
   cwd: string;
   permissionMode: string;

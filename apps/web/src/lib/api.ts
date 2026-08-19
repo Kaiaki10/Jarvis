@@ -133,6 +133,30 @@ async function requestBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
+/**
+ * The agent whose workspace the dashboard is showing.
+ *
+ * Held in a module variable rather than threaded through every call site: the
+ * store sets it as soon as the selection is known, and every list request picks
+ * it up. A request made before selection resolves is unscoped, which shows the
+ * default agent's data rather than nothing.
+ */
+let activeAgentId: string | null = null;
+
+export function setActiveAgentId(id: string | null) {
+  activeAgentId = id;
+}
+
+export function getActiveAgentId(): string | null {
+  return activeAgentId;
+}
+
+/** Appends the active agent to a query string, preserving any existing params. */
+function scoped(path: string): string {
+  if (!activeAgentId) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}agentId=${encodeURIComponent(activeAgentId)}`;
+}
+
 export const api = {
   listAgents: (status?: "active" | "archived") =>
     request<AgentRecord[]>(`/agents${status ? `?status=${status}` : ""}`),
@@ -151,21 +175,21 @@ export const api = {
     request<MemoryRecord>("/memories", { method: "POST", body: JSON.stringify(body) }),
   updateMemory: (id: string, patch: UpdateMemoryRequest) =>
     request<MemoryRecord>(`/memories/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
-  listSessions: () => request<SessionRecord[]>("/sessions"),
+  listSessions: () => request<SessionRecord[]>(scoped("/sessions")),
   deleteSession: (id: string) =>
     request<void>(`/sessions/${id}`, { method: "DELETE" }),
 
-  getChat: () => request<{ session: SessionRecord | null }>("/chat"),
+  getChat: () => request<{ session: SessionRecord | null }>(scoped("/chat")),
   sendChat: (text: string) =>
     request<{ sessionId: string; resumed: boolean }>("/chat", {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, agentId: getActiveAgentId() ?? undefined }),
     }),
   getSession: (id: string) => request<SessionRecord>(`/sessions/${id}`),
   createSession: (body: CreateSessionRequest) =>
     request<SessionRecord>("/sessions", {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, agentId: getActiveAgentId() ?? undefined }),
     }),
   getSessionEvents: (id: string, since = 0) =>
     request<SessionEventRecord[]>(`/sessions/${id}/events?since=${since}`),
@@ -182,11 +206,11 @@ export const api = {
   interruptSession: (id: string) =>
     request<{ ok: boolean }>(`/sessions/${id}/interrupt`, { method: "POST" }),
 
-  listTasks: () => request<TaskRecord[]>("/tasks"),
+  listTasks: () => request<TaskRecord[]>(scoped("/tasks")),
   createTask: (title: string, description?: string, missionId?: string) =>
     request<TaskRecord>("/tasks", {
       method: "POST",
-      body: JSON.stringify({ title, description, missionId }),
+      body: JSON.stringify({ title, description, missionId, agentId: getActiveAgentId() ?? undefined }),
     }),
   updateTask: (
     id: string,
@@ -198,11 +222,11 @@ export const api = {
     }),
   deleteTask: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
 
-  listMissions: () => request<MissionRecord[]>("/missions"),
+  listMissions: () => request<MissionRecord[]>(scoped("/missions")),
   getMission: (id: string) => request<{ mission: MissionRecord; tasks: TaskRecord[]; deliverables: DeliverableRecord[]; updates: MissionUpdateRecord[] }>(`/missions/${id}`),
   createMission: (body: CreateMissionRequest) => request<MissionRecord>("/missions", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, agentId: getActiveAgentId() ?? undefined }),
   }),
   updateMission: (id: string, patch: UpdateMissionRequest) => request<MissionRecord>(`/missions/${id}`, {
     method: "PATCH",
@@ -320,11 +344,11 @@ export const api = {
   createCustomerFollowUp: (id: string) =>
     request<TaskRecord>(`/customer-conversations/${id}/follow-up`, { method: "POST" }),
 
-  listScheduledTasks: () => request<ScheduledTaskRecord[]>("/scheduled-tasks"),
+  listScheduledTasks: () => request<ScheduledTaskRecord[]>(scoped("/scheduled-tasks")),
   createScheduledTask: (body: CreateScheduledTaskRequest) =>
     request<ScheduledTaskRecord>("/scheduled-tasks", {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, agentId: getActiveAgentId() ?? undefined }),
     }),
   updateScheduledTask: (id: string, patch: UpdateScheduledTaskRequest) =>
     request<ScheduledTaskRecord>(`/scheduled-tasks/${id}`, {

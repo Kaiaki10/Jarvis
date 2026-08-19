@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -29,7 +30,7 @@ import type {
   CustomerOperationsOverview,
   PaidGrowthOverview,
 } from "@jarvis/shared";
-import { api, globalEventsUrl } from "./api";
+import { api, globalEventsUrl, setActiveAgentId } from "./api";
 
 export interface ActivityLogEntry {
   id: string;
@@ -41,6 +42,9 @@ interface StoreValue {
   connectionStatus: "connecting" | "connected" | "offline";
   agents: AgentRecord[];
   refreshAgents: () => Promise<void>;
+  /** Whose workspace is on screen. Null only before the first agent list lands. */
+  activeAgent: AgentRecord | null;
+  selectAgent: (id: string) => void;
   memories: MemoryRecord[];
   memoryReflections: MemoryReflectionRecord[];
   refreshMemories: () => Promise<void>;
@@ -79,6 +83,12 @@ interface StoreValue {
 
 const StoreContext = createContext<StoreValue | null>(null);
 
+/**
+ * Which agent this browser is looking at. A view preference rather than server
+ * state, so two tabs can sit on different agents without fighting each other.
+ */
+export const SELECTED_AGENT_KEY = "jarvis.selectedAgentId";
+
 const ACTIVITY_LIMIT = 30;
 
 function toActivityEntry(session: SessionRecord): ActivityLogEntry {
@@ -99,6 +109,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     "connecting" | "connected" | "offline"
   >("connecting");
   const [agents, setAgents] = useState<AgentRecord[]>([]);
+  // Read synchronously so the very first request is already scoped, rather than
+  // fetching the default agent's data and replacing it a moment later.
+  const [activeAgentId, setActiveAgentIdState] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const stored = window.localStorage.getItem(SELECTED_AGENT_KEY);
+    if (stored) setActiveAgentId(stored);
+    return stored;
+  });
+  /**
+   * The SSE listeners are registered once and close over their initial state,
+   * so they read the current agent through a ref rather than a stale capture.
+   * Re-subscribing on every switch would tear down and rebuild the single
+   * shared EventSource instead.
+   */
+  const activeAgentIdRef = useRef<string | null>(activeAgentId);
+  useEffect(() => {
+    activeAgentIdRef.current = activeAgentId;
+  }, [activeAgentId]);
+
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
   const [memoryReflections, setMemoryReflections] = useState<MemoryReflectionRecord[]>([]);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -129,7 +158,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshAgents = useCallback(async () => {
-    setAgents(await api.listAgents());
+    const next = await api.listAgents();
+    setAgents(next);
+
+    // Adopt a selection if there is none, or if the stored one has been
+    // archived or deleted — otherwise the dashboard would scope every request
+    // to an agent that no longer exists and show a permanently empty workspace.
+    //
+    // Done synchronously, not inside a setState updater: React runs an updater
+    // whenever it next renders, so awaiting this function did not guarantee the
+    // request scope had actually moved. The first scoped fetch then went out
+    // against the previous agent.
+    const current = activeAgentIdRef.current;
+    const stillValid = current && next.some((a) => a.id === current && a.status === "active");
+    if (stillValid) return;
+
+    const fallback = next.find((a) => a.status === "active")?.id ?? null;
+    activeAgentIdRef.current = fallback;
+    setActiveAgentId(fallback);
+    if (typeof window !== "undefined" && fallback) {
+      window.localStorage.setItem(SELECTED_AGENT_KEY, fallback);
+    }
+    setActiveAgentIdState(fallback);
   }, []);
 
   const refreshMemories = useCallback(async () => {
@@ -220,6 +270,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       source.addEventListener("session-updated", (evt) => {
         const updated = JSON.parse((evt as MessageEvent).data) as SessionRecord;
 
+        // The stream carries every agent's sessions, because one connection
+        // serves the whole app. Without this filter another agent's scheduled
+        // runs append themselves to the list and the run history fills with
+        // work the selected agent never did.
+        const scopedTo = activeAgentIdRef.current;
+        if (scopedTo && updated.agentId && updated.agentId !== scopedTo) return;
+
         setSessions((prev) => {
           const idx = prev.findIndex((s) => s.id === updated.id);
           const next = idx === -1 ? [updated, ...prev] : [...prev];
@@ -280,7 +337,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setConnectionStatus("connected");
         // SSE has no replay cursor for global events. Reload authoritative state
         // so updates that happened while disconnected cannot leave the UI stale.
-        void Promise.allSettled([
+        //
+        // Agents are resolved FIRST and awaited, because everything below is
+        // scoped to the active one. Fetching in parallel meant the first load
+        // went out unscoped, pulled every agent's rows, and then adopted an
+        // agent without reloading — so the dashboard opened showing one agent's
+        // name over another agent's data.
+        void refreshAgents()
+          .catch(() => {})
+          .then(() => Promise.allSettled([
           api.listSessions().then((initial) => {
             if (cancelled) return;
             setSessions(initial);
@@ -303,12 +368,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           refreshScheduledTasks(),
           refreshEvolution(),
           refreshCampaigns(),
-          refreshMemories(),
-          refreshAgents(),
-          refreshPrimaryChat(),
-          refreshCustomerOperations(),
-          refreshPaidGrowth(),
-        ]);
+            refreshMemories(),
+            refreshPrimaryChat(),
+            refreshCustomerOperations(),
+            refreshPaidGrowth(),
+          ]));
       });
 
       source.onerror = () => {
@@ -346,6 +410,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refreshTasks,
   ]);
 
+  const activeAgent = useMemo(
+    () => agents.find((a) => a.id === activeAgentId) ?? null,
+    [agents, activeAgentId]
+  );
+
+  /**
+   * Switching agent replaces the whole workspace, so every scoped collection is
+   * reloaded rather than left showing the previous agent's rows until something
+   * happens to invalidate them.
+   */
+  const selectAgent = useCallback(
+    (id: string) => {
+      if (id === activeAgentId) return;
+      // Same reason as in refreshAgents: the scope must move before the
+      // requests below are issued, so it is set directly rather than awaited
+      // through a render.
+      activeAgentIdRef.current = id;
+      setActiveAgentId(id);
+      window.localStorage.setItem(SELECTED_AGENT_KEY, id);
+      setActiveAgentIdState(id);
+      void Promise.allSettled([
+        api.listSessions().then(setSessions),
+        refreshTasks(),
+        refreshMissions(),
+        refreshScheduledTasks(),
+        refreshPrimaryChat(),
+      ]);
+    },
+    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat]
+  );
+
   const removeSession = useCallback(async (id: string) => {
     await api.deleteSession(id);
     setSessions((prev) => prev.filter((s) => s.id !== id));
@@ -361,6 +456,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       connectionStatus,
       agents,
       refreshAgents,
+      activeAgent,
+      selectAgent,
       memories,
       memoryReflections,
       refreshMemories,
@@ -399,6 +496,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       connectionStatus,
       agents,
       refreshAgents,
+      activeAgent,
+      selectAgent,
       memories,
       memoryReflections,
       refreshMemories,
@@ -438,7 +537,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
-function useStore(): StoreValue {
+export function useStore(): StoreValue {
   const ctx = useContext(StoreContext);
   if (!ctx) throw new Error("useStore must be used within StoreProvider");
   return ctx;
@@ -515,8 +614,8 @@ export function useConnectionStatus() {
 }
 
 export function useAgents() {
-  const { agents, refreshAgents } = useStore();
-  return { agents, refresh: refreshAgents };
+  const { agents, refreshAgents, activeAgent, selectAgent } = useStore();
+  return { agents, refresh: refreshAgents, activeAgent, selectAgent };
 }
 
 export function useMemories() {

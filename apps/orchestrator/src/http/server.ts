@@ -26,6 +26,8 @@ import {
   updateSettings,
   getPrimarySessionId,
   setPrimarySessionId,
+  getAgentChatSessionId,
+  setAgentChatSessionId,
   deleteSession,
   createMission,
   getMission,
@@ -143,13 +145,14 @@ import {
   syncPaidGrowthCampaign,
 } from "../paidGrowth/service.js";
 import { startPaidGrowthMonitor } from "../paidGrowth/monitor.js";
-import { isValidToken, tokenFromRequest } from "../security/apiToken.js";
+import { apiToken, isValidToken, tokenFromRequest } from "../security/apiToken.js";
 import { isAllowedOrigin, isUnauthenticatedPath } from "./authGuard.js";
 import { listMemories, listMemoryReflections, remember, updateMemory } from "../db/memoryRepo.js";
 import {
   archiveAgent,
   createAgent,
   getAgent,
+  getDefaultAgent,
   listAgents,
   updateAgent,
 } from "../db/agentRepo.js";
@@ -336,6 +339,31 @@ app.post("/shutdown", (_req: Request, res: Response) => {
 
 // ---- Sessions ----
 
+/**
+ * The agent a request is scoped to.
+ *
+ * Absent means "every agent" for listings, and the default agent for creates —
+ * so a caller that predates v2, or a script that does not care, still works.
+ * An unknown id is rejected rather than silently widened to everything, which
+ * would turn a typo into a cross-agent data leak.
+ */
+function scopedAgentId(req: Request, res: Response): string | undefined | null {
+  const raw = req.query.agentId ?? (req.body as { agentId?: unknown } | undefined)?.agentId;
+  if (raw === undefined || raw === "") return undefined;
+  if (typeof raw !== "string" || !getAgent(raw)) {
+    res.status(400).json({ error: "Unknown agent" });
+    return null;
+  }
+  return raw;
+}
+
+/** Creates fall back to the default agent so nothing is ever left unowned. */
+function owningAgentId(req: Request, res: Response): string | undefined | null {
+  const scoped = scopedAgentId(req, res);
+  if (scoped === null) return null;
+  return scoped ?? getDefaultAgent()?.id;
+}
+
 app.post("/sessions", (req: Request, res: Response) => {
   const body = validatedBody(createSessionSchema, req, res);
   if (!body) return;
@@ -353,12 +381,15 @@ app.post("/sessions", (req: Request, res: Response) => {
     });
     return;
   }
+  const agentId = owningAgentId(req, res);
+  if (agentId === null) return;
   const session = createSession({
     title: body.prompt.slice(0, 120),
     cwd: body.cwd,
     permissionMode: body.permissionMode ?? "default",
     allowedTools: body.allowedTools,
     taskId: body.taskId,
+    agentId,
   });
   if (body.taskId) {
     linkTaskToSession(body.taskId, session.id);
@@ -373,25 +404,30 @@ app.post("/sessions", (req: Request, res: Response) => {
     permissionMode: body.permissionMode ?? "default",
     allowedTools: body.allowedTools,
     title: session.title,
+    agentId,
   });
 
   res.status(201).json(session);
 });
 
-app.get("/sessions", (_req: Request, res: Response) => {
-  res.json(listSessions());
+app.get("/sessions", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res);
+  if (agentId === null) return;
+  res.json(listSessions(agentId));
 });
 
 /**
- * The single ongoing conversation with Jarvis.
+ * One ongoing conversation per agent.
  *
- * Resumes the existing thread rather than starting another one, so talking to
- * Jarvis on Monday and Thursday is one conversation with memory instead of two
- * strangers. Automation runs deliberately keep their own sessions — each really
- * is a separate execution.
+ * Resumes the agent's existing thread rather than starting another one, so
+ * talking to it on Monday and Thursday is one conversation with memory instead
+ * of two strangers. Automation runs deliberately keep their own sessions — each
+ * really is a separate execution.
  */
-app.get("/chat", (_req: Request, res: Response) => {
-  const id = getPrimarySessionId();
+app.get("/chat", (req: Request, res: Response) => {
+  const agentId = owningAgentId(req, res);
+  if (agentId === null) return;
+  const id = agentId ? getAgentChatSessionId(agentId) : getPrimarySessionId();
   const session = id ? getSession(id) : undefined;
   res.json({ session: session ?? null });
 });
@@ -401,7 +437,9 @@ app.post("/chat", (req: Request, res: Response) => {
   if (!body) return;
   const { text } = body;
 
-  const existingId = getPrimarySessionId();
+  const agentId = owningAgentId(req, res);
+  if (agentId === null) return;
+  const existingId = agentId ? getAgentChatSessionId(agentId) : getPrimarySessionId();
   const existing = existingId ? getSession(existingId) : undefined;
 
   if (existing) {
@@ -419,10 +457,14 @@ app.post("/chat", (req: Request, res: Response) => {
     // unknown_session or not_resumable falls through to starting a fresh thread.
   }
 
-  const cwd = getSettings().chatWorkingDirectory.trim() || process.cwd();
+  // The agent's own working directory, falling back to the global setting so an
+  // agent created without one still starts somewhere valid.
+  const agent = agentId ? getAgent(agentId) : undefined;
+  const cwd =
+    agent?.cwd.trim() || getSettings().chatWorkingDirectory.trim() || process.cwd();
   if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
     res.status(400).json({
-      error: `Chat working directory does not exist: ${cwd}. Set it in Settings.`,
+      error: `Working directory for ${agent?.name ?? "chat"} does not exist: ${cwd}. Set it on the agent, or in Settings.`,
     });
     return;
   }
@@ -433,12 +475,15 @@ app.post("/chat", (req: Request, res: Response) => {
     return;
   }
 
+  const title = agent?.name ?? "Jarvis";
   const session = createSession({
-    title: "Jarvis",
+    title,
     cwd,
-    permissionMode: "default",
+    permissionMode: agent?.permissionMode ?? "default",
+    agentId,
   });
-  setPrimarySessionId(session.id);
+  if (agentId) setAgentChatSessionId(agentId, session.id);
+  else setPrimarySessionId(session.id);
   globalBus.emit("session_updated", session.id);
   globalBus.emit("chat_changed");
 
@@ -446,9 +491,10 @@ app.post("/chat", (req: Request, res: Response) => {
     id: session.id,
     prompt: text,
     cwd,
-    permissionMode: "default",
-    title: "Jarvis",
+    permissionMode: agent?.permissionMode ?? "default",
+    title,
     memoryWritable: true,
+    agentId,
   });
 
   res.status(201).json({ sessionId: session.id, resumed: false });
@@ -972,8 +1018,10 @@ app.post("/sessions/:id/interrupt", async (req: Request, res: Response) => {
 
 // ---- Tasks ----
 
-app.get("/tasks", (_req: Request, res: Response) => {
-  res.json(listTasks());
+app.get("/tasks", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res);
+  if (agentId === null) return;
+  res.json(listTasks(agentId));
 });
 
 app.post("/tasks", (req: Request, res: Response) => {
@@ -984,7 +1032,9 @@ app.post("/tasks", (req: Request, res: Response) => {
     res.status(404).json({ error: "Mission not found" });
     return;
   }
-  const task = createTask({ title, description, missionId });
+  const agentId = owningAgentId(req, res);
+  if (agentId === null) return;
+  const task = createTask({ title, description, missionId, agentId });
   globalBus.emit("missions_changed");
   res.status(201).json(task);
 });
@@ -1013,14 +1063,18 @@ app.delete("/tasks/:id", (req: Request, res: Response) => {
 
 // ---- Missions and deliverables ----
 
-app.get("/missions", (_req: Request, res: Response) => {
-  res.json(listMissions());
+app.get("/missions", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res);
+  if (agentId === null) return;
+  res.json(listMissions(agentId));
 });
 
 app.post("/missions", (req: Request, res: Response) => {
   const body = validatedBody(createMissionSchema, req, res);
   if (!body) return;
-  const mission = createMission(body);
+  const agentId = owningAgentId(req, res);
+  if (agentId === null) return;
+  const mission = createMission({ ...body, agentId });
   globalBus.emit("missions_changed");
   res.status(201).json(mission);
 });
@@ -1367,8 +1421,10 @@ app.post("/campaigns/:id/generate", (req: Request, res: Response) => {
 
 // ---- Scheduled tasks ----
 
-app.get("/scheduled-tasks", (_req: Request, res: Response) => {
-  res.json(listScheduledTasks());
+app.get("/scheduled-tasks", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res);
+  if (agentId === null) return;
+  res.json(listScheduledTasks(agentId));
 });
 
 app.post("/scheduled-tasks", (req: Request, res: Response) => {
@@ -1380,6 +1436,8 @@ app.post("/scheduled-tasks", (req: Request, res: Response) => {
     res.status(400).json({ error: `Working directory does not exist: ${body.cwd}` });
     return;
   }
+  const agentId = owningAgentId(req, res);
+  if (agentId === null) return;
   const next = computeNextRun(body.timeOfDay, body.daysOfWeek, new Date());
   const task = createScheduledTask({
     prompt: body.prompt,
@@ -1389,6 +1447,7 @@ app.post("/scheduled-tasks", (req: Request, res: Response) => {
     timeOfDay: body.timeOfDay,
     daysOfWeek: body.daysOfWeek,
     nextRunAt: next ? next.toISOString() : new Date().toISOString(),
+    agentId,
   });
   globalBus.emit("automations_changed");
   res.status(201).json(task);
@@ -1872,6 +1931,12 @@ app.patch("/settings", (req: Request, res: Response) => {
   if (!body) return;
   res.json(updateSettings(body));
 });
+
+// Generated before the port opens, not on the first authenticated request.
+// Lazily, `/health` — which is exempt — never triggers it, so the dashboard
+// could ask this app's own server for the token before the file existed and be
+// told 503 by a service that was otherwise perfectly healthy.
+apiToken();
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`Jarvis orchestrator listening on http://${HOST}:${PORT}`);

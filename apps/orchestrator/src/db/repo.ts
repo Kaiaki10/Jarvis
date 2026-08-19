@@ -23,8 +23,20 @@ import type {
   EvolutionAutonomy,
 } from "@jarvis/shared";
 
+/**
+ * Restricts a listing to one agent.
+ *
+ * Written as a fragment rather than a WHERE clause so callers keep their own
+ * ordering and joins. An undefined agent means "every agent" — used by the
+ * scheduler and the maintenance jobs, which operate across the whole system.
+ */
+function agentFilter(agentId: string | undefined): { sql: string; params: string[] } {
+  return agentId ? { sql: " WHERE agent_id = ?", params: [agentId] } : { sql: "", params: [] };
+}
+
 interface SessionRow {
   id: string;
+  agent_id: string | null;
   claude_session_id: string | null;
   title: string;
   status: string;
@@ -44,6 +56,7 @@ interface SessionRow {
 function mapSession(row: SessionRow): SessionRecord {
   return {
     id: row.id,
+    agentId: row.agent_id ?? null,
     claudeSessionId: row.claude_session_id,
     title: row.title,
     status: row.status as SessionStatus,
@@ -67,14 +80,16 @@ export function createSession(input: {
   permissionMode: string;
   allowedTools?: string[];
   taskId?: string;
+  agentId?: string | null;
 }): SessionRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO sessions (id, claude_session_id, title, status, cwd, permission_mode, allowed_tools, task_id, cost_usd, turns, error_message, created_at, updated_at)
-     VALUES (?, NULL, ?, 'starting', ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`
+    `INSERT INTO sessions (id, agent_id, claude_session_id, title, status, cwd, permission_mode, allowed_tools, task_id, cost_usd, turns, error_message, created_at, updated_at)
+     VALUES (?, ?, NULL, ?, 'starting', ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`
   ).run(
     id,
+    input.agentId ?? null,
     input.title,
     input.cwd,
     input.permissionMode,
@@ -93,10 +108,11 @@ export function getSession(id: string): SessionRecord | undefined {
   return row ? mapSession(row as SessionRow) : undefined;
 }
 
-export function listSessions(): SessionRecord[] {
+export function listSessions(agentId?: string): SessionRecord[] {
+  const filter = agentFilter(agentId);
   const rows = db
-    .prepare(`SELECT * FROM sessions ORDER BY updated_at DESC`)
-    .all() as unknown as SessionRow[];
+    .prepare(`SELECT * FROM sessions${filter.sql} ORDER BY updated_at DESC`)
+    .all(...filter.params) as unknown as SessionRow[];
   return rows.map(mapSession);
 }
 
@@ -231,6 +247,7 @@ export function listSessionEvents(
 
 interface TaskRow {
   id: string;
+  agent_id: string | null;
   title: string;
   description: string | null;
   status: string;
@@ -245,6 +262,7 @@ interface TaskRow {
 function mapTask(row: TaskRow): TaskRecord {
   return {
     id: row.id,
+    agentId: row.agent_id ?? null,
     title: row.title,
     description: row.description,
     status: row.status as TaskStatus,
@@ -261,16 +279,20 @@ export function createTask(input: {
   title: string;
   description?: string;
   missionId?: string;
+  agentId?: string | null;
 }): TaskRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
+  // Position is per agent, so one agent's board does not start at whatever
+  // number another agent's board happens to have reached.
+  const filter = agentFilter(input.agentId ?? undefined);
   const maxPosRow = db
-    .prepare(`SELECT COALESCE(MAX(position), 0) as maxPos FROM tasks`)
-    .get() as { maxPos: number };
+    .prepare(`SELECT COALESCE(MAX(position), 0) as maxPos FROM tasks${filter.sql}`)
+    .get(...filter.params) as { maxPos: number };
   db.prepare(
-    `INSERT INTO tasks (id, title, description, status, position, session_id, mission_id, created_at, updated_at, completed_at)
-     VALUES (?, ?, ?, 'todo', ?, NULL, ?, ?, ?, NULL)`
-  ).run(id, input.title, input.description ?? null, maxPosRow.maxPos + 1, input.missionId ?? null, now, now);
+    `INSERT INTO tasks (id, agent_id, title, description, status, position, session_id, mission_id, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, ?, 'todo', ?, NULL, ?, ?, ?, NULL)`
+  ).run(id, input.agentId ?? null, input.title, input.description ?? null, maxPosRow.maxPos + 1, input.missionId ?? null, now, now);
   return getTask(id)!;
 }
 
@@ -281,10 +303,11 @@ export function getTask(id: string): TaskRecord | undefined {
   return row ? mapTask(row as TaskRow) : undefined;
 }
 
-export function listTasks(): TaskRecord[] {
+export function listTasks(agentId?: string): TaskRecord[] {
+  const filter = agentFilter(agentId);
   const rows = db
-    .prepare(`SELECT * FROM tasks ORDER BY status ASC, position ASC`)
-    .all() as unknown as TaskRow[];
+    .prepare(`SELECT * FROM tasks${filter.sql} ORDER BY status ASC, position ASC`)
+    .all(...filter.params) as unknown as TaskRow[];
   return rows.map(mapTask);
 }
 
@@ -324,6 +347,7 @@ export function updateTask(
 
 interface MissionRow {
   id: string;
+  agent_id: string | null;
   title: string;
   outcome: string;
   status: string;
@@ -337,6 +361,7 @@ interface MissionRow {
 function mapMission(row: MissionRow): MissionRecord {
   return {
     id: row.id,
+    agentId: row.agent_id ?? null,
     title: row.title,
     outcome: row.outcome,
     status: row.status as MissionStatus,
@@ -348,13 +373,13 @@ function mapMission(row: MissionRow): MissionRecord {
   };
 }
 
-export function createMission(input: { title: string; outcome: string; targetDate?: string }): MissionRecord {
+export function createMission(input: { title: string; outcome: string; targetDate?: string; agentId?: string | null }): MissionRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO missions (id, title, outcome, status, target_date, next_action, created_at, updated_at, completed_at)
-     VALUES (?, ?, ?, 'planned', ?, NULL, ?, ?, NULL)`
-  ).run(id, input.title, input.outcome, input.targetDate ?? null, now, now);
+    `INSERT INTO missions (id, agent_id, title, outcome, status, target_date, next_action, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, ?, 'planned', ?, NULL, ?, ?, NULL)`
+  ).run(id, input.agentId ?? null, input.title, input.outcome, input.targetDate ?? null, now, now);
   return getMission(id)!;
 }
 
@@ -363,10 +388,11 @@ export function getMission(id: string): MissionRecord | undefined {
   return row ? mapMission(row) : undefined;
 }
 
-export function listMissions(): MissionRecord[] {
+export function listMissions(agentId?: string): MissionRecord[] {
+  const filter = agentFilter(agentId);
   return (db.prepare(
-    `SELECT * FROM missions ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'blocked' THEN 1 WHEN 'planned' THEN 2 WHEN 'completed' THEN 3 ELSE 4 END, updated_at DESC`
-  ).all() as unknown as MissionRow[]).map(mapMission);
+    `SELECT * FROM missions${filter.sql} ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'blocked' THEN 1 WHEN 'planned' THEN 2 WHEN 'completed' THEN 3 ELSE 4 END, updated_at DESC`
+  ).all(...filter.params) as unknown as MissionRow[]).map(mapMission);
 }
 
 export function updateMission(id: string, patch: Partial<{
@@ -801,6 +827,7 @@ export function updateSettings(
 
 interface ScheduledTaskRow {
   id: string;
+  agent_id: string | null;
   prompt: string;
   cwd: string;
   permission_mode: string;
@@ -819,6 +846,7 @@ interface ScheduledTaskRow {
 function mapScheduledTask(row: ScheduledTaskRow): ScheduledTaskRecord {
   return {
     id: row.id,
+    agentId: row.agent_id ?? null,
     prompt: row.prompt,
     cwd: row.cwd,
     permissionMode: row.permission_mode,
@@ -843,14 +871,16 @@ export function createScheduledTask(input: {
   timeOfDay: string;
   daysOfWeek: number[];
   nextRunAt: string;
+  agentId?: string | null;
 }): ScheduledTaskRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO scheduled_tasks (id, prompt, cwd, permission_mode, allowed_tools, time_of_day, days_of_week, enabled, last_run_at, last_session_id, next_run_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL, NULL, ?, ?, ?)`
+    `INSERT INTO scheduled_tasks (id, agent_id, prompt, cwd, permission_mode, allowed_tools, time_of_day, days_of_week, enabled, last_run_at, last_session_id, next_run_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, NULL, ?, ?, ?)`
   ).run(
     id,
+    input.agentId ?? null,
     input.prompt,
     input.cwd,
     input.permissionMode,
@@ -871,10 +901,11 @@ export function getScheduledTask(id: string): ScheduledTaskRecord | undefined {
   return row ? mapScheduledTask(row as ScheduledTaskRow) : undefined;
 }
 
-export function listScheduledTasks(): ScheduledTaskRecord[] {
+export function listScheduledTasks(agentId?: string): ScheduledTaskRecord[] {
+  const filter = agentFilter(agentId);
   const rows = db
-    .prepare(`SELECT * FROM scheduled_tasks ORDER BY time_of_day ASC`)
-    .all() as unknown as ScheduledTaskRow[];
+    .prepare(`SELECT * FROM scheduled_tasks${filter.sql} ORDER BY time_of_day ASC`)
+    .all(...filter.params) as unknown as ScheduledTaskRow[];
   return rows.map(mapScheduledTask);
 }
 
@@ -950,6 +981,28 @@ export function setPrimarySessionId(id: string): void {
   writeSetting("primary_session_id", id);
 }
 
+/**
+ * The ongoing conversation belonging to one agent.
+ *
+ * Reads `agents.chat_session_id`, which replaced the single
+ * `settings.primary_session_id` in v2 — each agent keeps its own thread rather
+ * than sharing one global conversation.
+ */
+export function getAgentChatSessionId(agentId: string): string | null {
+  const row = db
+    .prepare(`SELECT chat_session_id FROM agents WHERE id = ?`)
+    .get(agentId) as unknown as { chat_session_id: string | null } | undefined;
+  return row?.chat_session_id ?? null;
+}
+
+export function setAgentChatSessionId(agentId: string, sessionId: string | null): void {
+  db.prepare(`UPDATE agents SET chat_session_id = ?, updated_at = ? WHERE id = ?`).run(
+    sessionId,
+    new Date().toISOString(),
+    agentId
+  );
+}
+
 /** Removes a session and its transcript. Refuses nothing — callers check status. */
 export function deleteSession(id: string): void {
   db.prepare(`DELETE FROM session_events WHERE session_id = ?`).run(id);
@@ -961,6 +1014,8 @@ export function deleteSession(id: string): void {
   db.prepare(`UPDATE tasks SET session_id = NULL WHERE session_id = ?`).run(id);
   db.prepare(`DELETE FROM notifications WHERE session_id = ?`).run(id);
   db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
-  // If the conversation itself was deleted, stop pointing at it.
+  // If the conversation itself was deleted, stop pointing at it — from the
+  // legacy global setting and from whichever agent held it as its thread.
   if (getPrimarySessionId() === id) writeSetting("primary_session_id", "");
+  db.prepare(`UPDATE agents SET chat_session_id = NULL WHERE chat_session_id = ?`).run(id);
 }

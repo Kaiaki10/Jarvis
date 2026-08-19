@@ -17,8 +17,12 @@ const daysOfWeek = z
   .max(7)
   .refine((days) => new Set(days).size === days.length, "days must be unique");
 
+/** Which agent owns a newly created row. Absent means the default agent. */
+const agentId = z.string().uuid().optional();
+
 export const createSessionSchema = z
   .object({
+    agentId,
     prompt: z.string().trim().min(1).max(100_000),
     cwd: z.string().trim().min(1).max(2_000),
     permissionMode: permissionMode.optional(),
@@ -27,7 +31,9 @@ export const createSessionSchema = z
   })
   .strict();
 
-export const messageSchema = z.object({ text: z.string().trim().min(1).max(100_000) }).strict();
+export const messageSchema = z
+  .object({ text: z.string().trim().min(1).max(100_000), agentId: z.string().uuid().optional() })
+  .strict();
 
 export const createAgentSchema = z
   .object({
@@ -80,6 +86,7 @@ export const permissionResponseSchema = z
 
 export const createTaskSchema = z
   .object({
+    agentId,
     title: z.string().trim().min(1).max(500),
     description: z.string().max(20_000).optional(),
     missionId: z.string().uuid().optional(),
@@ -99,6 +106,7 @@ export const updateTaskSchema = z
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD");
 
 export const createMissionSchema = z.object({
+  agentId,
   title: z.string().trim().min(1).max(500),
   outcome: z.string().trim().min(1).max(20_000),
   targetDate: dateOnly.optional(),
@@ -340,6 +348,7 @@ export const websiteMessageSchema = z.object({
 
 export const createScheduledTaskSchema = z
   .object({
+    agentId,
     prompt: z.string().trim().min(1).max(100_000),
     cwd: z.string().trim().min(1).max(2_000),
     permissionMode: permissionMode.optional(),

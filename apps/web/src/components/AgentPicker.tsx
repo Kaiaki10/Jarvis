@@ -14,38 +14,18 @@ import { Stagger } from "@/components/motion/Stagger";
 /**
  * Choose which agent the dashboard is showing.
  *
- * The selection is local to the browser for now: increment 1 gives agents an
- * existence and a picker, and increment 2 threads the chosen agent through the
- * rest of the pages. Storing it in localStorage rather than the database keeps
- * "which agent am I looking at" a per-browser view preference rather than
- * server state two tabs would fight over.
+ * Selection lives in the store, which scopes every subsequent request to it and
+ * reloads the workspace on a switch. This page only presents the choice.
  */
-const SELECTED_AGENT_KEY = "jarvis.selectedAgentId";
-
-export function readSelectedAgentId(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(SELECTED_AGENT_KEY);
-}
-
 export function AgentPicker() {
-  const { agents, refresh } = useAgents();
-  const [selectedId, setSelectedId] = useState<string | null>(() => readSelectedAgentId());
+  const { agents, refresh, activeAgent, selectAgent } = useAgents();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const active = agents.filter((agent) => agent.status === "active");
   const archived = agents.filter((agent) => agent.status === "archived");
 
-  // Falling back to the first active agent means a browser that has never chosen
-  // one still shows a selection rather than an empty frame.
-  const effectiveId = selectedId && agents.some((a) => a.id === selectedId)
-    ? selectedId
-    : (active[0]?.id ?? null);
-
-  function select(id: string) {
-    setSelectedId(id);
-    window.localStorage.setItem(SELECTED_AGENT_KEY, id);
-  }
+  const effectiveId = activeAgent?.id ?? null;
 
   async function setStatus(agent: AgentRecord, status: "active" | "archived") {
     setError(null);
@@ -74,7 +54,7 @@ export function AgentPicker() {
                 <AgentCard
                   agent={agent}
                   selected={agent.id === effectiveId}
-                  onSelect={() => select(agent.id)}
+                  onSelect={() => selectAgent(agent.id)}
                   onArchive={() => setStatus(agent, "archived")}
                 />
               </Stagger>
@@ -141,7 +121,7 @@ export function AgentPicker() {
             onError={setError}
             onCreated={async (agent) => {
               await refresh();
-              select(agent.id);
+              selectAgent(agent.id);
             }}
           />
         </CardBody>

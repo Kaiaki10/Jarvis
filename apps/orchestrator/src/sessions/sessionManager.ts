@@ -20,6 +20,7 @@ import { describeActivity, extractSummary } from "./describeActivity.js";
 import { globalBus } from "../events/globalBus.js";
 import { buildPlatformToolset } from "../platforms/actions.js";
 import { buildMemoryContext, recordMemoryReflection } from "../db/memoryRepo.js";
+import { getAgent } from "../db/agentRepo.js";
 import { buildMemoryToolset } from "../memory/memoryTools.js";
 import { notify } from "../notifications/notifier.js";
 import {
@@ -166,6 +167,9 @@ export function sendFollowUp(
     title: record.title,
     resumeClaudeSessionId: record.claudeSessionId,
     memoryWritable: options.memoryWritable,
+    // A revived session must come back as the same agent, or the follow-up
+    // would answer with a different persona than the thread it is continuing.
+    agentId: record.agentId,
   });
 
   return { ok: true, resumed: true };
@@ -231,6 +235,8 @@ export interface StartSessionParams {
   onTurnFinished?: (ok: boolean) => void;
   /** Runs without project instructions or built-in tools for focused text work. */
   isolated?: boolean;
+  /** Whose persona and memory this run carries. */
+  agentId?: string | null;
   /** Legacy override retained for resumed records; all non-isolated runs now reflect memory. */
   memoryWritable?: boolean;
 }
@@ -341,7 +347,13 @@ export async function startSession(params: StartSessionParams): Promise<void> {
   updateSession(params.id, { status: "running" });
   globalBus.emit("session_updated", params.id);
 
-  const { businessContext } = getSettings();
+  // An agent's own persona replaces the single global business context. Runs
+  // with no agent (and pre-v2 rows) keep using the global setting, so nothing
+  // that already worked loses its instructions.
+  const agent = params.agentId ? getAgent(params.agentId) : undefined;
+  const businessContext = agent?.systemPrompt?.trim()
+    ? agent.systemPrompt
+    : getSettings().businessContext;
   const platformToolset = params.isolated
     ? { capabilitySummary: "", autoAllowTools: [] }
     : buildPlatformToolset(params.id);
