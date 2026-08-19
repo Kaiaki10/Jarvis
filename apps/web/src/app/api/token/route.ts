@@ -21,15 +21,21 @@ const TOKEN_PATH =
   process.env.JARVIS_TOKEN_PATH ??
   join(process.cwd(), "..", "orchestrator", "jarvis.token");
 
+/**
+ * The turbopackIgnore markers are deliberate. The bundler sees a path built at
+ * runtime and assumes the whole source tree might need bundling into the server
+ * output; this read is intentionally outside the app directory, pointing at the
+ * orchestrator's generated token, so there is nothing to trace or include.
+ */
 export async function GET() {
-  if (!existsSync(TOKEN_PATH)) {
+  if (!existsSync(/*turbopackIgnore: true*/ TOKEN_PATH)) {
     // The orchestrator writes this on first start. Saying so beats a bare 500.
     return Response.json(
       { error: "Orchestrator token not found. Start the orchestrator once to generate it." },
       { status: 503 }
     );
   }
-  const token = readFileSync(TOKEN_PATH, "utf-8").trim();
+  const token = readFileSync(/*turbopackIgnore: true*/ TOKEN_PATH, "utf-8").trim();
   if (!token) {
     return Response.json({ error: "Orchestrator token file is empty." }, { status: 503 });
   }
