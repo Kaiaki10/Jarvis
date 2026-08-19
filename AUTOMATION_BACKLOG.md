@@ -29,7 +29,7 @@ Each run picks **one** item, completes it properly, and records the outcome here
 ## Notes
 
 - **2026-08-19** `git rebase master` conflicts in `GAPS.md`. Needs human resolution before
-  any further automated work can proceed. Conflict persists on second attempt today.
+  any further automated work can proceed. Conflict persists on multiple attempts today.
 - The live Jarvis runs from **compiled output** in `C:\Users\kaima\projects\jarvis`
   (`dist/` and `.next/`). This worktree is a separate checkout on branch `jarvis/auto`,
   so nothing done here affects the running service until a human merges and rebuilds.
