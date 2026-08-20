@@ -1,4 +1,4 @@
-import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
+import { randomBytes, createCipheriv, createDecipheriv, createHmac } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,6 +58,17 @@ export function decryptJson<T>(blob: string): T {
     decipher.final(),
   ]);
   return JSON.parse(plaintext.toString("utf-8")) as T;
+}
+
+/**
+ * A purpose-specific subkey derived from the local encryption key. A new
+ * feature that needs its own signing key (e.g. one-tap push approval links)
+ * gets one without a new key file to lose — but reusing the raw AES key
+ * directly across purposes would weaken it, so this derives a distinct key
+ * per purpose instead of handing out `key()` itself.
+ */
+export function deriveKey(purpose: string): Buffer {
+  return createHmac("sha256", key()).update(purpose).digest();
 }
 
 /** Last four characters only, so the UI can show which value is stored. */

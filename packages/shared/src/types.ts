@@ -264,7 +264,7 @@ export interface PlatformDefinition {
   id: string;
   name: string;
   tagline: string;
-  category: "social" | "messaging" | "email" | "advertising";
+  category: "social" | "messaging" | "email" | "advertising" | "notifications";
   docsUrl: string;
   steps: SetupStepDefinition[];
   fields: CredentialFieldDefinition[];
@@ -330,6 +330,8 @@ export interface SettingsRecord {
   notifyOnDesktop: boolean;
   /** Where to email alerts. Only used once an email platform is connected. */
   notifyEmail: string;
+  /** Push notification to your phone. Only used once Push is connected. */
+  notifyPush: boolean;
   /** Auto-deny an unanswered approval after this many minutes. 0 waits forever. */
   approvalTimeoutMinutes: number;
   /** Drop session transcripts older than this many days. 0 keeps everything. */
@@ -369,6 +371,7 @@ export interface UpdateSettingsRequest {
   maxConcurrentSessions?: number;
   notifyOnDesktop?: boolean;
   notifyEmail?: string;
+  notifyPush?: boolean;
   approvalTimeoutMinutes?: number;
   eventRetentionDays?: number;
   dailyPlatformActionCap?: number;

@@ -147,6 +147,48 @@ async function sendEmail(title: string, body: string): Promise<void> {
   }
 }
 
+async function sendPush(title: string, body: string, actionUrl?: string): Promise<void> {
+  const { notifyPush } = getSettings();
+  if (!notifyPush) return;
+
+  const connection = getConnection("push");
+  if (connection?.status !== "connected") return;
+  const creds = getConnectionCredentials("push");
+  if (!creds?.userKey || !creds.apiToken) return;
+
+  try {
+    const response = await fetch("https://api.pushover.net/1/messages.json", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        token: creds.apiToken,
+        user: creds.userKey,
+        title: `Jarvis: ${title}`,
+        message: body,
+        // A one-tap approval link when there's a specific pending decision to
+        // carry (only reachable on the same WiFi as this machine — see
+        // approveServer.ts); otherwise just point back at the dashboard.
+        url: actionUrl ?? "http://localhost:3000",
+        url_title: actionUrl ? "Decide now" : "Open the dashboard",
+      }).toString(),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 500);
+      console.warn(
+        `[notifications] push delivery failed (HTTP ${response.status}): ${detail}`
+      );
+    }
+  } catch (err) {
+    // Same rule as email: a notification that fails to send must never take
+    // down the thing it is reporting on.
+    console.warn(
+      "[notifications] push delivery failed:",
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+}
+
 export interface NotifyInput {
   type: NotificationType;
   severity: NotificationSeverity;
@@ -154,6 +196,8 @@ export interface NotifyInput {
   body: string;
   sessionId?: string | null;
   agentId?: string | null;
+  /** Push only. A specific action to hand the phone, e.g. a one-tap approve link. */
+  pushUrl?: string;
 }
 
 /**
@@ -194,6 +238,7 @@ export function notify(input: NotifyInput): NotificationRecord | null {
   globalBus.emit("notifications_changed");
   sendDesktopToast(record.title, record.body);
   void sendEmail(record.title, record.body);
+  void sendPush(record.title, record.body, input.pushUrl);
 
   return record;
 }

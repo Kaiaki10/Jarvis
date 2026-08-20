@@ -225,6 +225,7 @@ import {
   startSlackAgentBridge,
   stopSlackAgentBridge,
 } from "../slack/slackAgentBridge.js";
+import { startApproveServer } from "./approveServer.js";
 
 const PORT = Number(process.env.PORT ?? 4317);
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -2131,6 +2132,7 @@ const server = app.listen(PORT, HOST, () => {
     startMaintenance();
     startPaidGrowthMonitor();
     startSlackAgentBridge();
+    startApproveServer();
   } else {
     console.log("Passive fallback mode: scheduler, idle reaper, and maintenance are disabled");
   }

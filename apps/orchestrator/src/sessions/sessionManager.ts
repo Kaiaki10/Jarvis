@@ -23,6 +23,7 @@ import { buildMemoryContext, recordMemoryReflection } from "../db/memoryRepo.js"
 import { getAgent } from "../db/agentRepo.js";
 import { buildMemoryToolset } from "../memory/memoryTools.js";
 import { notify } from "../notifications/notifier.js";
+import { approveLink } from "../security/approvalToken.js";
 import {
   collectArtifactsFromMessage,
   collectArtifactsFromResult,
@@ -323,13 +324,21 @@ export async function startSession(params: StartSessionParams): Promise<void> {
     publishSessionEvent(params.id, event);
 
     // Reach the user out of band — an unattended run blocking here is invisible
-    // until someone happens to open the dashboard.
+    // until someone happens to open the dashboard. A push gets a one-tap link
+    // straight to this specific decision when there's a LAN address to put in
+    // it (see approvalToken.ts); otherwise the push just points at the
+    // dashboard like the other channels. `timeoutMs` can be 0 ("never time
+    // out" — see deferredWithTimeout.ts), which must not become a link that
+    // expires the instant it's created; the underlying approval still waits
+    // forever either way, this only bounds how long the signed link itself
+    // stays valid.
     notify({
       type: "approval_needed",
       severity: "warning",
       title: "Approval needed",
       body: `${params.title ?? "A session"} is waiting on you to approve ${shortName}.`,
       sessionId: params.id,
+      pushUrl: approveLink(params.id, requestId, timeoutMs > 0 ? timeoutMs : 24 * 60 * 60_000) ?? undefined,
     });
 
     return deferred.promise;

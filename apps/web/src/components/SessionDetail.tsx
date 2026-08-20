@@ -42,8 +42,13 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <div className="flex items-center gap-3 border-b border-border px-8 py-4">
+    // Below `lg` this sits under AppShell's mobile top bar, which is a real
+    // sibling taking real height (not an overlay) — `h-screen` here would run
+    // 100vh from below that bar and push the footer input off the bottom of
+    // the actual viewport. Subtract the bar's height there; at `lg`+ there is
+    // no top bar and the old fixed math applies again.
+    <div className="flex h-[calc(100dvh-3.75rem)] flex-col lg:h-screen">
+      <div className="flex items-center gap-3 border-b border-border px-4 py-4 sm:px-8">
         <Link
           href="/sessions"
           className="flex items-center gap-1.5 text-body text-muted hover:text-foreground"
@@ -59,7 +64,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-8 py-6">
+      <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-8">
         <div className="mx-auto max-w-2xl">
           <SessionTranscript
             sessionId={sessionId}
@@ -70,7 +75,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      <div className="border-t border-border px-8 py-4">
+      <div className="border-t border-border px-4 py-4 sm:px-8">
         {(sendError || notice) && (
           <div className="mx-auto mb-2 max-w-2xl text-label">
             {sendError ? (

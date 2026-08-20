@@ -83,7 +83,7 @@ function LoadedSettingsPanel({
           description="Guardrails for unattended operation"
         />
         <CardBody className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div>
               <div className="text-body text-foreground">Automations enabled</div>
               <div className="text-label text-muted">
@@ -108,7 +108,7 @@ function LoadedSettingsPanel({
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+          <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div>
               <div className="text-body text-foreground">Max concurrent sessions</div>
               <div className="text-label text-muted">
@@ -132,7 +132,7 @@ function LoadedSettingsPanel({
             </Select>
           </div>
 
-          <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+          <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div>
               <div className="text-body text-foreground">Daily platform action limit</div>
               <div className="text-label text-muted">
@@ -163,7 +163,7 @@ function LoadedSettingsPanel({
             </Select>
           </div>
 
-          <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+          <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div>
               <div className="text-body text-foreground">Approval timeout</div>
               <div className="text-label text-muted">
@@ -202,7 +202,7 @@ function LoadedSettingsPanel({
           description="How Jarvis reaches you when an unattended run needs a decision"
         />
         <CardBody className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div>
               <div className="text-body text-foreground">Desktop notifications</div>
               <div className="text-label text-muted">
@@ -244,6 +244,31 @@ function LoadedSettingsPanel({
                 }
               }}
             />
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <div className="text-body text-foreground">Push notifications</div>
+              <div className="text-label text-muted">
+                Reaches your phone, with a link straight back to the approval. Requires Push
+                connected on the Connections page; until then this is stored but unused.
+              </div>
+            </div>
+            <button
+              onClick={() => saveSettings({ notifyPush: !settings.notifyPush })}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                settings.notifyPush ? "bg-accent" : "bg-white/15"
+              }`}
+              role="switch"
+              aria-checked={settings.notifyPush}
+              aria-label="Push notifications"
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                  settings.notifyPush ? "translate-x-[22px]" : "translate-x-[2px]"
+                }`}
+              />
+            </button>
           </div>
         </CardBody>
       </Card>

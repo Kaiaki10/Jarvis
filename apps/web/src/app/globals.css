@@ -314,6 +314,27 @@ textarea::placeholder {
   border: 1px solid var(--glass-edge);
 }
 
+/* The sidebar specifically: below `lg` it is an off-canvas drawer overlapping
+   page content directly (not floating beside a background), so `material-glass`
+   there reproduces the exact "menu and the links beneath it legible through
+   each other" problem AgentSwitcher's dropdown already had to solve — opaque
+   instead. At `lg`+ it goes back to sitting statically beside content, where
+   glass is safe again. A plain media query, not a Tailwind responsive class,
+   because `material-glass` is not a registered Tailwind utility and `lg:`
+   cannot vary it. */
+.sidebar-surface {
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+}
+@media (min-width: 1024px) {
+  .sidebar-surface {
+    background: var(--glass-tint);
+    backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+    border: 1px solid var(--glass-edge);
+  }
+}
+
 /* Pointer-tracked highlight. The --mx/--my custom properties are written by the
    Spotlight component; with no pointer they stay unset and this renders
    nothing, so it is inert on touch and for keyboard users. */

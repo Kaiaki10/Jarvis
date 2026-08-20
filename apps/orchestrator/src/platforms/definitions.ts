@@ -604,7 +604,67 @@ const xAds: Platform = {
   },
 };
 
-export const PLATFORMS: Platform[] = [x, facebook, instagram, slack, discord, resend, googleAds, metaAds, xAds];
+const push: Platform = {
+  definition: {
+    id: "push",
+    name: "Push notifications",
+    tagline: "Get approvals and alerts on your phone the moment they happen.",
+    category: "notifications",
+    docsUrl: "https://pushover.net/apps/build",
+    fields: [
+      {
+        key: "userKey",
+        label: "User Key",
+        help: "Shown on your Pushover dashboard once you're signed in.",
+        placeholder: "u1a2b3c4d5e6f7g8h9i0j1k2l3m4n5",
+        secret: true,
+      },
+      {
+        key: "apiToken",
+        label: "Application API Token",
+        help: "Create an application named Jarvis at pushover.net/apps/build, then copy its API token.",
+        placeholder: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5",
+        secret: true,
+      },
+    ],
+    capabilities: ["Push notifications", "One-tap approve from the notification"],
+    dataFreshness: "Real-time",
+    steps: [
+      {
+        title: "Install Pushover",
+        body: [
+          "Install the Pushover app on your phone and create an account — a small one-time purchase per platform, no subscription.",
+          "Copy your User Key from the Pushover dashboard.",
+        ],
+        linkUrl: "https://pushover.net",
+        linkLabel: "Open Pushover",
+      },
+      {
+        title: "Create an application",
+        body: [
+          "Go to Apps & Plugins → Create an Application/API Token, name it Jarvis, and create it.",
+          "Copy the API Token it shows you.",
+        ],
+        linkUrl: "https://pushover.net/apps/build",
+        linkLabel: "Create a Pushover application",
+      },
+    ],
+  },
+  async test(creds) {
+    const { status, body } = await fetchJson("https://api.pushover.net/1/users/validate.json", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: creds.apiToken, user: creds.userKey }).toString(),
+    });
+    const data = body as { status?: number; errors?: string[] };
+    if (status !== 200 || data?.status !== 1) {
+      return failure(`Pushover rejected the credentials: ${data?.errors?.join(", ") ?? `HTTP ${status}`}`);
+    }
+    return { ok: true, detail: "Connected — Jarvis can send push notifications" };
+  },
+};
+
+export const PLATFORMS: Platform[] = [x, facebook, instagram, slack, discord, resend, googleAds, metaAds, xAds, push];
 
 export function getPlatform(id: string): Platform | undefined {
   return PLATFORMS.find((p) => p.definition.id === id);

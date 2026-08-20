@@ -69,7 +69,7 @@ export function NotificationsList() {
           const body = (
             <div
               className={`flex items-start gap-3 rounded-lg px-3 py-2.5 ${
-                n.read ? "opacity-55" : "bg-white/[0.02]"
+                n.read ? "opacity-55" : "bg-white/[0.02] pr-16 sm:pr-3"
               } ${n.sessionId ? "hover:bg-white/[0.05]" : ""}`}
             >
               <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${toneClass(n)}`} strokeWidth={1.75} />
@@ -96,7 +96,10 @@ export function NotificationsList() {
               {!n.read && (
                 <button
                   onClick={() => markRead(n.id)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-micro text-muted opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                  // Hover-reveal only works with a pointer; a touch screen has no
+                  // hover state, so below `sm` this stays visible and tappable
+                  // rather than becoming unreachable.
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-micro text-muted opacity-100 transition-opacity hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100"
                 >
                   Mark read
                 </button>

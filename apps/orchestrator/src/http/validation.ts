@@ -384,6 +384,7 @@ export const updateSettingsSchema = z
     maxConcurrentSessions: z.number().int().min(1).max(10).optional(),
     notifyOnDesktop: z.boolean().optional(),
     notifyEmail: z.union([z.literal(""), z.string().email().max(320)]).optional(),
+    notifyPush: z.boolean().optional(),
     approvalTimeoutMinutes: z.number().int().min(0).max(10_080).optional(),
     eventRetentionDays: z.number().int().min(0).max(3_650).optional(),
     dailyPlatformActionCap: z.number().int().min(0).max(10_000).optional(),

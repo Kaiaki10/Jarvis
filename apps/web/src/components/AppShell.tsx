@@ -24,6 +24,7 @@ import {
   MessagesSquare,
   Check,
   ChevronsUpDown,
+  Menu,
 } from "lucide-react";
 import { StoreProvider, useAgents, useConnectionStatus, useNotifications } from "@/lib/store";
 import { ExperienceModeProvider, useExperienceMode } from "@/lib/experienceMode";
@@ -173,18 +174,34 @@ function AgentSwitcher() {
   );
 }
 
-/** Inside the provider, so it can show the live unread count. */
-function Sidebar() {
+/**
+ * Below `lg`, the sidebar becomes an off-canvas drawer (a fixed-position
+ * overlay sliding in from the left) rather than a permanent column — there is
+ * no room for a 240px rail on a phone. `lg` and up render it exactly as
+ * before: a static, always-visible column.
+ */
+function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const { unread } = useNotifications();
   const connectionStatus = useConnectionStatus();
 
   return (
-    // The aside stretches the full document height so the glass runs the whole
-    // side of the page; the nav inside it sticks to the viewport, so it stays
-    // reachable on long pages like Settings without the panel itself ending
-    // partway down.
-    <aside className="material-glass w-60 shrink-0 border-y-0 border-l-0 border-r-border">
+    <>
+      {open && (
+        // Click-away backdrop, same purpose as AgentSwitcher's — only needed
+        // on the off-canvas breakpoint, hidden entirely on lg+.
+        <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={onClose} aria-hidden="true" />
+      )}
+      {/* The aside stretches the full document height so the surface runs the
+          whole side of the page; the nav inside it sticks to the viewport, so
+          it stays reachable on long pages like Settings without the panel
+          itself ending partway down. See `.sidebar-surface` in globals.css for
+          why it's opaque below `lg` and glass again above it. */}
+      <aside
+        className={`sidebar-surface fixed inset-y-0 left-0 z-40 w-60 shrink-0 border-y-0 border-l-0 border-r-border shadow-elev-2 transition-transform duration-200 ease-out lg:static lg:inset-y-auto lg:translate-x-0 lg:shadow-none ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
       <div className="sticky top-0 flex h-screen flex-col">
       <div className="px-5 py-6">
         <AgentSwitcher />
@@ -261,19 +278,54 @@ function Sidebar() {
         <LiveClock />
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
+  );
+}
+
+/** Shown only below `lg`, where the sidebar is off-canvas and needs a trigger. */
+function MobileTopBar({ unread, onOpenNav }: { unread: number; onOpenNav: () => void }) {
+  return (
+    <div className="material-glass sticky top-0 z-20 flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
+      <button
+        type="button"
+        onClick={onOpenNav}
+        aria-label="Open navigation"
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/[0.06] hover:text-foreground"
+      >
+        <Menu className="h-5 w-5" strokeWidth={1.75} />
+      </button>
+      <span className="text-label font-semibold text-foreground">Jarvis</span>
+      <Link
+        href="/notifications"
+        aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+        className="relative flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/[0.06] hover:text-foreground"
+      >
+        <Bell className="h-4.5 w-4.5" strokeWidth={1.75} />
+        {unread > 0 && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent" />}
+      </Link>
+    </div>
   );
 }
 
 function ShellFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { mode } = useExperienceMode();
+  const { unread } = useNotifications();
   const simpleHome = pathname === "/" && mode === "simple";
+  const [navOpen, setNavOpen] = useState(false);
+
+  // A route change means the user just picked a destination — the drawer has
+  // done its job and should get out of the way rather than sit open over it.
+  useEffect(() => setNavOpen(false), [pathname]);
 
   return (
     <div className="flex min-h-screen">
-      {!simpleHome && <Sidebar />}
-      <main className="min-w-0 flex-1">{children}</main>
+      {!simpleHome && <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {!simpleHome && <MobileTopBar unread={unread} onOpenNav={() => setNavOpen(true)} />}
+        <main className="min-w-0 flex-1">{children}</main>
+      </div>
     </div>
   );
 }

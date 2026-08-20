@@ -109,7 +109,7 @@ export function SessionList({
               <Badge tone={STATUS_TONE[session.status]} dot>
                 {STATUS_LABEL[session.status]}
               </Badge>
-              <ChevronRight className="h-4 w-4 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100" />
             </Link>
             {confirming === session.id ? (
               <span className="flex shrink-0 items-center gap-1.5">
@@ -136,8 +136,9 @@ export function SessionList({
                 aria-label={`Delete run: ${session.title}`}
                 onClick={() => setConfirming(session.id)}
                 // Revealing on hover alone hides this from keyboard and touch
-                // entirely, so focus reveals it too.
-                className="shrink-0 rounded-md p-1.5 text-muted opacity-0 transition hover:bg-danger/10 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
+                // entirely, so focus reveals it too, and below `sm` (no
+                // reliable hover state at all) it just stays visible.
+                className="shrink-0 rounded-md p-1.5 text-muted opacity-100 transition hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>

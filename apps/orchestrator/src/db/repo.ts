@@ -750,6 +750,7 @@ const SETTING_DEFAULTS: SettingsRecord = {
   maxConcurrentSessions: 3,
   notifyOnDesktop: true,
   notifyEmail: "",
+  notifyPush: false,
   approvalTimeoutMinutes: 240,
   eventRetentionDays: 30,
   dailyPlatformActionCap: 25,
@@ -784,6 +785,7 @@ export function getSettings(): SettingsRecord {
         : SETTING_DEFAULTS.maxConcurrentSessions,
     notifyOnDesktop: (readSetting("notify_on_desktop") ?? "true") === "true",
     notifyEmail: readSetting("notify_email") ?? SETTING_DEFAULTS.notifyEmail,
+    notifyPush: (readSetting("notify_push") ?? "false") === "true",
     approvalTimeoutMinutes: (() => {
       const raw = readSetting("approval_timeout_minutes");
       if (raw === undefined) return SETTING_DEFAULTS.approvalTimeoutMinutes;
@@ -832,6 +834,9 @@ export function updateSettings(
   }
   if (patch.notifyEmail !== undefined) {
     writeSetting("notify_email", patch.notifyEmail);
+  }
+  if (patch.notifyPush !== undefined) {
+    writeSetting("notify_push", patch.notifyPush ? "true" : "false");
   }
   if (patch.approvalTimeoutMinutes !== undefined) {
     writeSetting("approval_timeout_minutes", String(patch.approvalTimeoutMinutes));
