@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
 import { SessionTranscript } from "@/components/SessionTranscript";
 import { ExperienceModeToggle } from "@/components/ExperienceModeToggle";
+import type { ChatModel } from "@jarvis/shared";
 
 interface BrowserSpeechRecognition {
   lang: string;
@@ -36,7 +37,9 @@ export function SimpleJarvisHome() {
   const { memories } = useMemories();
   const { primarySessionId } = useStore();
   const connectionStatus = useConnectionStatus();
-  const [sentSession, setSentSession] = useState<{ agentId: string | null; sessionId: string } | null>(null);
+  const [sentSessions, setSentSessions] = useState<Partial<Record<ChatModel, { agentId: string | null; sessionId: string }>>>({});
+  const [model, setModel] = useState<ChatModel>("claude");
+  const [loadedConversationKey, setLoadedConversationKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [working, setWorking] = useState(false);
@@ -54,6 +57,33 @@ export function SimpleJarvisHome() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  useEffect(() => {
+    const saved = window.localStorage.getItem("jarvis-simple-model");
+    if (saved !== "claude" && saved !== "gpt-5.6-sol") return;
+    const frame = window.requestAnimationFrame(() => setModel(saved));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const conversationKey = `${activeAgent?.id ?? "default"}:${model}`;
+    api.getChat(model)
+      .then(({ session }) => {
+        if (cancelled) return;
+        setSentSessions((current) => ({
+          ...current,
+          [model]: session ? { agentId: activeAgent?.id ?? null, sessionId: session.id } : undefined,
+        }));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadedConversationKey(conversationKey);
+      });
+    return () => { cancelled = true; };
+  }, [activeAgent?.id, model]);
+
   const onActivity = useCallback((active: boolean) => setWorking(active), []);
 
   async function send() {
@@ -64,8 +94,11 @@ export function SimpleJarvisHome() {
     setError(null);
     setDraft("");
     try {
-      const { sessionId: id } = await api.sendChat(text);
-      setSentSession({ agentId: activeAgent?.id ?? null, sessionId: id });
+      const { sessionId: id } = await api.sendChat(text, model);
+      setSentSessions((current) => ({
+        ...current,
+        [model]: { agentId: activeAgent?.id ?? null, sessionId: id },
+      }));
       setActivityKey((key) => key + 1);
     } catch (err) {
       setDraft(text);
@@ -114,13 +147,23 @@ export function SimpleJarvisHome() {
     observer.observe(transcript, { childList: true, characterData: true, subtree: true });
     area.scrollTop = area.scrollHeight;
     return () => observer.disconnect();
-  }, [primarySessionId, sentSession]);
+  }, [primarySessionId, sentSessions, model]);
 
   const isActive = sending || working || listening;
   const agentName = activeAgent?.name ?? "Jarvis";
-  const sessionId = sentSession?.agentId === (activeAgent?.id ?? null)
-    ? sentSession.sessionId
-    : primarySessionId;
+  const selectedSession = sentSessions[model];
+  const conversationKey = `${activeAgent?.id ?? "default"}:${model}`;
+  const loadingConversation = loadedConversationKey !== conversationKey;
+  const sessionId = selectedSession?.agentId === (activeAgent?.id ?? null)
+    ? selectedSession.sessionId
+    : model === "claude" ? primarySessionId : null;
+
+  function chooseModel(next: ChatModel) {
+    setModel(next);
+    setWorking(false);
+    setError(null);
+    window.localStorage.setItem("jarvis-simple-model", next);
+  }
 
   return (
     <div className="simple-jarvis-shell min-h-screen overflow-hidden">
@@ -152,7 +195,9 @@ export function SimpleJarvisHome() {
               What can we<br />accomplish today?
             </h1>
             <p className="mt-5 max-w-md text-body leading-relaxed text-foreground-secondary">
-              Talk naturally. {agentName} keeps the context, remembers what matters, and can act across your business when you approve it.
+              {model === "gpt-5.6-sol"
+                ? `Talk naturally. ${agentName} keeps the context, remembers what matters, and brings GPT-5.6 Sol reasoning to your local workspace.`
+                : `Talk naturally. ${agentName} keeps the context, remembers what matters, and can act across your business when you approve it.`}
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-micro text-muted lg:justify-start">
               <span className="flex items-center gap-1.5"><Brain className="h-3.5 w-3.5" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} memories</span>
@@ -163,14 +208,17 @@ export function SimpleJarvisHome() {
         </section>
 
         <section className="simple-chat-panel flex min-h-[560px] max-h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-[1.5rem] border border-border-strong shadow-elev-3">
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
             <div>
               <div className="text-heading text-foreground">Conversation</div>
               <div className="mt-0.5 text-micro text-muted">Live, private, and continuous</div>
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-border bg-black/20 px-3 py-1.5 text-micro text-muted">
-              <AudioLines className={`h-3.5 w-3.5 ${isActive ? "text-accent-bright" : ""}`} strokeWidth={1.75} />
-              {listening ? "Listening" : voiceAvailable ? "Voice input ready" : "Voice-ready interface"}
+            <div className="flex items-center gap-2">
+              <ModelPicker model={model} onChange={chooseModel} />
+              <div className="hidden items-center gap-2 rounded-full border border-border bg-black/20 px-3 py-1.5 text-micro text-muted sm:flex">
+                <AudioLines className={`h-3.5 w-3.5 ${isActive ? "text-accent-bright" : ""}`} strokeWidth={1.75} />
+                {listening ? "Listening" : voiceAvailable ? "Voice ready" : "Voice-ready"}
+              </div>
             </div>
           </div>
 
@@ -183,10 +231,14 @@ export function SimpleJarvisHome() {
             className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-7"
           >
             <div ref={transcriptRef}>
-              {sessionId ? (
+              {loadingConversation ? (
+                <div className="flex min-h-[360px] items-center justify-center text-label text-muted">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin text-accent-bright" /> Loading conversation…
+                </div>
+              ) : sessionId ? (
                 <SimpleTranscript sessionId={sessionId} activityKey={activityKey} onActivity={onActivity} />
               ) : (
-                <SimpleEmptyState agentName={agentName} onSuggestion={setDraft} />
+                <SimpleEmptyState agentName={agentName} model={model} onSuggestion={setDraft} />
               )}
             </div>
           </div>
@@ -224,11 +276,42 @@ export function SimpleJarvisHome() {
             </div>
             <div className="mt-2 flex items-center justify-between gap-3 px-2 text-micro text-muted">
               <span>{error ?? "Enter to send · Shift+Enter for a new line"}</span>
-              <span className="hidden sm:inline">Voice output can be connected later</span>
+              <span className="hidden sm:inline">{model === "gpt-5.6-sol" ? "Sol · reasoning and workspace analysis" : "Claude · full Jarvis tools and approvals"}</span>
             </div>
           </div>
         </section>
       </main>
+    </div>
+  );
+}
+
+function ModelPicker({ model, onChange }: { model: ChatModel; onChange: (model: ChatModel) => void }) {
+  return (
+    <div className="flex items-center rounded-xl border border-border-strong bg-black/25 p-1" role="group" aria-label="Conversation model">
+      <Button
+        type="button"
+        size="sm"
+        variant={model === "gpt-5.6-sol" ? "secondary" : "ghost"}
+        className={`h-7 rounded-lg px-2.5 text-micro ${model === "gpt-5.6-sol" ? "text-accent-bright" : "text-muted"}`}
+        aria-pressed={model === "gpt-5.6-sol"}
+        title="GPT-5.6 Sol · reasoning and read-only workspace analysis"
+        onClick={() => onChange("gpt-5.6-sol")}
+      >
+        <Sparkles className="h-3 w-3" strokeWidth={1.75} />
+        5.6 Sol
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant={model === "claude" ? "secondary" : "ghost"}
+        className={`h-7 rounded-lg px-2.5 text-micro ${model === "claude" ? "text-accent-bright" : "text-muted"}`}
+        aria-pressed={model === "claude"}
+        title="Claude · Jarvis tools, approvals, and business actions"
+        onClick={() => onChange("claude")}
+      >
+        <Brain className="h-3 w-3" strokeWidth={1.75} />
+        Claude
+      </Button>
     </div>
   );
 }
@@ -255,7 +338,7 @@ function SimpleTranscript({ sessionId, activityKey, onActivity }: { sessionId: s
   return <SessionTranscript sessionId={sessionId} session={session} events={events} refreshSession={refreshSession} compact />;
 }
 
-function SimpleEmptyState({ agentName, onSuggestion }: { agentName: string; onSuggestion: (value: string) => void }) {
+function SimpleEmptyState({ agentName, model, onSuggestion }: { agentName: string; model: ChatModel; onSuggestion: (value: string) => void }) {
   const suggestions = [
     "Give me my priorities for today",
     "Create a marketing plan for this week",
@@ -267,7 +350,11 @@ function SimpleEmptyState({ agentName, onSuggestion }: { agentName: string; onSu
         <Sparkles className="h-5 w-5" strokeWidth={1.75} />
       </div>
       <div className="text-title text-foreground">Start with anything</div>
-      <p className="mt-2 max-w-sm text-label leading-relaxed text-muted">{agentName} can think with you, create work, or operate the systems you have connected.</p>
+      <p className="mt-2 max-w-sm text-label leading-relaxed text-muted">
+        {model === "gpt-5.6-sol"
+          ? `${agentName} can reason with you and analyze the local workspace. Switch to Claude when you want approval-gated business actions.`
+          : `${agentName} can think with you, create work, or operate the systems you have connected.`}
+      </p>
       <div className="mt-6 flex max-w-md flex-wrap justify-center gap-2">
         {suggestions.map((suggestion) => (
           <Button key={suggestion} variant="secondary" size="sm" className="h-auto py-2 text-left" onClick={() => onSuggestion(suggestion)}>{suggestion}</Button>

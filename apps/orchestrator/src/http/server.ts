@@ -98,6 +98,7 @@ import {
   createTaskSchema,
   formatValidationError,
   messageSchema,
+  chatMessageSchema,
   permissionResponseSchema,
   saveConnectionSchema,
   updateScheduledTaskSchema,
@@ -217,6 +218,13 @@ import { authorizeWebsiteConversation, createWebsiteConversation, sendCustomerRe
 import { customerWidgetDemo, customerWidgetScript } from "../customers/widget.js";
 import { handleCustomerInbound, startCustomerReplyDraft } from "../customers/customerService.js";
 import { handleMetaWebhook, handleResendWebhook, handleXWebhook, verifyMetaWebhook, verifyXWebhook, xCrcResponse } from "../customers/webhooks.js";
+import { sendAgentChat } from "../agents/agentChat.js";
+import { interruptCodexSession, sendCodexFollowUp } from "../sessions/codexSessionManager.js";
+import {
+  refreshSlackAgentBridge,
+  startSlackAgentBridge,
+  stopSlackAgentBridge,
+} from "../slack/slackAgentBridge.js";
 
 const PORT = Number(process.env.PORT ?? 4317);
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -445,77 +453,27 @@ app.get("/sessions", (req: Request, res: Response) => {
 app.get("/chat", (req: Request, res: Response) => {
   const agentId = owningAgentId(req, res);
   if (agentId === null) return;
-  const id = agentId ? getAgentChatSessionId(agentId) : getPrimarySessionId();
+  const model = req.query.model === "gpt-5.6-sol" ? "gpt-5.6-sol" : "claude";
+  const id = agentId ? getAgentChatSessionId(agentId, model) : getPrimarySessionId();
   const session = id ? getSession(id) : undefined;
   res.json({ session: session ?? null });
 });
 
 app.post("/chat", (req: Request, res: Response) => {
-  const body = validatedBody(messageSchema, req, res);
+  const body = validatedBody(chatMessageSchema, req, res);
   if (!body) return;
-  const { text } = body;
+  const { text, model } = body;
 
   const agentId = owningAgentId(req, res);
   if (agentId === null) return;
-  const existingId = agentId ? getAgentChatSessionId(agentId) : getPrimarySessionId();
-  const existing = existingId ? getSession(existingId) : undefined;
-
-  if (existing) {
-    const outcome = sendFollowUp(existing.id, text, { memoryWritable: true });
-    if (outcome.ok) {
-      res.status(202).json({ sessionId: existing.id, resumed: outcome.resumed });
-      return;
-    }
-    if (outcome.reason === "at_capacity") {
-      res.status(429).json({
-        error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}). Wait for one to finish.`,
-      });
-      return;
-    }
-    // unknown_session or not_resumable falls through to starting a fresh thread.
-  }
-
-  // The agent's own working directory, falling back to the global setting so an
-  // agent created without one still starts somewhere valid.
-  const agent = agentId ? getAgent(agentId) : undefined;
-  const cwd =
-    agent?.cwd.trim() || getSettings().chatWorkingDirectory.trim() || process.cwd();
-  if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
-    res.status(400).json({
-      error: `Working directory for ${agent?.name ?? "chat"} does not exist: ${cwd}. Set it on the agent, or in Settings.`,
-    });
+  if (!agentId) { res.status(503).json({ error: "No default agent is available." }); return; }
+  const outcome = sendAgentChat(agentId, text, model);
+  if (!outcome.ok) {
+    res.status(outcome.reason === "at_capacity" ? 429 : outcome.reason === "busy" ? 409 : outcome.reason === "agent_not_found" ? 404 : 400)
+      .json({ error: outcome.message });
     return;
   }
-  if (atConcurrencyLimit()) {
-    res.status(429).json({
-      error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}).`,
-    });
-    return;
-  }
-
-  const title = agent?.name ?? "Jarvis";
-  const session = createSession({
-    title,
-    cwd,
-    permissionMode: agent?.permissionMode ?? "default",
-    agentId,
-  });
-  if (agentId) setAgentChatSessionId(agentId, session.id);
-  else setPrimarySessionId(session.id);
-  globalBus.emit("session_updated", session.id);
-  globalBus.emit("chat_changed");
-
-  void startSession({
-    id: session.id,
-    prompt: text,
-    cwd,
-    permissionMode: agent?.permissionMode ?? "default",
-    title,
-    memoryWritable: true,
-    agentId,
-  });
-
-  res.status(201).json({ sessionId: session.id, resumed: false });
+  res.status(outcome.resumed ? 202 : 201).json({ sessionId: outcome.sessionId, resumed: outcome.resumed });
 });
 
 app.delete("/sessions/:id", (req: Request, res: Response) => {
@@ -1118,7 +1076,10 @@ app.post("/sessions/:id/messages", (req: Request, res: Response) => {
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
   if (agentId && getSession(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "no such session" }); return; }
   const { text } = body;
-  const outcome = sendFollowUp(req.params.id, text);
+  const session = getSession(req.params.id);
+  const outcome = session?.model === "gpt-5.6-sol"
+    ? sendCodexFollowUp(req.params.id, text)
+    : sendFollowUp(req.params.id, text);
   if (outcome.ok) {
     res.status(202).json({ ok: true, resumed: outcome.resumed });
     return;
@@ -1131,6 +1092,8 @@ app.post("/sessions/:id/messages", (req: Request, res: Response) => {
       error:
         "This session never got far enough to be resumed. Launch a new one instead.",
     });
+  } else if (outcome.reason === "busy") {
+    res.status(409).json({ error: "GPT-5.6 Sol is still answering the previous message." });
   } else {
     res.status(429).json({
       error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}). Wait for one to finish, then try again.`,
@@ -1160,7 +1123,10 @@ app.post("/sessions/:id/interrupt", async (req: Request, res: Response) => {
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
   if (agentId && getSession(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "no such session" }); return; }
   try {
-    const ok = await interruptSession(req.params.id);
+    const session = getSession(req.params.id);
+    const ok = session?.model === "gpt-5.6-sol"
+      ? interruptCodexSession(req.params.id)
+      : await interruptSession(req.params.id);
     if (!ok) {
       res.status(404).json({ error: "session not active" });
       return;
@@ -2000,7 +1966,9 @@ app.put("/connections/:platformId", (req: Request, res: Response) => {
       return;
     }
   }
-  res.json(saveConnection(platform.definition.id, merged));
+  const connection = saveConnection(platform.definition.id, merged);
+  if (platform.definition.id === "slack") refreshSlackAgentBridge();
+  res.json(connection);
 });
 
 app.post("/connections/:platformId/test", async (req: Request, res: Response) => {
@@ -2030,11 +1998,13 @@ app.post("/connections/:platformId/test", async (req: Request, res: Response) =>
     result.detail ?? null,
     result.ok ? null : (result.message ?? "Connection test failed")
   );
+  if (platform.definition.id === "slack") refreshSlackAgentBridge();
   res.json({ result, connection });
 });
 
 app.delete("/connections/:platformId", (req: Request, res: Response) => {
   deleteConnection(req.params.platformId);
+  if (req.params.platformId === "slack") stopSlackAgentBridge();
   res.status(204).send();
 });
 
@@ -2160,6 +2130,7 @@ const server = app.listen(PORT, HOST, () => {
     startIdleReaper();
     startMaintenance();
     startPaidGrowthMonitor();
+    startSlackAgentBridge();
   } else {
     console.log("Passive fallback mode: scheduler, idle reaper, and maintenance are disabled");
   }
@@ -2175,6 +2146,7 @@ let shuttingDown = false;
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  stopSlackAgentBridge();
   markInterruptedIfActive();
   server.close(() => process.exit(0));
   // SSE and keep-alive sockets can otherwise keep server.close waiting forever,

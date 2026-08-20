@@ -97,6 +97,8 @@ describe("agent scoping", () => {
     setAgentChatSessionId(frank.id, "session-frank");
 
     expect(getAgentChatSessionId(frank.id)).toBe("session-frank");
+    setAgentChatSessionId(frank.id, "session-frank-sol", "gpt-5.6-sol");
+    expect(getAgentChatSessionId(frank.id, "gpt-5.6-sol")).toBe("session-frank-sol");
     // The whole point of replacing settings.primary_session_id: one agent's
     // conversation must not become another's.
     expect(getAgentChatSessionId(grace.id)).toBeNull();
@@ -116,6 +118,26 @@ describe("agent scoping", () => {
     // A dangling pointer here would make the agent's chat load a session that
     // no longer exists, which reads as the conversation having vanished.
     expect(getAgentChatSessionId(heidi.id)).toBeNull();
+  });
+
+  it("stores Sol as a separate resumable model conversation", async () => {
+    const { createAgent } = await import("./agentRepo.js");
+    const { createSession, deleteSession, getAgentChatSessionId, setAgentChatSessionId } =
+      await import("./repo.js");
+    const agent = createAgent({ name: "Model Switcher" });
+    const session = createSession({
+      title: "Sol chat", cwd: ".", permissionMode: "default", agentId: agent.id,
+      model: "gpt-5.6-sol",
+    });
+
+    expect(session.model).toBe("gpt-5.6-sol");
+    expect(session.codexThreadId).toBeNull();
+    setAgentChatSessionId(agent.id, session.id, "gpt-5.6-sol");
+    expect(getAgentChatSessionId(agent.id, "gpt-5.6-sol")).toBe(session.id);
+    expect(getAgentChatSessionId(agent.id, "claude")).toBeNull();
+
+    deleteSession(session.id);
+    expect(getAgentChatSessionId(agent.id, "gpt-5.6-sol")).toBeNull();
   });
 
   it("isolates marketing, growth, customers, evolution, and notifications with their children", async () => {

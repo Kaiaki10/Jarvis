@@ -67,6 +67,7 @@ import type {
   CreatePaidGrowthCampaignRequest,
   UpdatePaidGrowthCampaignRequest,
   UpdatePaidGrowthPerformanceRequest,
+  ChatModel,
 } from "@jarvis/shared";
 
 const BASE_URL =
@@ -202,11 +203,12 @@ export const api = {
   deleteSession: (id: string) =>
     request<void>(scoped(`/sessions/${id}`), { method: "DELETE" }),
 
-  getChat: () => request<{ session: SessionRecord | null }>(scoped("/chat")),
-  sendChat: (text: string) =>
+  getChat: (model: ChatModel = "claude") =>
+    request<{ session: SessionRecord | null }>(scoped(`/chat?model=${encodeURIComponent(model)}`)),
+  sendChat: (text: string, model: ChatModel = "claude") =>
     request<{ sessionId: string; resumed: boolean }>("/chat", {
       method: "POST",
-      body: JSON.stringify({ text, agentId: getActiveAgentId() ?? undefined }),
+      body: JSON.stringify({ text, model, agentId: getActiveAgentId() ?? undefined }),
     }),
   getSession: (id: string) => request<SessionRecord>(scoped(`/sessions/${id}`)),
   createSession: (body: CreateSessionRequest) =>

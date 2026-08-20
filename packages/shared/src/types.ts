@@ -55,11 +55,16 @@ export type SessionStatus =
   | "stopped"
   | "interrupted";
 
+/** Models available in the focused, simple Jarvis conversation. */
+export type ChatModel = "claude" | "gpt-5.6-sol";
+
 export interface SessionRecord {
   id: string;
   /** Which agent owns this. Null only for rows that predate the agent migration. */
   agentId: string | null;
   claudeSessionId: string | null;
+  codexThreadId: string | null;
+  model: ChatModel;
   title: string;
   status: SessionStatus;
   cwd: string;

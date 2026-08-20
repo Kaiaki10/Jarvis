@@ -9,9 +9,16 @@ import {
   updateEvolutionPolicySchema,
   createPaidGrowthCampaignSchema,
   updatePaidGrowthPerformanceSchema,
+  chatMessageSchema,
 } from "./validation.js";
 
 describe("HTTP validation", () => {
+  it("accepts only the simple form's supported models", () => {
+    expect(chatMessageSchema.safeParse({ text: "Hello", model: "gpt-5.6-sol" }).success).toBe(true);
+    expect(chatMessageSchema.safeParse({ text: "Hello", model: "claude" }).success).toBe(true);
+    expect(chatMessageSchema.safeParse({ text: "Hello", model: "made-up" }).success).toBe(false);
+  });
+
   it("rejects permission modes that could bypass approval", () => {
     expect(
       createSessionSchema.safeParse({

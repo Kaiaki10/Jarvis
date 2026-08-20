@@ -145,6 +145,24 @@ Once a platform is connected and passing its test, sessions get tools for it
 (`post_to_x`, `post_to_slack`, `post_to_discord`, `send_email`). Every outbound action
 pauses for your approval first, where you can edit the draft before it sends.
 
+### Slack agent chat
+
+Slack is also a real-time front door to the same continuous agent conversations used by
+the dashboard. It uses Slack Socket Mode: the local orchestrator opens an outbound WebSocket,
+so no tunnel, public webhook, or remote Jarvis server is required. Configure the two tokens
+on Connections → Slack and leave the orchestrator running.
+
+- Mention the Jarvis app in a channel or send it a direct message.
+- Send `agents` to list the active agents.
+- Write `Growth Lead: draft three posts` to select an agent by name. The Slack thread stays
+  bound to that agent afterward, and the turn is appended to that agent's normal Jarvis chat.
+- If a tool needs approval, Slack tells you to decide in the local dashboard and posts the
+  completed answer back into the same thread afterward.
+- Use the optional Slack user-ID allowlist to restrict who can operate your agents.
+
+Inbound event IDs are deduplicated across reconnects. Tokens remain encrypted in the local
+SQLite database; decrypted values are never returned by the API.
+
 ## Customer channels
 
 Customer Operations → Controls owns customer-service autonomy and website chat setup.

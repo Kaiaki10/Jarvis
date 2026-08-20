@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS agents (
   allowed_tools TEXT,
   -- Replaces settings.primary_session_id: one ongoing conversation per agent.
   chat_session_id TEXT,
+  -- The simple form keeps a separate continuous thread for Codex.
+  codex_chat_session_id TEXT,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -73,6 +75,8 @@ CREATE INDEX IF NOT EXISTS idx_agent_conversations_status
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   claude_session_id TEXT,
+  codex_thread_id TEXT,
+  model TEXT NOT NULL DEFAULT 'claude',
   title TEXT NOT NULL,
   status TEXT NOT NULL,
   cwd TEXT NOT NULL,
@@ -122,6 +126,36 @@ CREATE TABLE IF NOT EXISTS connections (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- Slack conversations stay attached to the same Jarvis agent across restarts.
+-- The Slack message body is deliberately not stored here; the canonical
+-- transcript remains the encrypted/local Jarvis session history.
+CREATE TABLE IF NOT EXISTS slack_agent_threads (
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  external_thread_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, channel_id, external_thread_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_slack_agent_threads_agent
+  ON slack_agent_threads(agent_id, updated_at DESC);
+
+-- Socket Mode may redeliver an envelope after reconnect. Claiming Slack's
+-- event_id before work begins makes every inbound turn exactly-once locally.
+CREATE TABLE IF NOT EXISTS slack_inbound_events (
+  workspace_id TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_slack_inbound_events_created
+  ON slack_inbound_events(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,

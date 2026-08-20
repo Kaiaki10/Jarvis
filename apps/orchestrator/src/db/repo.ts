@@ -5,6 +5,7 @@ import type {
   SessionEventRecord,
   SessionEventType,
   SessionStatus,
+  ChatModel,
   ScheduledTaskRecord,
   SettingsRecord,
   TaskRecord,
@@ -38,6 +39,8 @@ interface SessionRow {
   id: string;
   agent_id: string | null;
   claude_session_id: string | null;
+  codex_thread_id: string | null;
+  model: string;
   title: string;
   status: string;
   cwd: string;
@@ -58,6 +61,8 @@ function mapSession(row: SessionRow): SessionRecord {
     id: row.id,
     agentId: row.agent_id ?? null,
     claudeSessionId: row.claude_session_id,
+    codexThreadId: row.codex_thread_id,
+    model: row.model as ChatModel,
     title: row.title,
     status: row.status as SessionStatus,
     cwd: row.cwd,
@@ -81,15 +86,17 @@ export function createSession(input: {
   allowedTools?: string[];
   taskId?: string;
   agentId?: string | null;
+  model?: ChatModel;
 }): SessionRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO sessions (id, agent_id, claude_session_id, title, status, cwd, permission_mode, allowed_tools, task_id, cost_usd, turns, error_message, created_at, updated_at)
-     VALUES (?, ?, NULL, ?, 'starting', ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`
+    `INSERT INTO sessions (id, agent_id, claude_session_id, codex_thread_id, model, title, status, cwd, permission_mode, allowed_tools, task_id, cost_usd, turns, error_message, created_at, updated_at)
+     VALUES (?, ?, NULL, NULL, ?, ?, 'starting', ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`
   ).run(
     id,
     input.agentId ?? null,
+    input.model ?? "claude",
     input.title,
     input.cwd,
     input.permissionMode,
@@ -120,6 +127,7 @@ export function updateSession(
   id: string,
   patch: Partial<{
     claudeSessionId: string;
+    codexThreadId: string;
     status: SessionStatus;
     costUsd: number;
     turns: number;
@@ -133,9 +141,10 @@ export function updateSession(
   if (!current) return;
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE sessions SET claude_session_id = ?, status = ?, cost_usd = ?, turns = ?, error_message = ?, summary = ?, current_activity = ?, updated_at = ? WHERE id = ?`
+    `UPDATE sessions SET claude_session_id = ?, codex_thread_id = ?, status = ?, cost_usd = ?, turns = ?, error_message = ?, summary = ?, current_activity = ?, updated_at = ? WHERE id = ?`
   ).run(
     patch.claudeSessionId ?? current.claudeSessionId,
+    patch.codexThreadId ?? current.codexThreadId,
     patch.status ?? current.status,
     patch.costUsd ?? current.costUsd,
     patch.turns ?? current.turns,
@@ -243,6 +252,12 @@ export function listSessionEvents(
     )
     .all(sessionId, sinceSeq) as unknown as SessionEventRow[];
   return rows.map(mapEvent);
+}
+
+export function latestSessionEventSeq(sessionId: string): number {
+  const row = db.prepare(`SELECT COALESCE(MAX(seq), 0) AS seq FROM session_events WHERE session_id = ?`)
+    .get(sessionId) as unknown as { seq: number };
+  return Number(row.seq);
 }
 
 interface TaskRow {
@@ -999,15 +1014,17 @@ export function setPrimarySessionId(id: string): void {
  * `settings.primary_session_id` in v2 — each agent keeps its own thread rather
  * than sharing one global conversation.
  */
-export function getAgentChatSessionId(agentId: string): string | null {
+export function getAgentChatSessionId(agentId: string, model: ChatModel = "claude"): string | null {
+  const column = model === "gpt-5.6-sol" ? "codex_chat_session_id" : "chat_session_id";
   const row = db
-    .prepare(`SELECT chat_session_id FROM agents WHERE id = ?`)
-    .get(agentId) as unknown as { chat_session_id: string | null } | undefined;
-  return row?.chat_session_id ?? null;
+    .prepare(`SELECT ${column} AS session_id FROM agents WHERE id = ?`)
+    .get(agentId) as unknown as { session_id: string | null } | undefined;
+  return row?.session_id ?? null;
 }
 
-export function setAgentChatSessionId(agentId: string, sessionId: string | null): void {
-  db.prepare(`UPDATE agents SET chat_session_id = ?, updated_at = ? WHERE id = ?`).run(
+export function setAgentChatSessionId(agentId: string, sessionId: string | null, model: ChatModel = "claude"): void {
+  const column = model === "gpt-5.6-sol" ? "codex_chat_session_id" : "chat_session_id";
+  db.prepare(`UPDATE agents SET ${column} = ?, updated_at = ? WHERE id = ?`).run(
     sessionId,
     new Date().toISOString(),
     agentId
@@ -1029,4 +1046,5 @@ export function deleteSession(id: string): void {
   // legacy global setting and from whichever agent held it as its thread.
   if (getPrimarySessionId() === id) writeSetting("primary_session_id", "");
   db.prepare(`UPDATE agents SET chat_session_id = NULL WHERE chat_session_id = ?`).run(id);
+  db.prepare(`UPDATE agents SET codex_chat_session_id = NULL WHERE codex_chat_session_id = ?`).run(id);
 }

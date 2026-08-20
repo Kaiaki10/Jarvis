@@ -33,7 +33,7 @@ const slack: Platform = {
   definition: {
     id: "slack",
     name: "Slack",
-    tagline: "Post updates and route customer messages through a workspace.",
+    tagline: "Talk to any Jarvis agent from Slack while Jarvis stays local.",
     category: "messaging",
     docsUrl: "https://api.slack.com/apps",
     fields: [
@@ -45,7 +45,25 @@ const slack: Platform = {
         placeholder: "xoxb-…",
         secret: true,
       },
+      {
+        key: "appToken",
+        label: "Socket Mode App Token",
+        help: "Starts with xapp-. Create it under Basic Information → App-Level Tokens with connections:write.",
+        expectedPrefix: "xapp-",
+        placeholder: "xapp-…",
+        secret: true,
+      },
+      {
+        key: "allowedUserIds",
+        label: "Allowed Slack user IDs",
+        help: "Optional comma-separated allowlist (for example U012ABCDEF). Leave blank to allow anyone in the installed workspace.",
+        placeholder: "U012ABCDEF, U045GHIJKL",
+        secret: false,
+        optional: true,
+      },
     ],
+    capabilities: ["Agent conversations", "Thread continuity", "Local-only Socket Mode"],
+    dataFreshness: "Real-time while the local orchestrator is running",
     steps: [
       {
         title: "Create a Slack app",
@@ -57,32 +75,49 @@ const slack: Platform = {
         linkLabel: "Open Slack app dashboard",
       },
       {
-        title: "Add permissions",
+        title: "Enable Socket Mode",
         body: [
-          "In the sidebar choose OAuth & Permissions, scroll to Scopes, and add the Bot Token Scopes you need.",
-          "chat:write lets Jarvis post messages. Add channels:read if you want it to list channels, and users:read to look up people.",
+          "Open Socket Mode in the app sidebar and turn it on.",
+          "When Slack asks for an app-level token, name it Jarvis Socket and give it connections:write. Copy the xapp- token below.",
         ],
-        warning:
-          "Scopes must be added before installing. If you install first and add scopes later, you have to reinstall the app.",
       },
       {
-        title: "Install and copy the token",
+        title: "Subscribe to messages",
+        body: [
+          "Under OAuth & Permissions add bot scopes chat:write, app_mentions:read, and im:history.",
+          "Under Event Subscriptions enable events, then subscribe to app_mention and message.im.",
+          "Under App Home keep the Messages tab enabled and allow users to send messages so direct messages reach Jarvis.",
+        ],
+        warning: "After changing scopes, reinstall the app to the workspace so the new permissions take effect.",
+      },
+      {
+        title: "Install and connect",
         body: [
           "Still under OAuth & Permissions, click Install to Workspace and approve.",
-          "Copy the Bot User OAuth Token that appears — it begins with xoxb-.",
+          "Copy the xoxb- Bot User OAuth Token below, save, and test. Invite the app to any channel where you want to mention it.",
+          "In Slack, mention the bot normally, send `agents` to list choices, or write `Agent Name: your message`. Direct messages work too.",
         ],
       },
     ],
   },
   async test(creds) {
-    const { status, body } = await fetchJson("https://slack.com/api/auth.test", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${creds.botToken}` },
-    });
-    const data = body as { ok?: boolean; error?: string; team?: string; user?: string };
-    if (status !== 200) return failure(`Slack returned HTTP ${status}.`);
-    if (!data?.ok) return failure(`Slack rejected the token: ${data?.error ?? "unknown error"}`);
-    return { ok: true, detail: `Connected to ${data.team} as ${data.user}` };
+    const [bot, socket] = await Promise.all([
+      fetchJson("https://slack.com/api/auth.test", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${creds.botToken}` },
+      }),
+      fetchJson("https://slack.com/api/apps.connections.open", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${creds.appToken}` },
+      }),
+    ]);
+    const botData = bot.body as { ok?: boolean; error?: string; team?: string; user?: string };
+    const socketData = socket.body as { ok?: boolean; error?: string; url?: string };
+    if (bot.status !== 200) return failure(`Slack bot authentication returned HTTP ${bot.status}.`);
+    if (!botData?.ok) return failure(`Slack rejected the bot token: ${botData?.error ?? "unknown error"}`);
+    if (socket.status !== 200) return failure(`Slack Socket Mode returned HTTP ${socket.status}.`);
+    if (!socketData?.ok || !socketData.url) return failure(`Slack rejected the app token: ${socketData?.error ?? "unknown error"}`);
+    return { ok: true, detail: `Connected to ${botData.team} as ${botData.user}; real-time agent chat is ready` };
   },
 };
 
