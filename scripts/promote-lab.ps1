@@ -51,11 +51,17 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $logPath) | Out-Nu
 try {
   if (-not (Test-Path $labPath)) { throw "Jarvis Lab worktree not found at $labPath." }
 
-  Write-Log "Promoting proposal $ProposalId — snapshotting current state into $snapshotDir"
+  Write-Log "Promoting proposal $ProposalId - snapshotting current state into $snapshotDir"
   & node (Join-Path $orchestratorDir "dist\scripts\backupDatabaseTo.js") (Join-Path $snapshotDir "jarvis.db")
   if ($LASTEXITCODE -ne 0) { throw "Database snapshot failed; nothing was touched." }
   Copy-Item -Recurse -Force (Join-Path $orchestratorDir "dist") (Join-Path $snapshotDir "orchestrator-dist")
-  Copy-Item -Recurse -Force (Join-Path $webDir ".next") (Join-Path $snapshotDir "web-next")
+  # robocopy, not Copy-Item: .next/cache is Turbopack's build cache, tens to
+  # hundreds of MB, worthless for serving the app and not needed to restore
+  # it — found by accident when one rehearsal snapshot came out to 405MB.
+  # /XD excludes it reliably; Copy-Item -Exclude does not do this dependably
+  # with -Recurse. Exit codes 0-7 are robocopy success; 8+ is a real failure.
+  robocopy (Join-Path $webDir ".next") (Join-Path $snapshotDir "web-next") /E /XD cache /NFL /NDL /NJH /NJS /NC /NS /NP | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "Snapshotting the dashboard build failed (robocopy exit $LASTEXITCODE)." }
   $preSha = (git -C $root rev-parse HEAD).Trim()
   Set-Content -Path (Join-Path $snapshotDir "pre-sha.txt") -Value $preSha -NoNewline
 
@@ -93,15 +99,15 @@ catch {
     if (Test-Path (Join-Path $snapshotDir "orchestrator-dist")) {
       & (Join-Path $PSScriptRoot "restart-service.ps1") -SkipBuild -RestoreFrom $snapshotDir
       if ($LASTEXITCODE -ne 0) {
-        Write-Log "Rollback restart did not report healthy — check scripts/logs and the service manually."
+        Write-Log "Rollback restart did not report healthy - check scripts/logs and the service manually."
       } else {
         Write-Log "Rolled back and restarted successfully."
       }
     } else {
-      Write-Log "No build snapshot existed yet (failed before the merge completed) — nothing to restore."
+      Write-Log "No build snapshot existed yet (failed before the merge completed) - nothing to restore."
     }
   } catch {
-    Write-Log "Rollback itself failed: $($_.Exception.Message) — service may need manual recovery."
+    Write-Log "Rollback itself failed: $($_.Exception.Message) - service may need manual recovery."
   }
   Record-Outcome "rolled_back" $reason
 }

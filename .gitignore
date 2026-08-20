@@ -12,6 +12,10 @@ dist/
 .env
 .env.local
 scripts/logs/
+# Pre-promotion snapshots (DB backup, prior dist/.next) kept locally so a
+# failed promotion can roll back without rebuilding. Not portable — machine-
+# and moment-specific, never meant to be shared or version-controlled.
+promotion-snapshots/
 .screenshots/
 .screenshots-*/
 coverage/
