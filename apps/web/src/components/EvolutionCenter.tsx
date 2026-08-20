@@ -192,9 +192,11 @@ export function EvolutionCenter() {
               <SafetyCheck ok={evolution.readiness.automaticRollbackReady} label="That rollback path has been proven against a real failure" />
             </div>
             <p className="mt-4 text-label text-muted">
-              {evolution.readiness.promotionEngineReady
-                ? "Promote is available once a proposal is reviewed — it always requires you to click it. The last check stays off until a real promotion has actually failed and recovered, not just been read and trusted."
-                : "Production promotion stays unavailable until the promotion engine exists on this machine."}
+              {evolution.readiness.automaticRollbackReady
+                ? "Promote is available once a proposal is reviewed — it always requires you to click it. A forced failure has been rehearsed live: the rollback path actually restored the pre-promotion database and build and came back healthy, not just been read and trusted."
+                : evolution.readiness.promotionEngineReady
+                  ? "Promote is available once a proposal is reviewed — it always requires you to click it. The last check stays off until a real promotion has actually failed and recovered, not just been read and trusted."
+                  : "Production promotion stays unavailable until the promotion engine exists on this machine."}
             </p>
           </CardBody>
         </Card>

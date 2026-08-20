@@ -15,7 +15,10 @@ import { createEvolutionProposal, listEvolutionProposals } from "../db/repo.js";
 // task and never went through this constant.
 export const LAB_PATH = process.env.JARVIS_LAB_PATH ?? resolve(process.cwd(), "..", "..", "..", "jarvis-lab");
 
-const PROMOTE_SCRIPT_PATH = resolve(process.cwd(), "..", "..", "scripts", "promote-lab.ps1");
+// The launcher, not promote-lab.ps1 directly, is what the server actually
+// spawns (see http/server.ts) — checking the wrong one here would report
+// ready while every real promotion 503s.
+const PROMOTE_LAUNCHER_PATH = resolve(process.cwd(), "..", "..", "scripts", "promote-lab-launcher.ps1");
 
 function labBranch(): string | null {
   if (!existsSync(LAB_PATH)) return null;
@@ -32,13 +35,16 @@ export function evolutionReadiness(): EvolutionReadiness {
     labPath: LAB_PATH,
     labBranch: labBranch(),
     // A green badge must be evidence, not code that merely exists.
-    // promotionEngineReady flips true once scripts/promote-lab.ps1 exists —
+    // promotionEngineReady flips true once the promotion launcher exists —
     // it merges, rebuilds, restarts, and verifies with a real session.
-    // automaticRollbackReady stays false until that rollback path has
-    // actually been exercised for real (a genuine failed promotion that
-    // recovered), not just read and trusted — see V2_PLAN.md/GAPS.md.
-    promotionEngineReady: existsSync(PROMOTE_SCRIPT_PATH),
-    automaticRollbackReady: false,
+    // automaticRollbackReady flipped true only after that rollback path was
+    // actually exercised for real: a genuinely failed promotion (a forced
+    // verification failure) that recovered on its own — reset the merge,
+    // restored the pre-promotion database and build snapshot, restarted, and
+    // came back healthy, verified live on 2026-08-20, not just read and
+    // trusted. See GAPS.md.
+    promotionEngineReady: existsSync(PROMOTE_LAUNCHER_PATH),
+    automaticRollbackReady: true,
   };
 }
 

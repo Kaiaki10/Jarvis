@@ -55,6 +55,34 @@ but need a public redirect URL.
 
 ## Closed
 
+- **2026-08-20** Evolution Center could propose and build improvements in Jarvis Lab
+  but production promotion still required a manual merge, rebuild, and restart —
+  `evolutionReadiness()` had hardcoded `promotionEngineReady`/`automaticRollbackReady`
+  to `false` since the feature existed, with its own bootstrapped proposal #1 naming
+  this as the gap. Closed by `scripts/promote-lab.ps1`: snapshot (online DB backup plus
+  current `dist`/`.next`) → merge the reviewed Lab branch → rebuild and restart → a real
+  agent session as a smoke test → record the outcome, or restore the snapshot and record
+  `rolled_back` on any failure. Both paths verified live, not just read: a real trivial
+  proposal promoted successfully end to end, and a separate run with verification
+  deliberately forced to fail rolled back automatically — reset the merge, restored the
+  pre-promotion database and build, restarted, and came back healthy on its own.
+  `automaticRollbackReady` only flipped true after that second, adversarial test, per
+  this feature's own standard that a green badge must be evidence.
+
+  Three unrelated bugs found only by rehearsing for real, not by reading the code:
+  `LAB_PATH`'s default path resolution was off by a directory level (`labAvailable` had
+  likely been silently `false` in production this whole time); the real `jarvis-lab`
+  branch was stale enough that its own daily automation had been stuck re-logging the
+  same unresolved `GAPS.md` conflict since 2026-08-19, unable to proceed by its own
+  rule (never merge, only rebase, stop on conflict) — resolved by a human merge, since
+  a three-way check showed only two files genuinely conflicted, not the ~171 a naive
+  branch diff suggested; and the promotion spawn itself failed two different ways in
+  production (`detached: true` never actually started the process at all, no trace
+  anywhere; without it, the process ran but was killed mid-restart by its own attempt
+  to stop the scheduled task it was still part of, leaving the live service down with
+  no automatic recovery) — closed with a `Start-Process`-based launcher script that
+  reliably escapes the task's process tree, which a raw spawn did not.
+
 - **2026-08-20** Room conversations (agent-to-agent) could never use a tool needing
   approval — the per-turn timeout (5 minutes, `conversationRunner.ts`) always fired
   before the 4-hour default approval timeout could, force-interrupting the turn.
