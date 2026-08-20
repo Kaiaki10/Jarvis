@@ -102,6 +102,7 @@ import {
   chatMessageSchema,
   permissionResponseSchema,
   saveConnectionSchema,
+  startPlatformSignupSchema,
   updateScheduledTaskSchema,
   updateSettingsSchema,
   updateTaskSchema,
@@ -232,7 +233,15 @@ import {
 import { authorizeWebsiteConversation, createWebsiteConversation, sendCustomerReply } from "../customers/channelGateway.js";
 import { customerWidgetDemo, customerWidgetScript } from "../customers/widget.js";
 import { handleCustomerInbound, startCustomerReplyDraft } from "../customers/customerService.js";
-import { handleMetaWebhook, handleResendWebhook, handleXWebhook, verifyMetaWebhook, verifyXWebhook, xCrcResponse } from "../customers/webhooks.js";
+import { handleMetaWebhook, handleXWebhook, ingestResendCustomerEmail, verifyAndFetchResendEmail, verifyMetaWebhook, verifyXWebhook, xCrcResponse } from "../customers/webhooks.js";
+import {
+  advanceSignupStep,
+  clearSignupProgress,
+  getSignupProgress,
+  handleSignupConfirmationEmail,
+  listSignupEmailEvents,
+  startPlatformSignup,
+} from "../platforms/signupInbox.js";
 import { sendAgentChat } from "../agents/agentChat.js";
 import { interruptCodexSession, sendCodexFollowUp } from "../sessions/codexSessionManager.js";
 import {
@@ -947,8 +956,15 @@ app.post("/webhooks/resend", async (req: Request, res: Response) => {
       "svix-timestamp": String(req.headers["svix-timestamp"] ?? ""),
       "svix-signature": String(req.headers["svix-signature"] ?? ""),
     };
-    const created = await handleResendWebhook(rawBody(req), headers, creds);
-    if (created) globalBus.emit("customers_changed");
+    const email = await verifyAndFetchResendEmail(rawBody(req), headers, creds);
+    // One Resend webhook URL covers every address on the connected domain —
+    // an in-progress platform signup claims its own confirmation mail here
+    // before it ever reaches the customer-support path below.
+    if (email && handleSignupConfirmationEmail(email)) {
+      globalBus.emit("platform_signup_changed");
+    } else if (email && ingestResendCustomerEmail(email)) {
+      globalBus.emit("customers_changed");
+    }
     res.status(200).json({ received: true });
   } catch (error) {
     console.error("[customers] rejected Resend webhook:", error);
@@ -1179,6 +1195,8 @@ app.get("/events", (req: Request, res: Response) => {
   globalBus.on("agents_changed", onAgents);
   const onConversations = () => sseSend(res, "conversations-changed", {});
   globalBus.on("conversations_changed", onConversations);
+  const onPlatformSignup = () => sseSend(res, "platform-signup-changed", {});
+  globalBus.on("platform_signup_changed", onPlatformSignup);
 
   const heartbeat = setInterval(() => res.write(": ping\n\n"), 15000);
 
@@ -1196,6 +1214,7 @@ app.get("/events", (req: Request, res: Response) => {
     globalBus.off("paid_growth_changed", onPaidGrowth);
     globalBus.off("agents_changed", onAgents);
     globalBus.off("conversations_changed", onConversations);
+    globalBus.off("platform_signup_changed", onPlatformSignup);
   });
 });
 
@@ -2162,7 +2181,54 @@ app.put("/connections/:platformId", (req: Request, res: Response) => {
   }
   const connection = saveConnection(platform.definition.id, merged);
   if (platform.definition.id === "slack") refreshSlackAgentBridge();
+  // Saving real credentials means any guided signup for this platform is
+  // over — nothing left for the wizard to track.
+  if (getSignupProgress(platform.definition.id)) {
+    clearSignupProgress(platform.definition.id);
+    globalBus.emit("platform_signup_changed");
+  }
   res.json(connection);
+});
+
+app.get("/platforms/:platformId/signup", (req: Request, res: Response) => {
+  const platform = getPlatform(req.params.platformId);
+  if (!platform) { res.status(404).json({ error: "unknown platform" }); return; }
+  res.json({
+    progress: getSignupProgress(platform.definition.id) ?? null,
+    events: listSignupEmailEvents(platform.definition.id),
+  });
+});
+
+app.post("/platforms/:platformId/signup", (req: Request, res: Response) => {
+  const platform = getPlatform(req.params.platformId);
+  if (!platform) { res.status(404).json({ error: "unknown platform" }); return; }
+  const body = validatedBody(startPlatformSignupSchema, req, res);
+  if (!body) return;
+  const progress = startPlatformSignup(platform.definition.id, body);
+  globalBus.emit("platform_signup_changed");
+  res.status(201).json(progress);
+});
+
+app.post("/platforms/:platformId/signup/step", (req: Request, res: Response) => {
+  const platform = getPlatform(req.params.platformId);
+  if (!platform) { res.status(404).json({ error: "unknown platform" }); return; }
+  const step = Number((req.body as { step?: unknown })?.step);
+  if (!Number.isInteger(step) || step < 0) {
+    res.status(400).json({ error: "step must be a non-negative integer" });
+    return;
+  }
+  const progress = advanceSignupStep(platform.definition.id, step);
+  if (!progress) { res.status(404).json({ error: "no signup in progress for this platform" }); return; }
+  globalBus.emit("platform_signup_changed");
+  res.json(progress);
+});
+
+app.delete("/platforms/:platformId/signup", (req: Request, res: Response) => {
+  const platform = getPlatform(req.params.platformId);
+  if (!platform) { res.status(404).json({ error: "unknown platform" }); return; }
+  clearSignupProgress(platform.definition.id);
+  globalBus.emit("platform_signup_changed");
+  res.status(204).send();
 });
 
 app.post("/connections/:platformId/test", async (req: Request, res: Response) => {

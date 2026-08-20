@@ -340,7 +340,33 @@ const x: Platform = {
         secret: true,
       },
     ],
+    // The account-creation steps below are guided, not automated: Jarvis
+    // never touches X's own signup form (CAPTCHA/human-verification is
+    // squarely X's defense against exactly that), and only ever detects and
+    // surfaces the confirmation email that follows — never clicks it unless
+    // the operator explicitly turns auto-follow on for this one attempt.
+    confirmationLinkPattern: ["https?://(?:www\\.)?(?:x|twitter)\\.com/\\S*(?:confirm|verify)\\S*", "i"],
     steps: [
+      {
+        title: "Create your X account",
+        humanAction: "captcha",
+        body: [
+          "If you don't already have an X account for this business, go to x.com and sign up.",
+          "Pick a handle and name that match what you want to post as — Jarvis can suggest bio copy once the account exists, but the account itself has to be created by hand.",
+          "Verify with an email address rather than a phone number if X offers the choice, and use one on a domain you've connected to Jarvis's Resend inbound — that's what lets the next step happen automatically.",
+          "X will very likely show a CAPTCHA or similar human-verification step here. That part needs you — it exists specifically to stop this kind of automation.",
+        ],
+        linkUrl: "https://x.com/signup",
+        linkLabel: "Open X signup",
+      },
+      {
+        title: "Confirm your email",
+        humanAction: "email_confirm",
+        body: [
+          "X emails a confirmation link (or code) to finish activating the account.",
+          "Once Jarvis detects it, the link is surfaced here — click it yourself unless you've explicitly turned on auto-follow for this signup.",
+        ],
+      },
       {
         title: "Create a developer project",
         body: [
@@ -412,6 +438,15 @@ function metaPlatform(input: { id: "facebook" | "instagram"; name: string; accou
         { key: "verifyToken", label: "Webhook verify token", help: "A private string you also enter in the Meta App Dashboard callback configuration.", secret: true },
       ],
       steps: [
+        {
+          title: `Have a ${input.accountLabel.toLowerCase()} ready`,
+          body: [
+            input.id === "facebook"
+              ? "Facebook Pages are created from an existing personal Facebook account, not signed up for on their own — if you don't have one yet, create it from Meta's Pages tool."
+              : "An Instagram professional account is switched over from an existing Instagram account, not signed up for on its own — if you don't have one yet, create a normal account in the Instagram app first, then convert it in Settings.",
+            "Meta scrutinizes newly created accounts and Pages closely, so this one step deliberately stays entirely manual — no guided signup, no email-confirmation detection here.",
+          ],
+        },
         {
           title: "Configure the Meta app",
           body: [

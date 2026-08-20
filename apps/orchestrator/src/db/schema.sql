@@ -127,6 +127,43 @@ CREATE TABLE IF NOT EXISTS connections (
   updated_at TEXT NOT NULL
 );
 
+-- Where a platform account-creation attempt stands. One row per platform,
+-- since signup is normally a whole-install action rather than per-persona.
+-- Persisted rather than kept in React state -- a real signup can sit waiting
+-- on a confirmation email for minutes to hours. See PlatformSignupProgress
+-- in packages/shared/src/types.ts.
+CREATE TABLE IF NOT EXISTS platform_signup_progress (
+  platform_id TEXT PRIMARY KEY,
+  current_step INTEGER NOT NULL DEFAULT 0,
+  signup_email TEXT,
+  -- Off by default. See PlatformSignupProgress.autoFollow: an explicit
+  -- per-attempt operator choice, not a platform-wide default.
+  auto_follow INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- A confirmation email Jarvis detected for a signup in progress. Its own
+-- table, not customer_messages -- a signup confirmation isn't a customer
+-- conversation and shouldn't share that schema or surface in that UI.
+CREATE TABLE IF NOT EXISTS signup_email_events (
+  id TEXT PRIMARY KEY,
+  platform_id TEXT NOT NULL,
+  sender TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  received_at TEXT NOT NULL,
+  matched_link TEXT,
+  -- surfaced | auto_followed
+  action TEXT NOT NULL,
+  event_id TEXT NOT NULL
+);
+
+-- Composite, not just event_id: the same inbound delivery can legitimately
+-- claim two rows if two platforms are both waiting on the same address at
+-- once (see signupInbox.ts's findProgressBySignupEmail).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_signup_email_events_dedupe ON signup_email_events(platform_id, event_id);
+CREATE INDEX IF NOT EXISTS idx_signup_email_events_platform ON signup_email_events(platform_id, received_at DESC);
+
 -- Slack conversations stay attached to the same Jarvis agent across restarts.
 -- The Slack message body is deliberately not stored here; the canonical
 -- transcript remains the encrypted/local Jarvis session history.

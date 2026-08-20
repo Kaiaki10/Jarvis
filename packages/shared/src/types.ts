@@ -258,13 +258,26 @@ export interface SetupStepDefinition {
   linkLabel?: string;
   /** Called out in the UI as an easy-to-miss gotcha. */
   warning?: string;
+  /**
+   * What kind of human action this step actually requires, if any.
+   * `"email_confirm"` is the only value Jarvis ever automates any part of —
+   * it can detect the confirmation email arriving and surface its link
+   * (never click it automatically unless the platform has opted in — see
+   * `PlatformDefinition.autoFollowConfirmationLink`). `"captcha"` and
+   * `"sms_otp"` are tagged specifically so no automation is ever attached to
+   * them, by construction: platforms deliberately gate signup behind these to
+   * stop exactly this kind of automation, and Jarvis does not attempt to get
+   * around that. `"click"` (the default when unset) is an ordinary manual
+   * step with no automatable signal at all.
+   */
+  humanAction?: "click" | "captcha" | "sms_otp" | "email_confirm";
 }
 
 export interface PlatformDefinition {
   id: string;
   name: string;
   tagline: string;
-  category: "social" | "messaging" | "email" | "advertising" | "notifications";
+  category: "social" | "messaging" | "email" | "advertising" | "notifications" | "finance";
   docsUrl: string;
   steps: SetupStepDefinition[];
   fields: CredentialFieldDefinition[];
@@ -272,6 +285,49 @@ export interface PlatformDefinition {
   capabilities?: string[];
   /** Expected reporting cadence or window, shown without implying fresher data than the API provides. */
   dataFreshness?: string;
+  /**
+   * Matched against a detected confirmation email's body to find the actual
+   * link, for platforms with an `"email_confirm"` step. `[linkPattern, flags]`
+   * rather than a `RegExp` because platform definitions are also serialized
+   * to the browser as plain JSON.
+   */
+  confirmationLinkPattern?: [pattern: string, flags: string];
+}
+
+/**
+ * Where a platform account-creation attempt stands. One row per platform
+ * (per agent, when agents matter — signup is usually done once per install).
+ * Persisted rather than kept in React state because a real signup can sit
+ * waiting on a confirmation email for minutes to hours.
+ */
+export interface PlatformSignupProgress {
+  platformId: string;
+  currentStep: number;
+  signupEmail: string | null;
+  /**
+   * Off by default. When true, Jarvis fetches a detected confirmation link
+   * itself instead of only surfacing it — an explicit choice the operator
+   * makes for this one signup attempt, not a platform-wide default.
+   */
+  autoFollow: boolean;
+  startedAt: string;
+  updatedAt: string;
+}
+
+export interface StartPlatformSignupRequest {
+  signupEmail: string;
+  autoFollow?: boolean;
+}
+
+/** A confirmation email Jarvis detected for a platform signup in progress. */
+export interface SignupEmailEvent {
+  id: string;
+  platformId: string;
+  sender: string;
+  subject: string;
+  receivedAt: string;
+  matchedLink: string | null;
+  action: "surfaced" | "auto_followed";
 }
 
 export type ConnectionStatus = "not_connected" | "connected" | "error";

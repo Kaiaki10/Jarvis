@@ -31,6 +31,8 @@ import type {
   CustomerOperationsOverview,
   PaidGrowthOverview,
   TrendsOverview,
+  PlatformSignupProgress,
+  SignupEmailEvent,
 } from "@jarvis/shared";
 import { api, globalEventsUrl, setActiveAgentId } from "./api";
 
@@ -84,6 +86,16 @@ interface StoreValue {
   platforms: PlatformDefinition[];
   connections: ConnectionRecord[];
   refreshConnections: () => Promise<void>;
+  /**
+   * Signup-wizard state for whichever platform's connect page is open right
+   * now — not agent-scoped and not preloaded like the rest of the store,
+   * since it's only ever relevant on one Connections/[platformId] page at a
+   * time. `loadPlatformSignup` both fetches and remembers which platform to
+   * keep re-fetching when `platform-signup-changed` arrives; passing `null`
+   * stops tracking (call on unmount).
+   */
+  platformSignup: { progress: PlatformSignupProgress | null; events: SignupEmailEvent[] } | null;
+  loadPlatformSignup: (platformId: string | null) => Promise<void>;
   notifications: NotificationRecord[];
   unreadNotifications: number;
   refreshNotifications: () => Promise<void>;
@@ -158,6 +170,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [platformSignup, setPlatformSignup] = useState<StoreValue["platformSignup"]>(null);
+  const trackedSignupPlatformId = useRef<string | null>(null);
 
   const refreshTasks = useCallback(async () => {
     setTasks(await api.listTasks());
@@ -242,6 +256,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const refreshConnections = useCallback(async () => {
     setConnections(await api.listConnections());
+  }, []);
+
+  const loadPlatformSignup = useCallback(async (platformId: string | null) => {
+    trackedSignupPlatformId.current = platformId;
+    if (!platformId) {
+      setPlatformSignup(null);
+      return;
+    }
+    setPlatformSignup(await api.getPlatformSignup(platformId));
   }, []);
 
   const refreshNotifications = useCallback(async () => {
@@ -339,6 +362,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       source.addEventListener("agents-changed", () => {
         refreshAgents().catch(() => {});
+      });
+
+      // Only re-fetches if a signup page is actually open — see
+      // loadPlatformSignup's comment on why this isn't preloaded like the
+      // rest of the store.
+      source.addEventListener("platform-signup-changed", () => {
+        if (trackedSignupPlatformId.current) loadPlatformSignup(trackedSignupPlatformId.current).catch(() => {});
       });
 
       source.addEventListener("automations-changed", () => {
@@ -439,6 +469,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refreshPrimaryChat,
     refreshScheduledTasks,
     refreshTasks,
+    loadPlatformSignup,
   ]);
 
   const activeAgent = useMemo(
@@ -530,6 +561,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       platforms,
       connections,
       refreshConnections,
+      platformSignup,
+      loadPlatformSignup,
       notifications,
       unreadNotifications,
       refreshNotifications,
@@ -574,6 +607,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       platforms,
       connections,
       refreshConnections,
+      platformSignup,
+      loadPlatformSignup,
       notifications,
       unreadNotifications,
       refreshNotifications,
@@ -623,6 +658,18 @@ export function useSettings() {
 export function useConnections() {
   const { platforms, connections, refreshConnections } = useStore();
   return { platforms, connections, refresh: refreshConnections };
+}
+
+/** Loads on mount, stops tracking on unmount — see loadPlatformSignup's comment in StoreValue. */
+export function usePlatformSignup(platformId: string | null) {
+  const { platformSignup, loadPlatformSignup } = useStore();
+  useEffect(() => {
+    loadPlatformSignup(platformId).catch(() => {});
+    return () => {
+      loadPlatformSignup(null).catch(() => {});
+    };
+  }, [platformId, loadPlatformSignup]);
+  return { progress: platformSignup?.progress ?? null, events: platformSignup?.events ?? [], refresh: () => loadPlatformSignup(platformId) };
 }
 
 export function useNotifications() {

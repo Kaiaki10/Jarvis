@@ -15,9 +15,13 @@ import {
   ShieldCheck,
   Waves,
   Plug,
+  KeyRound,
+  Mail,
+  MailCheck,
 } from "lucide-react";
-import type { TestConnectionResult } from "@jarvis/shared";
+import type { SetupStepDefinition, TestConnectionResult } from "@jarvis/shared";
 import { useConnections } from "@/lib/hooks";
+import { usePlatformSignup } from "@/lib/store";
 import { api } from "@/lib/api";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -28,6 +32,7 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
   const { platforms, connections, refresh } = useConnections();
   const platform = platforms.find((p) => p.id === platformId);
   const connection = connections.find((c) => c.platformId === platformId);
+  const signup = usePlatformSignup(platformId);
 
   const [stepIndex, setStepIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -158,7 +163,7 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
         <Card elevation={1}>
           <CardBody className="pt-5">
             {!isCredentials && !isTest && (
-              <InstructionStep step={platform.steps[stepIndex]} />
+              <InstructionStep step={platform.steps[stepIndex]} platformId={platform.id} signup={signup} />
             )}
 
             {isCredentials && (
@@ -298,12 +303,19 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
 
 function InstructionStep({
   step,
+  platformId,
+  signup,
 }: {
-  step: { title: string; body: string[]; linkUrl?: string; linkLabel?: string; warning?: string };
+  step: SetupStepDefinition;
+  platformId: string;
+  signup: ReturnType<typeof usePlatformSignup>;
 }) {
   return (
     <div>
-      <h2 className="text-body font-semibold text-foreground">{step.title}</h2>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-body font-semibold text-foreground">{step.title}</h2>
+        <HumanActionBadge action={step.humanAction} />
+      </div>
       <div className="mt-2 flex flex-col gap-2">
         {step.body.map((paragraph, i) => (
           <p key={i} className="text-body leading-relaxed text-muted">
@@ -328,6 +340,155 @@ function InstructionStep({
           <ExternalLink className="h-3 w-3" />
         </a>
       )}
+      {step.humanAction === "email_confirm" && (
+        <EmailConfirmPanel platformId={platformId} signup={signup} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Makes the automation boundary visible on the step itself, not just in body
+ * copy — captcha/SMS steps are tagged so it's obvious at a glance that Jarvis
+ * does nothing there by design, not by omission.
+ */
+function HumanActionBadge({ action }: { action?: SetupStepDefinition["humanAction"] }) {
+  if (action === "captcha" || action === "sms_otp") {
+    return (
+      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-warning/30 bg-warning/5 px-2.5 py-1 text-micro font-medium text-warning">
+        <ShieldCheck className="h-3 w-3" />
+        {action === "captcha" ? "Needs you — verification" : "Needs you — SMS code"}
+      </span>
+    );
+  }
+  if (action === "email_confirm") {
+    return (
+      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-accent/30 bg-accent/5 px-2.5 py-1 text-micro font-medium text-accent-foreground">
+        <MailCheck className="h-3 w-3" />
+        Jarvis can detect this
+      </span>
+    );
+  }
+  return null;
+}
+
+function EmailConfirmPanel({
+  platformId,
+  signup,
+}: {
+  platformId: string;
+  signup: ReturnType<typeof usePlatformSignup>;
+}) {
+  const { progress, events, refresh } = signup;
+  const [email, setEmail] = useState("");
+  const [autoFollow, setAutoFollow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function start() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.startPlatformSignup(platformId, { signupEmail: email, autoFollow });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancel() {
+    setBusy(true);
+    try {
+      await api.cancelPlatformSignup(platformId);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!progress) {
+    return (
+      <div className="mt-4 rounded-lg border border-border bg-surface/60 p-4">
+        <div className="flex items-center gap-2 text-label font-medium text-foreground">
+          <Mail className="h-4 w-4 text-accent-bright" />
+          Watch for the confirmation email
+        </div>
+        <p className="mt-1 text-label text-muted">
+          Enter the email address you signed up with — ideally one on your Resend-connected
+          domain — and Jarvis will detect the confirmation email as soon as it arrives.
+        </p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input
+            className="font-mono text-label sm:flex-1"
+            type="email"
+            placeholder="you@yourdomain.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <Button size="sm" onClick={start} disabled={busy || !email.trim()}>
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Start watching
+          </Button>
+        </div>
+        <label className="mt-2 flex items-center gap-2 text-micro text-muted">
+          <input
+            type="checkbox"
+            checked={autoFollow}
+            onChange={(e) => setAutoFollow(e.target.checked)}
+            className="h-3.5 w-3.5"
+          />
+          Auto-follow the confirmation link the moment it&apos;s detected, instead of clicking it
+          myself. Off by default.
+        </label>
+        {error && <div className="mt-2 text-label text-danger">{error}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-accent/25 bg-accent/5 p-4">
+      <div className="flex items-center gap-2 text-label font-medium text-foreground">
+        <MailCheck className="h-4 w-4 text-accent-bright" />
+        Watching {progress.signupEmail} for a confirmation email
+      </div>
+      {progress.autoFollow && (
+        <p className="mt-1 text-micro text-muted">
+          Auto-follow is on — Jarvis will fetch the link itself as soon as it arrives.
+        </p>
+      )}
+      {events.length === 0 ? (
+        <p className="mt-2 text-label text-muted">Nothing detected yet — this can take a few minutes.</p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-2">
+          {events.map((event) => (
+            <li key={event.id} className="rounded-md border border-border bg-surface/70 p-2.5">
+              <div className="text-label text-foreground">{event.subject || "Confirmation email"}</div>
+              <div className="text-micro text-muted">from {event.sender}</div>
+              {event.matchedLink ? (
+                <a
+                  href={event.matchedLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-label font-medium text-accent-foreground hover:underline"
+                >
+                  {event.action === "auto_followed" ? "Already followed" : "Open confirmation link"}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <p className="mt-1 text-micro text-warning">
+                  Couldn&apos;t pick out a link automatically — check this email in your inbox directly.
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <Button variant="ghost" size="sm" className="mt-3" onClick={cancel} disabled={busy}>
+        <KeyRound className="h-3.5 w-3.5" />
+        Start over with a different address
+      </Button>
     </div>
   );
 }

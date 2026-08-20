@@ -13,6 +13,7 @@ const CATEGORY_LABEL: Record<PlatformDefinition["category"], string> = {
   email: "Email",
   advertising: "Advertising",
   notifications: "Notifications",
+  finance: "Finance",
 };
 
 function StatusBadge({ connection }: { connection?: ConnectionRecord }) {

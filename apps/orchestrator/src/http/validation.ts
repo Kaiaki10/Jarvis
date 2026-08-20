@@ -377,6 +377,10 @@ export const saveConnectionSchema = z
   .object({ values: z.record(z.string(), z.string().max(20_000)) })
   .strict();
 
+export const startPlatformSignupSchema = z
+  .object({ signupEmail: z.string().email().max(320), autoFollow: z.boolean().optional() })
+  .strict();
+
 export const updateSettingsSchema = z
   .object({
     businessContext: z.string().max(200_000).optional(),

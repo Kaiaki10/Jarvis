@@ -63,6 +63,9 @@ import type {
   UpdateCustomerServicePolicyRequest,
   PaidGrowthOverview,
   TrendsOverview,
+  PlatformSignupProgress,
+  SignupEmailEvent,
+  StartPlatformSignupRequest,
   PaidGrowthCampaignRecord,
   PaidGrowthDecisionRecord,
   CreatePaidGrowthCampaignRequest,
@@ -414,6 +417,18 @@ export const api = {
     ),
   deleteConnection: (platformId: string) =>
     request<void>(`/connections/${platformId}`, { method: "DELETE" }),
+
+  getPlatformSignup: (platformId: string) =>
+    request<{ progress: PlatformSignupProgress | null; events: SignupEmailEvent[] }>(
+      `/platforms/${platformId}/signup`
+    ),
+  startPlatformSignup: (platformId: string, body: StartPlatformSignupRequest) =>
+    request<PlatformSignupProgress>(`/platforms/${platformId}/signup`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  cancelPlatformSignup: (platformId: string) =>
+    request<void>(`/platforms/${platformId}/signup`, { method: "DELETE" }),
 
   getStorage: () => request<StorageStats>("/storage"),
   compactStorage: () =>
