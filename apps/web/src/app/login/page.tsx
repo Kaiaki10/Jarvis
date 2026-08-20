@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { startRegistration, startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -32,7 +32,6 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<Status>("checking");
   const [busy, setBusy] = useState(false);
@@ -50,7 +49,15 @@ function LoginForm() {
 
   function afterLogin() {
     const from = searchParams.get("from");
-    router.replace(from && from.startsWith("/") ? from : "/");
+    // A real navigation, not router.replace(): this is an unauthenticated →
+    // authenticated transition, and proxy.ts's redirect decision plus
+    // Next's client Router Cache can otherwise serve a cached pre-login
+    // result on a soft transition in production builds specifically (this
+    // shipped and was caught live, not in `next dev`, which doesn't cache
+    // the same way — see GAPS.md). A hard load re-runs proxy.ts fresh and
+    // remounts the whole app with a real session, which is what a login
+    // transition should do anyway.
+    window.location.href = from && from.startsWith("/") ? from : "/";
   }
 
   async function handleRegister() {

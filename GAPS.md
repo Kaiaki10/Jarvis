@@ -55,6 +55,21 @@ but need a public redirect URL.
 
 ## Closed
 
+- **2026-08-20** The very first live passkey registration got stuck showing
+  "waiting for your passkey" indefinitely, even though it had actually succeeded —
+  `/auth/status` showed `hasOperator: true` server-side the whole time. The
+  registration ceremony completed correctly; only `afterLogin()`'s
+  `router.replace(...)` failed to actually land the browser on the dashboard.
+  Root cause: this was caught live on the real deployment (`next start`,
+  production build), not in the `next dev` scratch harness used to verify
+  Flagship 1 — Next's client Router Cache can serve a cached pre-login redirect
+  result on a soft client-side transition in production specifically, something
+  dev mode doesn't reproduce. Closed by replacing `router.replace()` with
+  `window.location.href` in `afterLogin()` — a real page load re-runs `proxy.ts`
+  fresh rather than trusting a cached routing decision, which is the right
+  behavior for an unauthenticated→authenticated transition anyway. Verified by
+  redeploying live and confirming login completed normally afterward.
+
 - **2026-08-20** Evolution Center could propose and build improvements in Jarvis Lab
   but production promotion still required a manual merge, rebuild, and restart —
   `evolutionReadiness()` had hardcoded `promotionEngineReady`/`automaticRollbackReady`
