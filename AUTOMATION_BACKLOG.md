@@ -53,6 +53,13 @@ these are things noticed while doing it that were out of scope for that pass.
 
 ## Notes
 
+- **2026-08-20**: Test suite has a regression. On a clean tree after rebase from master
+  and `npm install`, 16 tests timeout during dynamic `import()` of modules that depend
+  on `db/db.ts`. Running a single test file passes; running all tests together causes
+  imports to hang at 5-10 seconds. Tried: single-thread execution, forks pool, both
+  timeout. Root cause unknown. Tests likely passed before recent database isolation
+  work or evolution changes. A human needs to debug this — it blocks verification and
+  makes the test suite unusable.
 - The live Jarvis runs from **compiled output** in your main checkout
   (`dist/` and `.next/`). This worktree is a separate checkout on branch `jarvis/auto`,
   so nothing done here affects the running service until a human merges and rebuilds.
