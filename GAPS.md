@@ -55,6 +55,25 @@ but need a public redirect URL.
 
 ## Closed
 
+- **2026-08-20** A real user's Firefox session stayed stuck after a *working*
+  login — the passkey ceremony succeeded, the redirect to `/` fired correctly
+  (confirmed: URL bar changed, no /login in it), but the dashboard itself
+  never became usable. Diagnosed by proving each layer live rather than
+  guessing: `/auth/session` validated the real session correctly with `curl`,
+  two independent Firefox reproductions of the cookie-setting flow both
+  worked, and `Test-NetConnection ::1 -Port 4317` finally isolated it —
+  nothing was listening on the IPv6 loopback address at all, only
+  `127.0.0.1`. `localhost` resolves to both `::1` and `127.0.0.1` on this
+  machine; a browser that tries IPv6 first for background calls (the
+  dashboard's EventSource connection, its data fetches) has no guaranteed-fast
+  fallback to IPv4, while `proxy.ts`'s own server-to-server fetch (Node,
+  not a browser) was never subject to this at all — which is exactly why the
+  redirect worked but nothing after it did. Closed by also binding a second
+  listener on `::1` in `http/server.ts` (`HOST_V6`), removing the race
+  instead of depending on every browser's Happy Eyeballs implementation.
+  Verified live: both `[::1]:4317` and `127.0.0.1:4317` now answer real
+  requests.
+
 - **2026-08-20** The very first live passkey registration got stuck showing
   "waiting for your passkey" indefinitely, even though it had actually succeeded —
   `/auth/status` showed `hasOperator: true` server-side the whole time. The

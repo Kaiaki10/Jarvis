@@ -3,6 +3,7 @@ import cors from "cors";
 import type { ZodType } from "zod";
 import { existsSync, rm, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -269,6 +270,20 @@ import { startApproveServer } from "./approveServer.js";
 
 const PORT = Number(process.env.PORT ?? 4317);
 const HOST = process.env.HOST ?? "127.0.0.1";
+/**
+ * "localhost" resolves to both `127.0.0.1` and `::1` on a normal dual-stack
+ * machine, and a browser that tries the IPv6 address first has no guarantee
+ * of falling back to IPv4 quickly — proven live: a real user's Firefox
+ * session hung specifically on browser-side calls to the orchestrator (the
+ * dashboard's own data loading) while server-to-server calls were fine,
+ * and `Test-NetConnection ::1 -Port 4317` confirmed nothing was listening
+ * there at all. Binding both loopback addresses removes the race entirely
+ * rather than depending on every browser's Happy Eyeballs implementation
+ * being fast about it. Only added when HOST is the plain IPv4 loopback —
+ * an operator who has overridden HOST to something else is making their own
+ * choice here.
+ */
+const HOST_V6 = process.env.HOST_V6 ?? (HOST === "127.0.0.1" ? "::1" : null);
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
 
 /**
@@ -2505,6 +2520,17 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Images folder: ${ensureImagesFolder()}`);
 });
 
+// A second listener on the same port's IPv6 loopback — see HOST_V6's comment.
+// Shares the same Express app as its request handler; nothing above (startup
+// tasks, scheduler, etc.) needs to run twice, so this listener has no
+// callback of its own.
+const serverV6 = HOST_V6 ? createServer(app).listen(PORT, HOST_V6) : null;
+serverV6?.on("error", (err) => {
+  // Best-effort: if IPv6 loopback isn't available on this machine at all,
+  // the primary IPv4 listener above is still fully functional on its own.
+  console.warn(`[http] could not also listen on [${HOST_V6}]:${PORT}:`, err instanceof Error ? err.message : err);
+});
+
 let shuttingDown = false;
 function shutdown() {
   if (shuttingDown) return;
@@ -2515,6 +2541,8 @@ function shutdown() {
   // SSE and keep-alive sockets can otherwise keep server.close waiting forever,
   // leaving the compiled old service alive after a scheduled-task restart.
   server.closeAllConnections();
+  serverV6?.close();
+  serverV6?.closeAllConnections();
   setTimeout(() => process.exit(0), 1_500).unref();
 }
 
