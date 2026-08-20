@@ -431,6 +431,7 @@ export type EvolutionStage =
   | "planned"
   | "building"
   | "review"
+  | "promoting"
   | "promoted"
   | "rolled_back";
 

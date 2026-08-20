@@ -12,9 +12,17 @@
 
 .PARAMETER SkipBuild
   Restart without rebuilding.
+
+.PARAMETER RestoreFrom
+  Restore dist/, .next/, and jarvis.db from a snapshot directory before
+  starting back up — used by scripts/promote-lab.ps1 to roll back a
+  promotion that didn't come back healthy. Restoring happens after the old
+  process has released the port (and therefore its file handles) and before
+  the new one opens them, so nothing is swapped out from under a live
+  process.
 #>
 
-param([switch]$SkipBuild)
+param([switch]$SkipBuild, [string]$RestoreFrom)
 
 $ErrorActionPreference = "Stop"
 
@@ -80,6 +88,23 @@ $remaining = foreach ($p in $ports) {
 if ($remaining) {
   $details = ($remaining | ForEach-Object { "$($_.LocalAddress):$($_.LocalPort) PID $($_.OwningProcess)" }) -join ", "
   throw "Old Jarvis processes still own production ports ($details). Run this script from an elevated PowerShell window, or reboot, then run it again. The old service was not reported as the new build."
+}
+
+if ($RestoreFrom) {
+  Write-Host "Restoring from snapshot: $RestoreFrom" -ForegroundColor Cyan
+  if (-not (Test-Path $RestoreFrom)) { throw "Snapshot directory not found: $RestoreFrom" }
+  Remove-Item -Recurse -Force (Join-Path $orchestratorDir "dist")
+  Copy-Item -Recurse -Force (Join-Path $RestoreFrom "orchestrator-dist") (Join-Path $orchestratorDir "dist")
+  Remove-Item -Recurse -Force (Join-Path $webDir ".next")
+  Copy-Item -Recurse -Force (Join-Path $RestoreFrom "web-next") (Join-Path $webDir ".next")
+  # The snapshot is a `node:sqlite` online backup (db/backup.ts) — a single
+  # consistent file, not a raw copy of a live WAL-mode database. Clearing any
+  # -wal/-shm sidecars left by the process that was just stopped means SQLite
+  # opens the restored file cleanly rather than replaying WAL frames that
+  # belong to a database state which no longer exists.
+  Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $orchestratorDir "jarvis.db-wal")
+  Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $orchestratorDir "jarvis.db-shm")
+  Copy-Item -Force (Join-Path $RestoreFrom "jarvis.db") (Join-Path $orchestratorDir "jarvis.db")
 }
 
 Write-Host "Starting..." -ForegroundColor Cyan

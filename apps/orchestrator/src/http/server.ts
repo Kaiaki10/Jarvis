@@ -4,7 +4,8 @@ import type { ZodType } from "zod";
 import { existsSync, rm, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { spawn } from "node:child_process";
 import type { Request, Response } from "express";
 import {
   createSession,
@@ -1772,6 +1773,54 @@ app.post("/evolution/proposals/:id/start-build", (req: Request, res: Response) =
     },
   });
   res.status(201).json({ proposal: getEvolutionProposal(proposal.id), session });
+});
+
+// The merge/build/restart/verify/rollback sequence outlives this process —
+// restart-service.ps1 kills and replaces it partway through — so it runs as
+// a detached script rather than in-process. See scripts/promote-lab.ps1.
+const PROMOTE_SCRIPT_PATH = resolve(process.cwd(), "..", "..", "scripts", "promote-lab.ps1");
+
+app.post("/evolution/proposals/:id/promote", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const proposal = getEvolutionProposal(req.params.id, agentId);
+  if (!proposal) {
+    res.status(404).json({ error: "Evolution proposal not found" });
+    return;
+  }
+  if (proposal.stage !== "review") {
+    res.status(409).json({
+      error: `This proposal is ${proposal.stage.replace("_", " ")}, not ready for promotion. Only a reviewed build can be promoted.`,
+    });
+    return;
+  }
+  if (!evolutionReadiness().promotionEngineReady) {
+    res.status(503).json({ error: "The promotion engine isn't available on this machine." });
+    return;
+  }
+  if (!existsSync(PROMOTE_SCRIPT_PATH)) {
+    res.status(503).json({ error: `Promotion script not found at ${PROMOTE_SCRIPT_PATH}` });
+    return;
+  }
+
+  updateEvolutionProposal(proposal.id, { stage: "promoting" });
+  globalBus.emit("evolution_changed");
+
+  // Detached and unref'd: this process (and the port it holds) is exactly
+  // what the script is about to kill and replace, so the child must survive
+  // that without being tied to this process's lifetime.
+  const child = spawn(
+    "powershell.exe",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", PROMOTE_SCRIPT_PATH, "-ProposalId", proposal.id],
+    { detached: true, stdio: "ignore", windowsHide: true }
+  );
+  child.on("error", (err) => {
+    console.error("[evolution] could not start promote-lab.ps1:", err.message);
+    updateEvolutionProposal(proposal.id, { stage: "rolled_back", evidence: `Could not start the promotion script: ${err.message}` });
+    globalBus.emit("evolution_changed");
+  });
+  child.unref();
+
+  res.status(202).json({ ok: true, proposal: getEvolutionProposal(proposal.id) });
 });
 
 // ---- Paid Growth Control ----

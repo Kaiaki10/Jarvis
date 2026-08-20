@@ -289,6 +289,7 @@ export const api = {
     body: JSON.stringify({ autonomy }),
   }),
   startEvolutionBuild: (id: string) => request<{ proposal: EvolutionProposalRecord; session: SessionRecord }>(scoped(`/evolution/proposals/${id}/start-build`), { method: "POST" }),
+  promoteEvolutionProposal: (id: string) => request<{ ok: boolean; proposal: EvolutionProposalRecord }>(scoped(`/evolution/proposals/${id}/promote`), { method: "POST" }),
 
   getCampaigns: () => request<CampaignOverview>(scoped("/campaigns")),
   getCampaign: (id: string) => request<{ campaign: CampaignRecord; content: ContentItemRecord[]; generationRuns: CampaignGenerationRunRecord[]; publicationRuns: ContentPublicationRunRecord[] }>(scoped(`/campaigns/${id}`)),

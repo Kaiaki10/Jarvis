@@ -15,6 +15,7 @@ import {
   LockKeyhole,
   Plus,
   RefreshCw,
+  Rocket,
   RotateCcw,
   ShieldCheck,
   Sparkles,
@@ -39,6 +40,7 @@ const ACTIVE_STAGES: Array<{ stage: EvolutionStage; label: string; description: 
   { stage: "planned", label: "Planned", description: "Scoped with value and rollback defined", icon: TestTube2 },
   { stage: "building", label: "Building in Lab", description: "An isolated agent is implementing it", icon: FlaskConical },
   { stage: "review", label: "Awaiting review", description: "Verified evidence is ready to inspect", icon: ShieldCheck },
+  { stage: "promoting", label: "Promoting", description: "Merging, rebuilding, and restarting — the dashboard will drop and reconnect", icon: Rocket },
 ];
 
 const RISK_TONE: Record<EvolutionRisk, "neutral" | "accent" | "warning" | "danger"> = {
@@ -103,6 +105,22 @@ export function EvolutionCenter() {
     }
   }
 
+  async function promote(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      // The service restarts partway through this — refresh moves the card to
+      // "Promoting" immediately; the dashboard's own EventSource reconnects on
+      // its own once the new build is up, same as any other restart.
+      await api.promoteEvolutionProposal(id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start promotion.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const promoted = evolution.proposals.filter((proposal) => ["promoted", "rolled_back"].includes(proposal.stage));
 
   return (
@@ -150,6 +168,7 @@ export function EvolutionCenter() {
                     onPlan={() => void updateStage(proposal.id, "planned")}
                     onReturn={() => void updateStage(proposal.id, "planned")}
                     onBuild={() => void startBuild(proposal.id)}
+                    onPromote={() => void promote(proposal.id)}
                   />
                 ))}
                 {proposals.length === 0 && (
@@ -169,11 +188,13 @@ export function EvolutionCenter() {
             <div className="flex flex-col gap-2">
               <SafetyCheck ok label="Changes are built in an isolated worktree" />
               <SafetyCheck ok label="Required tests and type checks run before commit" />
-              <SafetyCheck ok={evolution.readiness.promotionEngineReady} label="Version switch is atomic" />
-              <SafetyCheck ok={evolution.readiness.automaticRollbackReady} label="Health failure triggers automatic rollback" />
+              <SafetyCheck ok={evolution.readiness.promotionEngineReady} label="Version switch is atomic, with a rollback attempt built in" />
+              <SafetyCheck ok={evolution.readiness.automaticRollbackReady} label="That rollback path has been proven against a real failure" />
             </div>
             <p className="mt-4 text-label text-muted">
-              Production promotion stays unavailable until the final two checks are backed by working infrastructure.
+              {evolution.readiness.promotionEngineReady
+                ? "Promote is available once a proposal is reviewed — it always requires you to click it. The last check stays off until a real promotion has actually failed and recovered, not just been read and trusted."
+                : "Production promotion stays unavailable until the promotion engine exists on this machine."}
             </p>
           </CardBody>
         </Card>
@@ -198,7 +219,7 @@ export function EvolutionCenter() {
 }
 
 function EvolutionStatus({ evolution }: { evolution: NonNullable<ReturnType<typeof useEvolution>["evolution"]> }) {
-  const active = evolution.proposals.filter((proposal) => ["planned", "building", "review"].includes(proposal.stage)).length;
+  const active = evolution.proposals.filter((proposal) => ["planned", "building", "review", "promoting"].includes(proposal.stage)).length;
   const review = evolution.proposals.filter((proposal) => proposal.stage === "review").length;
   return (
     <Card elevation={2} className="relative overflow-hidden">
@@ -237,7 +258,7 @@ function StatusNumber({ value, label, tone }: { value: number; label: string; to
   );
 }
 
-function ProposalCard({ proposal, labAvailable, promotionReady, busy, onPlan, onReturn, onBuild }: {
+function ProposalCard({ proposal, labAvailable, promotionReady, busy, onPlan, onReturn, onBuild, onPromote }: {
   proposal: EvolutionProposalRecord;
   labAvailable: boolean;
   promotionReady: boolean;
@@ -245,6 +266,7 @@ function ProposalCard({ proposal, labAvailable, promotionReady, busy, onPlan, on
   onPlan: () => void;
   onReturn: () => void;
   onBuild: () => void;
+  onPromote: () => void;
 }) {
   return (
     <Card className="p-3.5" elevation={proposal.stage === "review" ? 2 : 1}>
@@ -270,8 +292,21 @@ function ProposalCard({ proposal, labAvailable, promotionReady, busy, onPlan, on
           <>
             {proposal.labSessionId && <Link href={`/sessions/${proposal.labSessionId}`} className="text-label text-accent-foreground hover:text-white">Review run →</Link>}
             <Button size="sm" variant="secondary" disabled={busy} onClick={onReturn}>Send back</Button>
-            <Button size="sm" disabled={!promotionReady} title={!promotionReady ? "Atomic promotion and rollback are not ready yet" : undefined}>Promote</Button>
+            <Button
+              size="sm"
+              disabled={busy || !promotionReady}
+              title={!promotionReady ? "The promotion engine isn't available on this machine" : "Merges, rebuilds, and restarts Jarvis — the dashboard will drop and reconnect"}
+              onClick={onPromote}
+            >
+              <Rocket className="h-3.5 w-3.5" strokeWidth={1.75} /> {busy ? "Starting…" : "Promote"}
+            </Button>
           </>
+        )}
+        {proposal.stage === "promoting" && (
+          <div className="flex items-center gap-1.5 text-label text-accent-foreground">
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
+            Merging, rebuilding, and restarting…
+          </div>
         )}
       </div>
     </Card>

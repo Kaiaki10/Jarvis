@@ -6,6 +6,8 @@ import { createEvolutionProposal, listEvolutionProposals } from "../db/repo.js";
 
 export const LAB_PATH = process.env.JARVIS_LAB_PATH ?? resolve(process.cwd(), "..", "jarvis-lab");
 
+const PROMOTE_SCRIPT_PATH = resolve(process.cwd(), "..", "..", "scripts", "promote-lab.ps1");
+
 function labBranch(): string | null {
   if (!existsSync(LAB_PATH)) return null;
   const result = spawnSync("git", ["-C", LAB_PATH, "branch", "--show-current"], {
@@ -20,9 +22,13 @@ export function evolutionReadiness(): EvolutionReadiness {
     labAvailable: existsSync(LAB_PATH),
     labPath: LAB_PATH,
     labBranch: labBranch(),
-    // The center deliberately reports these as false until promotion is atomic
-    // and health-triggered rollback is implemented. A green badge must be evidence.
-    promotionEngineReady: false,
+    // A green badge must be evidence, not code that merely exists.
+    // promotionEngineReady flips true once scripts/promote-lab.ps1 exists —
+    // it merges, rebuilds, restarts, and verifies with a real session.
+    // automaticRollbackReady stays false until that rollback path has
+    // actually been exercised for real (a genuine failed promotion that
+    // recovered), not just read and trusted — see V2_PLAN.md/GAPS.md.
+    promotionEngineReady: existsSync(PROMOTE_SCRIPT_PATH),
     automaticRollbackReady: false,
   };
 }

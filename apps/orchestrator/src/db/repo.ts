@@ -659,7 +659,7 @@ export function getEvolutionProposal(id: string, agentId?: string): EvolutionPro
 }
 
 export function listEvolutionProposals(agentId?: string): EvolutionProposalRecord[] {
-  const order = `ORDER BY CASE stage WHEN 'review' THEN 0 WHEN 'building' THEN 1 WHEN 'planned' THEN 2 WHEN 'observed' THEN 3 WHEN 'promoted' THEN 4 ELSE 5 END, updated_at DESC`;
+  const order = `ORDER BY CASE stage WHEN 'promoting' THEN 0 WHEN 'review' THEN 1 WHEN 'building' THEN 2 WHEN 'planned' THEN 3 WHEN 'observed' THEN 4 WHEN 'promoted' THEN 5 ELSE 6 END, updated_at DESC`;
   const rows = agentId ? db.prepare(`SELECT * FROM evolution_proposals WHERE agent_id = ? ${order}`).all(agentId) : db.prepare(`SELECT * FROM evolution_proposals ${order}`).all();
   return (rows as unknown as EvolutionProposalRow[]).map(mapEvolutionProposal);
 }
