@@ -164,6 +164,21 @@ CREATE TABLE IF NOT EXISTS signup_email_events (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_signup_email_events_dedupe ON signup_email_events(platform_id, event_id);
 CREATE INDEX IF NOT EXISTS idx_signup_email_events_platform ON signup_email_events(platform_id, received_at DESC);
 
+-- A Stripe Issuing virtual card, one per biller (Anthropic Console, Google
+-- Ads, ...). Deliberately thin: the PAN and CVC never touch this database or
+-- this process at all -- Stripe's own Issuing Elements reveal them directly
+-- in the browser via a short-lived ephemeral key (billing/stripeFunding.ts).
+-- Only non-sensitive identifiers live here, same as connections.field_hints
+-- masks credentials rather than storing them decrypted.
+CREATE TABLE IF NOT EXISTS stripe_cards (
+  card_id TEXT PRIMARY KEY,
+  purpose_label TEXT NOT NULL,
+  brand TEXT NOT NULL,
+  last4 TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 -- Slack conversations stay attached to the same Jarvis agent across restarts.
 -- The Slack message body is deliberately not stored here; the canonical
 -- transcript remains the encrypted/local Jarvis session history.

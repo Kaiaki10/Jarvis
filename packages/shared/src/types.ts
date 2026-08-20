@@ -330,6 +330,41 @@ export interface SignupEmailEvent {
   action: "surfaced" | "auto_followed";
 }
 
+/**
+ * A Stripe Issuing virtual card Jarvis tracks, one per biller. Deliberately
+ * thin — the PAN and CVC never reach the orchestrator at all, so there is
+ * nothing more sensitive to carry here than what Stripe already shows on any
+ * receipt. See `billing/stripeFunding.ts`.
+ */
+export interface StripeCardRecord {
+  cardId: string;
+  purposeLabel: string;
+  brand: string;
+  last4: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface IssuingBalanceLine {
+  amount: number;
+  currency: string;
+}
+
+export interface IssueStripeCardRequest {
+  purposeLabel: string;
+  /** In the card's minor currency unit (cents for USD), matching every other *Minor field in this codebase. */
+  monthlyLimitMinor: number;
+}
+
+/** The nonce Stripe.js generates client-side before requesting a reveal session — see StripeFundingPanel.tsx. */
+export interface StripeRevealSessionRequest {
+  nonce: string;
+}
+
+export interface StripeRevealSession {
+  ephemeralKeySecret: string;
+}
+
 export type ConnectionStatus = "not_connected" | "connected" | "error";
 
 export interface ConnectionRecord {

@@ -1,3 +1,4 @@
+import Stripe from "stripe";
 import type { PlatformDefinition, TestConnectionResult } from "@jarvis/shared";
 import { oauth1Header } from "./oauth1.js";
 
@@ -699,7 +700,92 @@ const push: Platform = {
   },
 };
 
-export const PLATFORMS: Platform[] = [x, facebook, instagram, slack, discord, resend, googleAds, metaAds, xAds, push];
+const stripe: Platform = {
+  definition: {
+    id: "stripe",
+    name: "Stripe",
+    tagline: "Fund a virtual card per biller — Anthropic Console, ad platforms — from your Stripe balance.",
+    category: "finance",
+    docsUrl: "https://dashboard.stripe.com/apikeys",
+    fields: [
+      {
+        key: "secretKey",
+        label: "Restricted API Key",
+        help: "Create one at Developers → API keys → Create restricted key, with read/write on Issuing and read on Balance. Not your full secret key — a restricted one scoped to only what Jarvis needs.",
+        expectedPrefix: "rk_",
+        placeholder: "rk_…",
+        secret: true,
+      },
+      {
+        key: "publishableKey",
+        label: "Publishable Key",
+        help: "From the same API keys page. Safe to be non-secret — it's what reveals a card's number in your browser without ever passing through Jarvis.",
+        expectedPrefix: "pk_",
+        placeholder: "pk_…",
+        secret: false,
+      },
+      {
+        key: "cardholderId",
+        label: "Cardholder ID",
+        help: "Create a Cardholder yourself under Issuing → Cardholders in the Stripe Dashboard — this needs identity details (name, date of birth, address) Jarvis deliberately never collects — then paste its ich_… id here.",
+        expectedPrefix: "ich_",
+        placeholder: "ich_…",
+        secret: false,
+      },
+    ],
+    capabilities: ["Per-biller virtual cards", "Spend limits enforced by Stripe, not Jarvis", "PAN reveal never touches Jarvis"],
+    dataFreshness: "Real-time",
+    steps: [
+      {
+        title: "Create a restricted API key",
+        body: [
+          "In the Stripe Dashboard, go to Developers → API keys → Create restricted key.",
+          "Grant Write access to Issuing and Read access to Balance. Nothing else.",
+        ],
+        linkUrl: "https://dashboard.stripe.com/apikeys",
+        linkLabel: "Open Stripe API keys",
+      },
+      {
+        title: "Create a Cardholder",
+        body: [
+          "Under Issuing → Cardholders, create one for yourself — this is the one step Jarvis can't do for you, since it needs identity details for card-network compliance.",
+          "Copy its ich_… id below once it's active.",
+        ],
+        linkUrl: "https://dashboard.stripe.com/issuing/cardholders",
+        linkLabel: "Open Stripe Cardholders",
+      },
+      {
+        title: "Fund your balance",
+        body: [
+          "However you choose to fund it — bank transfer, Stripe's crypto onramp, or anything else Stripe offers for your account — Jarvis only ever reads the resulting balance and issues cards against it. It never initiates a transfer itself.",
+          "Stablecoin-backed cards specifically (funding a balance directly with crypto that stays crypto until spent) is a separate Stripe product still in private preview and gated behind a Connect-platform setup — contact Stripe directly if that specific shape matters to you. This integration works the same either way once a balance exists.",
+        ],
+        warning: "None of this — funding, KYC, compliance — is something Jarvis automates. It only ever reads balance and manages cards once the account itself is ready.",
+      },
+    ],
+  },
+  async test(creds) {
+    const client = new Stripe(creds.secretKey);
+    try {
+      const [balance, cardholder] = await Promise.all([
+        client.balance.retrieve(),
+        client.issuing.cardholders.retrieve(creds.cardholderId),
+      ]);
+      const issuingAvailable = balance.issuing?.available ?? [];
+      const summary = issuingAvailable.length
+        ? issuingAvailable.map((b) => `${(b.amount / 100).toFixed(2)} ${b.currency.toUpperCase()}`).join(", ")
+        : "0.00";
+      return {
+        ok: true,
+        detail: `Connected — Issuing balance ${summary}, cardholder ${cardholder.name} (${cardholder.status})`,
+      };
+    } catch (err) {
+      return failure(err instanceof Error ? err.message : "Stripe rejected the credentials.");
+    }
+  },
+};
+
+export const PLATFORMS: Platform[] = [x, facebook, instagram, slack, discord, resend, googleAds, metaAds, xAds, push, stripe];
 
 export function getPlatform(id: string): Platform | undefined {
   return PLATFORMS.find((p) => p.definition.id === id);

@@ -101,8 +101,10 @@ import {
   messageSchema,
   chatMessageSchema,
   permissionResponseSchema,
+  issueStripeCardSchema,
   saveConnectionSchema,
   startPlatformSignupSchema,
+  stripeRevealSessionSchema,
   updateScheduledTaskSchema,
   updateSettingsSchema,
   updateTaskSchema,
@@ -242,6 +244,13 @@ import {
   listSignupEmailEvents,
   startPlatformSignup,
 } from "../platforms/signupInbox.js";
+import {
+  cancelStripeCard,
+  createCardRevealSession,
+  getIssuingBalance,
+  issueStripeCard,
+  listStripeCards,
+} from "../billing/stripeFunding.js";
 import { sendAgentChat } from "../agents/agentChat.js";
 import { interruptCodexSession, sendCodexFollowUp } from "../sessions/codexSessionManager.js";
 import {
@@ -2270,6 +2279,55 @@ app.delete("/connections/:platformId", (req: Request, res: Response) => {
 
 app.get("/platform-usage", (_req: Request, res: Response) => {
   res.json(getUsageToday());
+});
+
+// ---- Stripe-funded billing ----
+//
+// Jarvis never moves money and never sees a PAN — see billing/stripeFunding.ts.
+// These routes only ever read balance, manage which cards exist, and mint
+// short-lived reveal sessions Stripe's own Issuing Elements use directly in
+// the browser.
+
+app.get("/billing/stripe/balance", async (_req: Request, res: Response) => {
+  try {
+    res.json(await getIssuingBalance());
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not read Stripe balance" });
+  }
+});
+
+app.get("/billing/stripe/cards", (_req: Request, res: Response) => {
+  res.json(listStripeCards());
+});
+
+app.post("/billing/stripe/cards", async (req: Request, res: Response) => {
+  const body = validatedBody(issueStripeCardSchema, req, res);
+  if (!body) return;
+  try {
+    const card = await issueStripeCard(body);
+    res.status(201).json(card);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not issue card" });
+  }
+});
+
+app.delete("/billing/stripe/cards/:cardId", async (req: Request, res: Response) => {
+  try {
+    await cancelStripeCard(req.params.cardId);
+    res.status(204).send();
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not cancel card" });
+  }
+});
+
+app.post("/billing/stripe/cards/:cardId/reveal-session", async (req: Request, res: Response) => {
+  const body = validatedBody(stripeRevealSessionSchema, req, res);
+  if (!body) return;
+  try {
+    res.json(await createCardRevealSession(req.params.cardId, body.nonce));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not start a reveal session" });
+  }
 });
 
 app.get("/images", (_req: Request, res: Response) => {

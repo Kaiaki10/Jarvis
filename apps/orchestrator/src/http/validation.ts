@@ -381,6 +381,12 @@ export const startPlatformSignupSchema = z
   .object({ signupEmail: z.string().email().max(320), autoFollow: z.boolean().optional() })
   .strict();
 
+export const issueStripeCardSchema = z
+  .object({ purposeLabel: z.string().trim().min(1).max(200), monthlyLimitMinor: z.number().int().positive() })
+  .strict();
+
+export const stripeRevealSessionSchema = z.object({ nonce: z.string().min(1).max(2000) }).strict();
+
 export const updateSettingsSchema = z
   .object({
     businessContext: z.string().max(200_000).optional(),

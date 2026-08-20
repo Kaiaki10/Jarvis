@@ -23,6 +23,7 @@ import type { SetupStepDefinition, TestConnectionResult } from "@jarvis/shared";
 import { useConnections } from "@/lib/hooks";
 import { usePlatformSignup } from "@/lib/store";
 import { api } from "@/lib/api";
+import { StripeFundingPanel } from "@/components/StripeFundingPanel";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -269,6 +270,12 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
                     </div>
                   </div>
                 )}
+
+                {platform.id === "stripe" &&
+                  connection?.status === "connected" &&
+                  connection.fieldHints.publishableKey && (
+                    <StripeFundingPanel publishableKey={connection.fieldHints.publishableKey} />
+                  )}
 
                 {hasSavedCredentials && (
                   <div className="mt-6 border-t border-border pt-4">

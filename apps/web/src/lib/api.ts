@@ -66,6 +66,11 @@ import type {
   PlatformSignupProgress,
   SignupEmailEvent,
   StartPlatformSignupRequest,
+  IssuingBalanceLine,
+  StripeCardRecord,
+  IssueStripeCardRequest,
+  StripeRevealSessionRequest,
+  StripeRevealSession,
   PaidGrowthCampaignRecord,
   PaidGrowthDecisionRecord,
   CreatePaidGrowthCampaignRequest,
@@ -429,6 +434,18 @@ export const api = {
     }),
   cancelPlatformSignup: (platformId: string) =>
     request<void>(`/platforms/${platformId}/signup`, { method: "DELETE" }),
+
+  getStripeBalance: () => request<IssuingBalanceLine[]>("/billing/stripe/balance"),
+  listStripeCards: () => request<StripeCardRecord[]>("/billing/stripe/cards"),
+  issueStripeCard: (body: IssueStripeCardRequest) =>
+    request<StripeCardRecord>("/billing/stripe/cards", { method: "POST", body: JSON.stringify(body) }),
+  cancelStripeCard: (cardId: string) =>
+    request<void>(`/billing/stripe/cards/${cardId}`, { method: "DELETE" }),
+  createStripeRevealSession: (cardId: string, body: StripeRevealSessionRequest) =>
+    request<StripeRevealSession>(`/billing/stripe/cards/${cardId}/reveal-session`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   getStorage: () => request<StorageStats>("/storage"),
   compactStorage: () =>
