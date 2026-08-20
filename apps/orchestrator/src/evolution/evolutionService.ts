@@ -5,14 +5,15 @@ import type { EvolutionReadiness } from "@jarvis/shared";
 import { createEvolutionProposal, listEvolutionProposals } from "../db/repo.js";
 
 // process.cwd() in production is apps/orchestrator (restart-service.ps1 runs
-// npm --prefix'd from there), so reaching the lab worktree — a sibling of the
-// repo root itself, per CLAUDE.md — needs two levels up, not one. With the
-// one-level version this resolved to apps/jarvis-lab, which never exists;
-// evolutionReadiness().labAvailable had likely been silently false in
-// production this whole time as a result, independent of the scheduler's own
-// automations, which store their own absolute cwd per task and never went
-// through this constant.
-export const LAB_PATH = process.env.JARVIS_LAB_PATH ?? resolve(process.cwd(), "..", "..", "jarvis-lab");
+// npm --prefix'd from there). The lab worktree is a sibling of the whole repo
+// folder per CLAUDE.md ("a git worktree at ../jarvis-lab", relative to the
+// repo root) — apps/orchestrator -> apps -> jarvis (repo root) -> its parent,
+// three levels, not one. The one-level version resolved to apps/jarvis-lab,
+// which never exists; evolutionReadiness().labAvailable had likely been
+// silently false in production this whole time as a result, independent of
+// the scheduler's own automations, which store their own absolute cwd per
+// task and never went through this constant.
+export const LAB_PATH = process.env.JARVIS_LAB_PATH ?? resolve(process.cwd(), "..", "..", "..", "jarvis-lab");
 
 const PROMOTE_SCRIPT_PATH = resolve(process.cwd(), "..", "..", "scripts", "promote-lab.ps1");
 
