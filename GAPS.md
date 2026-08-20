@@ -24,13 +24,6 @@ the store's single-EventSource invariant, which is easy to regress by accident.
 Playwright is installed in `apps/web/package.json` but no `*.test.ts` or `*.spec.ts`
 files exist anywhere under `apps/web`.
 
-### critical — Scheduler references nonexistent retry_count column
-`scheduler.ts:36-49` references `task.retryCount` to implement retry logic after
-failure, but the `scheduled_tasks` table has no `retry_count` column (confirmed in
-`schema.sql:60-74` and `types.ts:209-225`). The first time an automation fails and
-reaches the retry path at line 36, `updateScheduledTask` will attempt to write a
-nonexistent column and crash. The retry logic exists in code but is unusable.
-
 ### high — No backup of the database itself
 `portableBackup.ts` exports and restores platform credentials, but session history,
 scheduled automations, and tasks have no export path. Losing `jarvis.db` destroys
@@ -50,12 +43,14 @@ phone. Relevant if approvals should be actionable away from the desk.
 Every platform requires manually copying tokens. Proper OAuth flows would be friendlier
 but need a public redirect URL.
 
-### medium — Notifications table grows without bound
-The `notifications` table has no pruning. Old notifications accumulate forever — a
-system running for a year would have tens of thousands of rows. `listNotifications` caps
-the API response at 100, but the full history stays in SQLite and slows queries.
-Notifications are deleted when their linked session is deleted (`repo.ts:583`), but
-sessions themselves are only pruned by event retention, not guaranteed to be removed.
+### medium — Session rows accumulate forever
+`maintenance.ts:101-122` prunes old session events but explicitly keeps session rows
+themselves ("Session rows themselves are kept — they are small, and automations
+reference their last run by id"). A system running for months accumulates thousands of
+session rows with no automatic cleanup. Notifications are deleted when their linked
+session is deleted (`repo.ts:583`), so old notifications also accumulate indefinitely
+unless sessions are manually deleted. Only individual sessions can be deleted via
+`DELETE /sessions/:id` — no bulk cleanup exists.
 
 ### medium — Platform actions ledger grows without bound
 `platform_actions` records every billable action taken (posts, emails, etc.) and has no
@@ -72,7 +67,18 @@ manually at `repo.ts:576-580` by deleting events first, then clearing backrefere
 scheduled_tasks, but the lack of enforcement means any future table referencing sessions
 must remember to do the same or risk orphaning rows.
 
+### low — Images folder grows without bound
+`media.ts:61-77` lists images from the configured folder but never prunes them. Images
+dropped in for posting accumulate forever — a busy automation posting daily with images
+would grow to hundreds of files within a year. The folder is user-accessible, so manual
+cleanup is possible, but nothing prompts it or automates it.
+
 ## Closed
+
+- **2026-08-20** Scheduler references nonexistent retry_count column — closed by removal
+  of retry logic. `scheduler.ts:33-58` now fires a task once per scheduled window and
+  moves `nextRunAt` forward immediately. No retry logic exists anywhere in the current
+  scheduler, and `grep -r retryCount apps/orchestrator` returns nothing. Verified in code.
 
 - **2026-08-19** Missed schedules may stampede — closed by explicit pacing in
   `scheduler.ts:79-80`. After firing one overdue task, the tick function returns
