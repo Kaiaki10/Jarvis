@@ -32,6 +32,17 @@ const running = new Set<string>();
 /** A single turn is bounded too, or one wedged agent stalls the room forever. */
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 
+/**
+ * Rooms run unattended by design (turn cap and wall-clock budget are the
+ * safety limits, not a human watching every turn), so a participant asking
+ * to read a file can't wait on canUseTool — the default approval timeout is
+ * hours, far longer than TURN_TIMEOUT_MS, so the turn would always be killed
+ * before a human could realistically see and answer the prompt. Bash, Edit,
+ * Write, and platform actions stay gated; a room can consult docs on its own
+ * but still can't act without a person in the loop.
+ */
+const ROOM_ALLOWED_TOOLS = ["Read", "Glob", "Grep"];
+
 export function isConversationRunning(id: string): boolean {
   return running.has(id);
 }
@@ -179,6 +190,7 @@ export async function runConversation(conversationId: string): Promise<void> {
           title: `${current.title} — ${agent.name}`,
           cwd,
           permissionMode: agent.permissionMode,
+          allowedTools: ROOM_ALLOWED_TOOLS,
           agentId: agent.id,
         });
         sessionId = session.id;
@@ -192,6 +204,7 @@ export async function runConversation(conversationId: string): Promise<void> {
           prompt,
           cwd,
           permissionMode: agent.permissionMode,
+          allowedTools: ROOM_ALLOWED_TOOLS,
           title: `${agent.name} in ${current.title}`,
           agentId: agent.id,
         });

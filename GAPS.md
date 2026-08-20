@@ -55,6 +55,15 @@ but need a public redirect URL.
 
 ## Closed
 
+- **2026-08-20** Room conversations (agent-to-agent) could never use a tool needing
+  approval — the per-turn timeout (5 minutes, `conversationRunner.ts`) always fired
+  before the 4-hour default approval timeout could, force-interrupting the turn.
+  Reproduced live on the first real room, which asked its agents to read two files
+  first: the `Read` calls both got force-interrupted mid-approval, and the room died
+  with "Jarvis did not reply" after spending real turns and cost with nothing recorded.
+  Closed by pre-approving `Read`/`Glob`/`Grep` specifically for room sessions; Bash,
+  Edit, Write, and platform actions remain gated exactly as designed in `V2_PLAN.md`.
+
 - **2026-08-20** The new Slack agent bridge shipped with an open-by-default allowlist —
   the setup UI invited leaving "Allowed Slack user IDs" blank to "allow anyone in the
   installed workspace," and a Slack turn gets the same tool access as the dashboard (full

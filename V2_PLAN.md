@@ -120,6 +120,18 @@ another to post to X still reaches a human. The approval prompt must name
 *which* agent asked — with several agents live, "a session wants to post" is not
 an answerable question.
 
+Found live 2026-08-20: that gate does not coexist with the turn timeout as
+first shipped. A room's per-turn timeout is 5 minutes (`conversationRunner.ts`);
+the default approval timeout is 4 hours. A room agent that hit a gated `Read`
+call was always going to be force-interrupted long before a human could
+plausibly see and answer the prompt — reproduced on the very first real room
+("Which gap next," Jarvis vs. Critic, asked to read `GAPS.md` first), which
+spent real turns and cost, then died with "Jarvis did not reply." Fixed by
+pre-approving `Read`/`Glob`/`Grep` for room sessions specifically
+(`ROOM_ALLOWED_TOOLS`) — a room can consult docs unattended, matching its own
+design intent, while Bash/Edit/Write/platform actions stay gated exactly as
+described above.
+
 ## Sequencing
 
 Each increment ships on its own and leaves the app working.
