@@ -62,6 +62,7 @@ import type {
   CustomerServicePolicyRecord,
   UpdateCustomerServicePolicyRequest,
   PaidGrowthOverview,
+  TrendsOverview,
   PaidGrowthCampaignRecord,
   PaidGrowthDecisionRecord,
   CreatePaidGrowthCampaignRequest,
@@ -318,6 +319,7 @@ export const api = {
   }),
 
   getPaidGrowth: () => request<PaidGrowthOverview>(scoped("/paid-growth")),
+  getTrends: () => request<TrendsOverview>(scoped("/insights/trends")),
   createPaidGrowthCampaign: (body: CreatePaidGrowthCampaignRequest) =>
     request<PaidGrowthCampaignRecord>(scoped("/paid-growth/campaigns"), { method: "POST", body: JSON.stringify(body) }),
   updatePaidGrowthCampaign: (id: string, patch: UpdatePaidGrowthCampaignRequest) =>

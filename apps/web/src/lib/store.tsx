@@ -30,6 +30,7 @@ import type {
   MemoryReflectionRecord,
   CustomerOperationsOverview,
   PaidGrowthOverview,
+  TrendsOverview,
 } from "@jarvis/shared";
 import { api, globalEventsUrl, setActiveAgentId } from "./api";
 
@@ -72,6 +73,10 @@ interface StoreValue {
   refreshCustomerOperations: () => Promise<void>;
   paidGrowth: PaidGrowthOverview | null;
   refreshPaidGrowth: () => Promise<void>;
+  /** A derived, descriptive view over campaigns/customers/paid-growth — refreshed
+   *  whenever any of those change rather than on its own SSE event. */
+  trends: TrendsOverview | null;
+  refreshTrends: () => Promise<void>;
   scheduledTasks: ScheduledTaskRecord[];
   refreshScheduledTasks: () => Promise<void>;
   settings: SettingsRecord | null;
@@ -146,6 +151,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [campaigns, setCampaigns] = useState<CampaignOverview | null>(null);
   const [customerOperations, setCustomerOperations] = useState<CustomerOperationsOverview | null>(null);
   const [paidGrowth, setPaidGrowth] = useState<PaidGrowthOverview | null>(null);
+  const [trends, setTrends] = useState<TrendsOverview | null>(null);
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTaskRecord[]>([]);
   const [settings, setSettings] = useState<SettingsRecord | null>(null);
   const [platforms, setPlatforms] = useState<PlatformDefinition[]>([]);
@@ -224,6 +230,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const refreshPaidGrowth = useCallback(async () => {
     setPaidGrowth(await api.getPaidGrowth());
+  }, []);
+
+  const refreshTrends = useCallback(async () => {
+    setTrends(await api.getTrends());
   }, []);
 
   const saveSettings = useCallback(async (patch: UpdateSettingsRequest) => {
@@ -314,6 +324,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       source.addEventListener("campaigns-changed", () => {
         refreshCampaigns().catch(() => {});
+        refreshTrends().catch(() => {});
       });
 
       source.addEventListener("memories-changed", () => {
@@ -340,10 +351,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       source.addEventListener("customers-changed", () => {
         refreshCustomerOperations().catch(() => {});
+        refreshTrends().catch(() => {});
       });
 
       source.addEventListener("paid-growth-changed", () => {
         refreshPaidGrowth().catch(() => {});
+        refreshTrends().catch(() => {});
       });
 
       source.addEventListener("open", () => {
@@ -387,6 +400,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             refreshPrimaryChat(),
             refreshCustomerOperations(),
             refreshPaidGrowth(),
+            refreshTrends(),
           ]));
       });
 
@@ -414,6 +428,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refreshCampaigns,
     refreshCustomerOperations,
     refreshPaidGrowth,
+    refreshTrends,
     refreshConnections,
     refreshEvolution,
     refreshAgents,
@@ -455,12 +470,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshCampaigns(),
         refreshCustomerOperations(),
         refreshPaidGrowth(),
+        refreshTrends(),
         refreshEvolution(),
         refreshMemories(),
         refreshNotifications(),
       ]);
     },
-    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat, refreshCampaigns, refreshCustomerOperations, refreshPaidGrowth, refreshEvolution, refreshMemories, refreshNotifications]
+    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat, refreshCampaigns, refreshCustomerOperations, refreshPaidGrowth, refreshTrends, refreshEvolution, refreshMemories, refreshNotifications]
   );
 
   const removeSession = useCallback(async (id: string) => {
@@ -505,6 +521,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshCustomerOperations,
       paidGrowth,
       refreshPaidGrowth,
+      trends,
+      refreshTrends,
       scheduledTasks,
       refreshScheduledTasks,
       settings,
@@ -547,6 +565,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshCustomerOperations,
       paidGrowth,
       refreshPaidGrowth,
+      trends,
+      refreshTrends,
       scheduledTasks,
       refreshScheduledTasks,
       settings,
@@ -633,6 +653,11 @@ export function useCustomerOperations() {
 export function usePaidGrowth() {
   const { paidGrowth, refreshPaidGrowth } = useStore();
   return { overview: paidGrowth, refresh: refreshPaidGrowth };
+}
+
+export function useTrends() {
+  const { trends, refreshTrends } = useStore();
+  return { overview: trends, refresh: refreshTrends };
 }
 
 export function useConnectionStatus() {

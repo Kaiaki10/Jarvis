@@ -151,6 +151,7 @@ import {
   syncPaidGrowthCampaign,
 } from "../paidGrowth/service.js";
 import { startPaidGrowthMonitor } from "../paidGrowth/monitor.js";
+import { trendsOverview } from "../insights/trendsService.js";
 import { apiToken, isValidToken, tokenFromRequest } from "../security/apiToken.js";
 import { isAllowedOrigin, isUnauthenticatedPath } from "./authGuard.js";
 import {
@@ -1831,6 +1832,13 @@ app.post("/evolution/proposals/:id/promote", (req: Request, res: Response) => {
   child.unref();
 
   res.status(202).json({ ok: true, proposal: getEvolutionProposal(proposal.id) });
+});
+
+// ---- Insights ----
+
+app.get("/insights/trends", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(trendsOverview(agentId));
 });
 
 // ---- Paid Growth Control ----

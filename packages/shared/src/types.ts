@@ -927,3 +927,38 @@ export interface AgentConversationDetail {
   participants: AgentConversationParticipantRecord[];
   messages: AgentConversationMessageRecord[];
 }
+
+/**
+ * Descriptive trend signals across content, campaigns, customers, and paid
+ * spend — deliberately a read-only summary of what already exists, not a new
+ * measurement system. No cross-channel attribution claim ("this post caused
+ * that lead") and no automated allocation decision; see GAPS.md's open
+ * attribution gap for why that stays a separate, bigger, later increment.
+ */
+export interface TrendsOverview {
+  content: {
+    total: number;
+    byStatus: Partial<Record<ContentStatus, number>>;
+    /** Content that has actually gone out, not just been drafted or scheduled. */
+    publishedOrMeasured: number;
+  };
+  campaigns: {
+    total: number;
+    byStatus: Partial<Record<CampaignStatus, number>>;
+    active: number;
+  };
+  customers: {
+    total: number;
+    byStatus: Partial<Record<CustomerConversationStatus, number>>;
+    /** Null with zero conversations — a rate over nothing is not zero, it is undefined. */
+    resolutionRate: number | null;
+  };
+  paidGrowth: {
+    activeCampaigns: number;
+    currency: string | null;
+    spentMinor: number;
+    revenueMinor: number;
+    /** Null when nothing has been spent yet — same reasoning as resolutionRate. */
+    roas: number | null;
+  };
+}

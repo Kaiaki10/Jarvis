@@ -16,12 +16,14 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
+  TrendingUp,
   WalletCards,
 } from "lucide-react";
 import type {
   CampaignApprovalPolicy,
   ContentFormat,
   MarketingChannel,
+  TrendsOverview,
 } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import {
@@ -33,6 +35,7 @@ import {
   useMissionsList,
   useSettings,
   usePaidGrowth,
+  useTrends,
 } from "@/lib/store";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -67,6 +70,7 @@ export function AutonomousBusinessLoop() {
   const { connections } = useConnections();
   const { settings, saveSettings } = useSettings();
   const { overview: paidGrowth } = usePaidGrowth();
+  const { overview: trends } = useTrends();
 
   const activeMissions = missions.filter((mission) => mission.status === "active");
   const activeCampaigns = campaigns?.campaigns.filter((campaign) => campaign.status === "active") ?? [];
@@ -129,6 +133,8 @@ export function AutonomousBusinessLoop() {
           })}
         </div>
       </Card>
+
+      <TrendsCard trends={trends} />
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(440px,0.95fr)]">
         <ActiveLoops missions={missions} campaigns={campaigns} />
@@ -205,6 +211,71 @@ function PulseStat({ value, label, tone }: { value: string | number; label: stri
   return (
     <div className="min-w-24 border-l border-border pl-5">
       <div className={`text-title tabular-nums ${tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-foreground"}`}>{value}</div>
+      <div className="mt-0.5 text-micro text-muted">{label}</div>
+    </div>
+  );
+}
+
+/**
+ * Descriptive signals only — a stat tile, not a chart, over data that already
+ * exists elsewhere in the app. No dollar totals as a bottom-line figure and no
+ * "this caused that" claim; see GAPS.md's attribution gap for why the real
+ * cross-channel ledger is a separate, later, bigger increment.
+ */
+function TrendsCard({ trends }: { trends: TrendsOverview | null }) {
+  if (!trends) return null;
+  const hasData =
+    trends.content.total > 0 ||
+    trends.campaigns.total > 0 ||
+    trends.customers.total > 0 ||
+    trends.paidGrowth.spentMinor > 0;
+  if (!hasData) return null;
+
+  return (
+    <Card elevation={1}>
+      <CardHeader
+        title="Trends"
+        description="Descriptive signals across content, campaigns, and customers — not attribution"
+        icon={<TrendingUp className="h-4 w-4" strokeWidth={1.75} />}
+      />
+      <div className="flex flex-wrap gap-6 px-5 pb-5">
+        {trends.content.total > 0 && (
+          <TrendStat
+            value={`${trends.content.publishedOrMeasured}/${trends.content.total}`}
+            label="content live"
+          />
+        )}
+        {trends.campaigns.total > 0 && (
+          <TrendStat
+            value={`${trends.campaigns.active}/${trends.campaigns.total}`}
+            label="campaigns active"
+          />
+        )}
+        {trends.customers.total > 0 && (
+          <TrendStat
+            value={
+              trends.customers.resolutionRate !== null
+                ? `${Math.round(trends.customers.resolutionRate * 100)}%`
+                : "—"
+            }
+            label="customer resolution rate"
+          />
+        )}
+        {trends.paidGrowth.spentMinor > 0 && (
+          <TrendStat
+            value={trends.paidGrowth.roas !== null ? `${trends.paidGrowth.roas.toFixed(2)}x` : "—"}
+            label="paid ROAS"
+          />
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function TrendStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="min-w-24">
+      <div className="text-title tabular-nums text-foreground">{value}</div>
       <div className="mt-0.5 text-micro text-muted">{label}</div>
     </div>
   );
