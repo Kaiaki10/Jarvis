@@ -55,6 +55,15 @@ but need a public redirect URL.
 
 ## Closed
 
+- **2026-08-20** The new Slack agent bridge shipped with an open-by-default allowlist —
+  the setup UI invited leaving "Allowed Slack user IDs" blank to "allow anyone in the
+  installed workspace," and a Slack turn gets the same tool access as the dashboard (full
+  agent permission mode, no per-message approval). Any workspace member, not just the
+  operator, could have driven an agent and read local files through it. Found by security
+  review before the branch's first push to the now-public repo, closed before push by
+  making the allowlist a required field and refusing to start the Socket Mode connection
+  without at least one allowed Slack user ID (`slackAgentBridge.ts`).
+
 - **2026-08-19** Multi-agent data isolation was incomplete outside the original dashboard
   roots — closed by ownership on campaigns, paid growth, customers, evolution, and
   notifications; parent-joined filtering for every child collection; ownership checks on

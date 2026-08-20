@@ -260,6 +260,16 @@ async function connect(runGeneration: number): Promise<void> {
     console.warn("[slack] connection needs both botToken and appToken; open Connections → Slack to finish setup");
     return;
   }
+  if (parseSlackUserIds(creds.allowedUserIds).size === 0) {
+    recordTestResult(
+      "slack",
+      false,
+      null,
+      "Real-time agent chat needs at least one Slack user ID on the allowlist before it will start — anyone else in the workspace could otherwise drive your agents. Add your own Slack user ID and test again."
+    );
+    console.warn("[slack] connection needs at least one allowed Slack user ID; open Connections → Slack to finish setup");
+    return;
+  }
   try {
     const [socketInfo, identity] = await Promise.all([
       slackApi("apps.connections.open", creds.appToken),

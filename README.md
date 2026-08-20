@@ -150,7 +150,7 @@ pauses for your approval first, where you can edit the draft before it sends.
 Slack is also a real-time front door to the same continuous agent conversations used by
 the dashboard. It uses Slack Socket Mode: the local orchestrator opens an outbound WebSocket,
 so no tunnel, public webhook, or remote Jarvis server is required. Configure the two tokens
-on Connections → Slack and leave the orchestrator running.
+and your Slack user ID on Connections → Slack and leave the orchestrator running.
 
 - Mention the Jarvis app in a channel or send it a direct message.
 - Send `agents` to list the active agents.
@@ -158,7 +158,9 @@ on Connections → Slack and leave the orchestrator running.
   bound to that agent afterward, and the turn is appended to that agent's normal Jarvis chat.
 - If a tool needs approval, Slack tells you to decide in the local dashboard and posts the
   completed answer back into the same thread afterward.
-- Use the optional Slack user-ID allowlist to restrict who can operate your agents.
+- The Slack user-ID allowlist is required: only the IDs you list can operate your agents.
+  Anyone else in the workspace is refused, since a Slack turn gets the same tool access as
+  the dashboard, with no per-message approval.
 
 Inbound event IDs are deduplicated across reconnects. Tokens remain encrypted in the local
 SQLite database; decrypted values are never returned by the API.
