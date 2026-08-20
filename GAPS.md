@@ -55,6 +55,35 @@ but need a public redirect URL.
 
 ## Closed
 
+- **2026-08-20** After the IPv6-loopback fix, the same user's Firefox still
+  bounced straight back to `/login?from=%2F` on a fresh tab, even though the
+  passkey ceremony kept succeeding server-side every time (a new valid
+  session, confirmed via direct DB inspection, on every attempt) — but that
+  session was never touched again afterward, meaning the browser's very next
+  request never carried the cookie at all. Root cause: the login page called
+  the orchestrator directly, cross-port (`:3000` → `:4317`), with
+  `credentials: "include"` — and a session cookie set by a *cross-origin*
+  fetch response is exactly what browsers' cross-site cookie protections
+  (Firefox's Total Cookie Protection foremost, but this isn't Firefox-only)
+  are designed to restrict, in ways that depend on privacy settings this app
+  has no way to detect. Two clean-profile Playwright reproductions of the
+  same cross-origin flow both worked, which is why this took two rounds to
+  find — the failure mode is specific to real-world privacy configurations,
+  not the mechanism in the abstract.
+
+  Closed by removing the cross-origin dependency entirely rather than
+  chasing browser-specific settings: `apps/web/src/app/api/auth/[...path]/route.ts`
+  proxies `/api/auth/*` to the orchestrator's `/auth/*` server-side (Node
+  fetch, never subject to browser cookie policy at all — the same reason
+  `proxy.ts`'s own session check was always reliable), relaying the
+  `Set-Cookie` header back as its own same-origin response. The browser now
+  only ever talks to its own origin for auth, making the session cookie an
+  ordinary first-party cookie — the most universally-supported cookie
+  mechanism there is, not a special case any privacy policy singles out.
+  Verified live: full registration through the new proxy in Chromium, then a
+  fresh Firefox context honoring that exact session without bouncing to
+  `/login`.
+
 - **2026-08-20** A real user's Firefox session stayed stuck after a *working*
   login — the passkey ceremony succeeded, the redirect to `/` fired correctly
   (confirmed: URL bar changed, no /login in it), but the dashboard itself

@@ -6,14 +6,18 @@ import { KeyRound, ShieldCheck } from "lucide-react";
 import { startRegistration, startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { BASE_URL } from "@/lib/api";
 
 type Status = "checking" | "register" | "login" | "unsupported";
 
+/**
+ * Same-origin calls to /api/auth/* (proxied to the orchestrator's /auth/*
+ * server-side) rather than calling the orchestrator directly cross-port —
+ * see that route's own comment for why: a cross-origin Set-Cookie response
+ * proved unreliable in a real user's browser, this isn't.
+ */
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`/api${path}`, {
     ...init,
-    credentials: "include",
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   const body = (await res.json().catch(() => ({}))) as T & { error?: string };
