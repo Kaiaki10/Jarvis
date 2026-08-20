@@ -19,12 +19,21 @@
  *   degrading silently. The origin guard still blocks a browser from reaching
  *   it, which is the attack that matters; the residual exposure is a local
  *   process stopping a local service, strictly less than the access it has now.
+ * - `/auth` is necessarily pre-auth: a browser that does not yet hold the API
+ *   token (because it has not logged in) still needs to reach the WebAuthn
+ *   ceremony and session routes that would grant it one. This does not widen
+ *   the drive-by surface described above — the origin guard runs first and
+ *   still rejects any origin outside `ALLOWED_ORIGINS`, and the routes
+ *   themselves enforce their own rules (registration refuses a second
+ *   operator without an existing session; login/session/logout are
+ *   inherently unauthenticated by definition). See `security/operatorAuth.ts`.
  */
 export const UNAUTHENTICATED_PREFIXES = [
   "/widget",
   "/webhooks",
   "/health",
   "/shutdown",
+  "/auth",
 ] as const;
 
 export function isUnauthenticatedPath(path: string): boolean {

@@ -71,8 +71,20 @@ import type {
   ChatModel,
 } from "@jarvis/shared";
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_ORCHESTRATOR_URL ?? "http://127.0.0.1:4317";
+/**
+ * `localhost`, not `127.0.0.1` — proven live while building passkey login
+ * (`app/login/page.tsx`): Chromium's WebAuthn implementation rejects an
+ * IP-literal RP ID outright ("This is an invalid domain."), and `localhost`
+ * is the only loopback hostname it accepts without a real DNS domain. Once
+ * the page's own origin has to be `localhost` for that reason, every
+ * orchestrator call from the browser has to target `localhost` too — mixing
+ * `localhost` and `127.0.0.1` are different *sites* for SameSite cookie
+ * purposes despite both resolving to loopback, so the session cookie
+ * wouldn't reach the orchestrator otherwise. This matches `WEB_ORIGIN`'s own
+ * default in `http/server.ts`, which already assumed `localhost`.
+ */
+export const BASE_URL =
+  process.env.NEXT_PUBLIC_ORCHESTRATOR_URL ?? "http://localhost:4317";
 
 export const customerWidgetDemoUrl = `${BASE_URL}/widget/demo`;
 export const customerWidgetEmbedCode = `<script src="${BASE_URL}/widget/customer-chat.js" data-jarvis-url="${BASE_URL}" async></script>`;

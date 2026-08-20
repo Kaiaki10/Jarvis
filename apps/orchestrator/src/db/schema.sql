@@ -491,6 +491,72 @@ CREATE TABLE IF NOT EXISTS customer_message_deliveries (
   updated_at TEXT NOT NULL
 );
 
+-- The human who owns this Jarvis install. Exactly one exists in the common
+-- case; a second passkey (a phone, a backup key) adds a credential to the
+-- same operator rather than creating a second one — this table gives login a
+-- real identity to attach to without pretending Jarvis is multi-tenant.
+CREATE TABLE IF NOT EXISTS operators (
+  id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+-- A registered passkey. credential_id is the id WebAuthn itself assigns and
+-- is already globally unique, so it is the primary key rather than a
+-- generated one. public_key is the base64url-encoded COSE key SimpleWebAuthn
+-- returns; counter guards against a cloned authenticator being replayed.
+CREATE TABLE IF NOT EXISTS operator_credentials (
+  credential_id TEXT PRIMARY KEY,
+  operator_id TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+  public_key TEXT NOT NULL,
+  counter INTEGER NOT NULL DEFAULT 0,
+  transports TEXT,
+  device_label TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  last_used_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_operator_credentials_operator
+  ON operator_credentials(operator_id);
+
+-- Empty until a second identity provider (e.g. Sign in with ChatGPT) ships.
+-- Its own table, not a column on operators, so a provider attaches to an
+-- existing operator instead of forcing a schema rewrite when it arrives.
+CREATE TABLE IF NOT EXISTS operator_identities (
+  operator_id TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  provider_subject TEXT NOT NULL,
+  linked_at TEXT NOT NULL,
+  PRIMARY KEY (provider, provider_subject)
+);
+
+-- DB-backed so a session survives an orchestrator restart, matching the rest
+-- of this project's bias toward durable over in-memory state.
+CREATE TABLE IF NOT EXISTS operator_sessions (
+  id TEXT PRIMARY KEY,
+  operator_id TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_operator_sessions_operator
+  ON operator_sessions(operator_id, expires_at DESC);
+
+-- A pending WebAuthn ceremony's challenge, bridging the options/verify round
+-- trip. Short-lived by construction: verify deletes its row on success or
+-- failure, and a fresh ceremony sweeps expired rows rather than needing a
+-- scheduled job for what is, worst case, a handful of abandoned rows.
+CREATE TABLE IF NOT EXISTS webauthn_challenges (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  challenge TEXT NOT NULL,
+  operator_id TEXT REFERENCES operators(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS customer_service_policy (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   enabled INTEGER NOT NULL DEFAULT 0,

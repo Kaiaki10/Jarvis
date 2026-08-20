@@ -155,6 +155,19 @@ import { trendsOverview } from "../insights/trendsService.js";
 import { apiToken, isValidToken, tokenFromRequest } from "../security/apiToken.js";
 import { isAllowedOrigin, isUnauthenticatedPath } from "./authGuard.js";
 import {
+  beginAuthentication,
+  beginRegistration,
+  completeAuthentication,
+  completeRegistration,
+  endOperatorSession,
+  readCookie,
+  resolveSession,
+  SESSION_COOKIE_NAME,
+  sessionCookieOptions,
+  startOperatorSession,
+} from "../security/operatorAuth.js";
+import { countOperators } from "../db/operatorRepo.js";
+import {
   appendConversationMessage,
   createConversation,
   deleteConversation,
@@ -295,7 +308,12 @@ app.use("/widget", (req: Request, res: Response, next) => {
   if (req.method === "OPTIONS") { res.status(204).send(); return; }
   next();
 });
-app.use(cors({ origin: ALLOWED_ORIGINS }));
+// `credentials: true` lets the browser send/receive the operator session
+// cookie across the :3000/:4317 port split — cookies are host-scoped, not
+// port-scoped, but a cross-origin fetch still needs the server's explicit
+// opt-in (and a non-wildcard origin, which ALLOWED_ORIGINS already is) before
+// the browser will attach or accept one.
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
 app.use(express.json({
   limit: "1mb",
   verify: (req, _res, buffer) => { (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer); },
@@ -364,6 +382,114 @@ app.post("/shutdown", (_req: Request, res: Response) => {
   // Let the response flush before closing the listener and marking active work
   // interrupted. This gives the service wrapper a reliable graceful-stop path.
   setImmediate(shutdown);
+});
+
+// ---- Auth ----
+//
+// Replaces "anyone who can reach this dashboard is already the operator"
+// (see `security/apiToken.ts`) with a real login: a passkey proves a browser
+// belongs to the human who set this install up, gating the dashboard itself
+// rather than just the API calls it makes once inside. These routes are
+// unauthenticated by necessity (see `authGuard.ts`'s `/auth` entry) — a
+// browser without a session cookie yet still needs to reach them to get one.
+// The bearer-token model below is untouched: it keeps proving "this caller
+// is the dashboard," which is a different question from "this browser is the
+// operator."
+
+function currentOperator(req: Request) {
+  return resolveSession(readCookie(req.headers.cookie, SESSION_COOKIE_NAME));
+}
+
+/** A human-readable hint for which browser a session belongs to, shown nowhere yet but stored for later device-management UI. */
+function userAgentLabel(req: Request): string | undefined {
+  const ua = req.headers["user-agent"];
+  return typeof ua === "string" ? ua.slice(0, 200) : undefined;
+}
+
+app.get("/auth/status", (_req: Request, res: Response) => {
+  res.json({ hasOperator: countOperators() > 0 });
+});
+
+app.get("/auth/session", (req: Request, res: Response) => {
+  const operator = currentOperator(req);
+  if (!operator) {
+    res.status(401).json({ error: "Not logged in" });
+    return;
+  }
+  res.json({ operator: { id: operator.id, displayName: operator.displayName } });
+});
+
+app.post("/auth/logout", (req: Request, res: Response) => {
+  endOperatorSession(readCookie(req.headers.cookie, SESSION_COOKIE_NAME));
+  res.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
+  res.json({ ok: true });
+});
+
+app.post("/auth/webauthn/register/options", async (req: Request, res: Response) => {
+  try {
+    // Bootstrapping the first operator has no session yet; adding a second
+    // passkey to an existing operator does — `beginRegistration` re-checks
+    // both cases itself rather than trusting which branch the caller reached.
+    const actingOperator = currentOperator(req);
+    const { ceremonyId, options } = await beginRegistration(actingOperator?.id ?? null);
+    res.json({ ceremonyId, options });
+  } catch (err) {
+    res.status(409).json({ error: err instanceof Error ? err.message : "Could not start registration" });
+  }
+});
+
+app.post("/auth/webauthn/register/verify", async (req: Request, res: Response) => {
+  const body = req.body as {
+    ceremonyId?: unknown;
+    response?: unknown;
+    displayName?: unknown;
+    deviceLabel?: unknown;
+  };
+  if (typeof body.ceremonyId !== "string" || typeof body.response !== "object" || body.response === null) {
+    res.status(400).json({ error: "Malformed registration response" });
+    return;
+  }
+  try {
+    const { operator } = await completeRegistration({
+      ceremonyId: body.ceremonyId,
+      response: body.response as Parameters<typeof completeRegistration>[0]["response"],
+      displayName: typeof body.displayName === "string" ? body.displayName : undefined,
+      deviceLabel: typeof body.deviceLabel === "string" ? body.deviceLabel : undefined,
+    });
+    const session = startOperatorSession(operator.id, userAgentLabel(req));
+    res.cookie(SESSION_COOKIE_NAME, session.id, sessionCookieOptions());
+    res.status(201).json({ operator: { id: operator.id, displayName: operator.displayName } });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Registration failed" });
+  }
+});
+
+app.post("/auth/webauthn/login/options", async (_req: Request, res: Response) => {
+  try {
+    const { ceremonyId, options } = await beginAuthentication();
+    res.json({ ceremonyId, options });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Could not start login" });
+  }
+});
+
+app.post("/auth/webauthn/login/verify", async (req: Request, res: Response) => {
+  const body = req.body as { ceremonyId?: unknown; response?: unknown };
+  if (typeof body.ceremonyId !== "string" || typeof body.response !== "object" || body.response === null) {
+    res.status(400).json({ error: "Malformed login response" });
+    return;
+  }
+  try {
+    const result = await completeAuthentication({
+      ceremonyId: body.ceremonyId,
+      response: body.response as Parameters<typeof completeAuthentication>[0]["response"],
+    });
+    const session = startOperatorSession(result.operatorId, userAgentLabel(req));
+    res.cookie(SESSION_COOKIE_NAME, session.id, sessionCookieOptions());
+    res.json({ operator: { id: result.operatorId, displayName: result.displayName } });
+  } catch (err) {
+    res.status(401).json({ error: err instanceof Error ? err.message : "Login failed" });
+  }
 });
 
 // ---- Sessions ----

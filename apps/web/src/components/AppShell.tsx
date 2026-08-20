@@ -331,6 +331,13 @@ function ShellFrame({ children }: { children: ReactNode }) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  // /login has to work before the orchestrator will hand out an API token at
+  // all (see app/api/token/route.ts) — it can't sit inside StoreProvider,
+  // which needs a token on mount to open its SSE connection.
+  if (pathname === "/login") return <>{children}</>;
+
   return (
     <StoreProvider>
       <ExperienceModeProvider>
