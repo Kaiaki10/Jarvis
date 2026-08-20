@@ -23,7 +23,17 @@ import type { SetupStepDefinition, TestConnectionResult } from "@jarvis/shared";
 import { useConnections } from "@/lib/hooks";
 import { usePlatformSignup } from "@/lib/store";
 import { api } from "@/lib/api";
+import dynamic from "next/dynamic";
 import { StripeFundingPanel } from "@/components/StripeFundingPanel";
+
+// @base-org/account's Node-side export pulls in an unrelated, broken Solana/X402
+// dependency chain through @coinbase/cdp-sdk (a package this panel never actually
+// calls server-side) — ssr: false keeps that resolution out of the server bundle
+// entirely, since this panel only ever needs the SDK in the browser anyway.
+const WalletFundingPanel = dynamic(
+  () => import("@/components/WalletFundingPanel").then((m) => m.WalletFundingPanel),
+  { ssr: false }
+);
 import { Card, CardBody } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -275,6 +285,12 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
                   connection?.status === "connected" &&
                   connection.fieldHints.publishableKey && (
                     <StripeFundingPanel publishableKey={connection.fieldHints.publishableKey} />
+                  )}
+
+                {platform.id === "coinbase" &&
+                  connection?.status === "connected" &&
+                  connection.fieldHints.operatorAddress && (
+                    <WalletFundingPanel operatorAddress={connection.fieldHints.operatorAddress} />
                   )}
 
                 {hasSavedCredentials && (

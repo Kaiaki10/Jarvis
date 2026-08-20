@@ -106,6 +106,7 @@ import {
   startPlatformSignupSchema,
   stripeRevealSessionSchema,
   updateScheduledTaskSchema,
+  walletSpendSchema,
   updateSettingsSchema,
   updateTaskSchema,
   createMissionSchema,
@@ -251,6 +252,12 @@ import {
   issueStripeCard,
   listStripeCards,
 } from "../billing/stripeFunding.js";
+import {
+  getSpenderAddress,
+  listGrantedPermissions,
+  listWalletSpends,
+  spendFromPermission,
+} from "../billing/walletFunding.js";
 import { sendAgentChat } from "../agents/agentChat.js";
 import { interruptCodexSession, sendCodexFollowUp } from "../sessions/codexSessionManager.js";
 import {
@@ -2327,6 +2334,43 @@ app.post("/billing/stripe/cards/:cardId/reveal-session", async (req: Request, re
     res.json(await createCardRevealSession(req.params.cardId, body.nonce));
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Could not start a reveal session" });
+  }
+});
+
+// ---- Coinbase Spend Permission spend ----
+//
+// Jarvis never holds a wallet private key — see billing/walletFunding.ts.
+// These routes only ever read the spender address, read permissions the
+// operator has already granted from their own wallet, and spend within one.
+
+app.get("/billing/wallet/spender-address", async (_req: Request, res: Response) => {
+  try {
+    res.json({ address: await getSpenderAddress() });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not read Jarvis's spender address" });
+  }
+});
+
+app.get("/billing/wallet/permissions", async (_req: Request, res: Response) => {
+  try {
+    res.json(await listGrantedPermissions());
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not read granted permissions" });
+  }
+});
+
+app.get("/billing/wallet/spends", (_req: Request, res: Response) => {
+  res.json(listWalletSpends());
+});
+
+app.post("/billing/wallet/spend", async (req: Request, res: Response) => {
+  const body = validatedBody(walletSpendSchema, req, res);
+  if (!body) return;
+  try {
+    const spend = await spendFromPermission(body);
+    res.status(201).json(spend);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not spend from this permission" });
   }
 });
 

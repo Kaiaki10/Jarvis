@@ -71,6 +71,8 @@ import type {
   IssueStripeCardRequest,
   StripeRevealSessionRequest,
   StripeRevealSession,
+  WalletPermission,
+  WalletSpendRecord,
   PaidGrowthCampaignRecord,
   PaidGrowthDecisionRecord,
   CreatePaidGrowthCampaignRequest,
@@ -446,6 +448,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getWalletSpenderAddress: () => request<{ address: string }>("/billing/wallet/spender-address"),
+  listWalletPermissions: () => request<WalletPermission[]>("/billing/wallet/permissions"),
+  listWalletSpends: () => request<WalletSpendRecord[]>("/billing/wallet/spends"),
 
   getStorage: () => request<StorageStats>("/storage"),
   compactStorage: () =>

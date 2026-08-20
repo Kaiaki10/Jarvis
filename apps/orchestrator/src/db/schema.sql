@@ -179,6 +179,21 @@ CREATE TABLE IF NOT EXISTS stripe_cards (
   created_at TEXT NOT NULL
 );
 
+-- A spend Jarvis executed against an operator-granted Coinbase Spend
+-- Permission (billing/walletFunding.ts). The permission's own on-chain
+-- allowance is the real enforcement; this table is the local audit trail —
+-- same role platform_actions plays for social/ads actions.
+CREATE TABLE IF NOT EXISTS wallet_spends (
+  id TEXT PRIMARY KEY,
+  purpose_label TEXT NOT NULL,
+  amount_minor INTEGER NOT NULL,
+  token TEXT NOT NULL,
+  tx_hash TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_spends_created ON wallet_spends(created_at DESC);
+
 -- Slack conversations stay attached to the same Jarvis agent across restarts.
 -- The Slack message body is deliberately not stored here; the canonical
 -- transcript remains the encrypted/local Jarvis session history.

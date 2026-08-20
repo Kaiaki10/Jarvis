@@ -387,6 +387,14 @@ export const issueStripeCardSchema = z
 
 export const stripeRevealSessionSchema = z.object({ nonce: z.string().min(1).max(2000) }).strict();
 
+export const walletSpendSchema = z
+  .object({
+    purposeLabel: z.string().trim().min(1).max(200),
+    amountMinor: z.number().int().positive(),
+    permissionHash: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
 export const updateSettingsSchema = z
   .object({
     businessContext: z.string().max(200_000).optional(),

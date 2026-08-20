@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { CdpClient } from "@coinbase/cdp-sdk";
 import type { PlatformDefinition, TestConnectionResult } from "@jarvis/shared";
 import { oauth1Header } from "./oauth1.js";
 
@@ -785,7 +786,85 @@ const stripe: Platform = {
   },
 };
 
-export const PLATFORMS: Platform[] = [x, facebook, instagram, slack, discord, resend, googleAds, metaAds, xAds, push, stripe];
+const coinbase: Platform = {
+  definition: {
+    id: "coinbase",
+    name: "Coinbase Wallet",
+    tagline: "Spend USDC from your own Coinbase Smart Wallet within a bounded allowance you grant.",
+    category: "finance",
+    docsUrl: "https://portal.cdp.coinbase.com",
+    fields: [
+      {
+        key: "cdpApiKeyId",
+        label: "CDP API Key ID",
+        help: "From the CDP Portal → API Keys. This and the two fields below identify Jarvis's own spender identity — separate from your wallet's own keys, which never leave Coinbase's infrastructure.",
+        secret: true,
+      },
+      {
+        key: "cdpApiKeySecret",
+        label: "CDP API Key Secret",
+        help: "Shown once when you create the API key — copy it immediately.",
+        secret: true,
+      },
+      {
+        key: "cdpWalletSecret",
+        label: "CDP Wallet Secret",
+        help: "Generated separately from the API key, also in the CDP Portal, under the same project.",
+        secret: true,
+      },
+      {
+        key: "operatorAddress",
+        label: "Your Smart Wallet address",
+        help: "The Coinbase Smart Wallet you'll grant a spend permission from — the one holding the actual USDC. Not secret; it's a public address.",
+        placeholder: "0x…",
+        secret: false,
+      },
+    ],
+    capabilities: ["Bounded autonomous spend via Spend Permissions", "Keys never leave Coinbase's infrastructure", "USDC on Base"],
+    dataFreshness: "Real-time",
+    steps: [
+      {
+        title: "Create a CDP API key and Wallet Secret",
+        body: [
+          "In the CDP Portal, create an API key and generate a Wallet Secret under the same project.",
+          "These let Jarvis's server control its own spender identity — a separate account from your own wallet, which Coinbase custodies inside a Trusted Execution Environment.",
+        ],
+        linkUrl: "https://portal.cdp.coinbase.com",
+        linkLabel: "Open CDP Portal",
+      },
+      {
+        title: "Save credentials, then copy Jarvis's spender address",
+        body: [
+          "Enter the three CDP fields below and save — Jarvis creates its spender account the first time it connects.",
+          "Once connected, this page shows the spender address you'll grant a permission to in the next step.",
+        ],
+      },
+      {
+        title: "Grant a Spend Permission",
+        body: [
+          "Using the panel below, connect your own Coinbase Smart Wallet and set an allowance (e.g. $50/week) authorizing Jarvis's spender address specifically — not a blank check, a bounded one you can revoke or tighten anytime from your wallet.",
+          "This step happens entirely in your browser, signed by your own wallet. Jarvis never sees your wallet's private key at any point.",
+        ],
+        warning: "Only grant what you're comfortable Jarvis spending autonomously within — the on-chain contract enforces the limit, not Jarvis's own judgment.",
+      },
+    ],
+  },
+  async test(creds) {
+    try {
+      const cdp = new CdpClient({
+        apiKeyId: creds.cdpApiKeyId,
+        apiKeySecret: creds.cdpApiKeySecret,
+        walletSecret: creds.cdpWalletSecret,
+      });
+      const spender = await cdp.evm.getOrCreateAccount({ name: "jarvis-spender" });
+      return { ok: true, detail: `Connected — Jarvis's spender address is ${spender.address}` };
+    } catch (err) {
+      return failure(err instanceof Error ? err.message : "Coinbase rejected the credentials.");
+    }
+  },
+};
+
+export const PLATFORMS: Platform[] = [x, facebook, instagram, slack, discord, resend, googleAds, metaAds, xAds, push, stripe, coinbase];
 
 export function getPlatform(id: string): Platform | undefined {
   return PLATFORMS.find((p) => p.definition.id === id);

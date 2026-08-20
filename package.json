@@ -5,6 +5,9 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "axios": "^1.19.0"
+  },
   "scripts": {
     "dev:web": "npm run dev -w apps/web",
     "dev:orchestrator": "npm run dev -w apps/orchestrator"

@@ -365,6 +365,39 @@ export interface StripeRevealSession {
   ephemeralKeySecret: string;
 }
 
+/**
+ * A Coinbase Spend Permission Jarvis's spender address has been granted,
+ * read back from the chain — not something Jarvis creates or stores itself.
+ * `allowanceMinor` is a decimal string (the on-chain value is a bigint,
+ * which JSON can't carry) in the token's smallest unit (6 decimals for
+ * USDC). See `billing/walletFunding.ts`.
+ */
+export interface WalletPermission {
+  permissionHash: string;
+  /** Contract address; `null` label means Jarvis didn't recognize this token. */
+  token: string;
+  tokenLabel: string | null;
+  allowanceMinor: string;
+  periodSeconds: number;
+  start: number;
+  end: number;
+}
+
+export interface WalletSpendRecord {
+  id: string;
+  purposeLabel: string;
+  amountMinor: number;
+  token: string;
+  txHash: string | null;
+  createdAt: string;
+}
+
+export interface WalletSpendRequest {
+  purposeLabel: string;
+  amountMinor: number;
+  permissionHash: string;
+}
+
 export type ConnectionStatus = "not_connected" | "connected" | "error";
 
 export interface ConnectionRecord {
