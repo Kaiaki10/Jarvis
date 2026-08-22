@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { checkCapacity } from "./envelopes.js";
 import type { IssuingBalanceLine, StripeCardRecord } from "@jarvis/shared";
 import { db } from "../db/db.js";
 import { getConnectionCredentials } from "../db/connectionsRepo.js";
@@ -62,6 +63,23 @@ export async function issueStripeCard(input: {
   monthlyLimitMinor: number;
 }): Promise<StripeCardRecord> {
   const { cardholderId } = stripeCreds();
+
+  // Checked before the card exists, so a refusal leaves nothing to clean up.
+  // Capacity rather than spend: Stripe enforces each card's limit at swipe
+  // time, but nothing stops Jarvis issuing a tenth card — the envelope bounds
+  // the total authority handed out, which is the number Stripe never sees.
+  const committed = activeCardCapacityMinor();
+  const capacity = checkCapacity({
+    rail: "card",
+    committedMinor: committed,
+    addingMinor: input.monthlyLimitMinor,
+    currency: "USD",
+    period: "month",
+  });
+  if (!capacity.allowed) {
+    throw new Error(capacity.reason ?? "This card is outside the card spending limit.");
+  }
+
   const card = await client().issuing.cards.create({
     cardholder: cardholderId,
     currency: "usd",
@@ -78,9 +96,9 @@ export async function issueStripeCard(input: {
   });
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO stripe_cards (card_id, purpose_label, brand, last4, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(card.id, input.purposeLabel, card.brand, card.last4, card.status, now);
+    `INSERT INTO stripe_cards (card_id, purpose_label, monthly_limit_minor, brand, last4, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(card.id, input.purposeLabel, input.monthlyLimitMinor, card.brand, card.last4, card.status, now);
   return { cardId: card.id, purposeLabel: input.purposeLabel, brand: card.brand, last4: card.last4, status: card.status, createdAt: now };
 }
 
@@ -108,4 +126,26 @@ export async function createCardRevealSession(
   );
   if (!key.secret) throw new Error("Stripe did not return an ephemeral key.");
   return { ephemeralKeySecret: key.secret };
+}
+
+/**
+ * Total monthly capacity across cards that can still be charged.
+ *
+ * Cancelled cards are excluded — retiring a card should free its allowance,
+ * or the envelope would ratchet permanently downward as cards are rotated.
+ * Cards issued before the limit was recorded count as zero rather than being
+ * guessed at; under-counting an old card is safer than inventing a number,
+ * and it self-corrects as cards are reissued.
+ */
+export function activeCardCapacityMinor(): number {
+  const row = db
+    .prepare(
+      // Both spellings: Stripe reports 'canceled', while cancelStripeCard
+      // writes 'inactive'. Excluding only one would leave retired cards
+      // consuming the envelope forever.
+      `SELECT COALESCE(SUM(monthly_limit_minor), 0) AS total FROM stripe_cards
+       WHERE status NOT IN ('canceled', 'inactive')`
+    )
+    .get() as unknown as { total: number };
+  return row.total;
 }

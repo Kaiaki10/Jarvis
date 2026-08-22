@@ -27,8 +27,15 @@ async function connectStripe() {
 }
 
 describe("stripeFunding", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     Object.values(stripeMocks).forEach((mock) => mock.mockReset());
+    // Issuing a card now requires a card envelope — a rail with no limit
+    // refuses to authorise spending at all. See billing/envelopes.ts.
+    const { db } = await import("../db/db.js");
+    db.exec("DELETE FROM stripe_cards");
+    db.exec("DELETE FROM spend_envelopes");
+    const { setEnvelope } = await import("./envelopes.js");
+    setEnvelope({ rail: "card", period: "month", limitMinor: 1_000_000, currency: "USD" });
   });
   afterEach(() => {
     vi.restoreAllMocks();

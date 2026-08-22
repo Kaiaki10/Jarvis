@@ -181,6 +181,9 @@ CREATE INDEX IF NOT EXISTS idx_signup_email_events_platform ON signup_email_even
 CREATE TABLE IF NOT EXISTS stripe_cards (
   card_id TEXT PRIMARY KEY,
   purpose_label TEXT NOT NULL,
+  -- What capacity this card authorises. Stripe enforces it at swipe time; this
+  -- copy is what lets Jarvis check its own envelope before issuing another.
+  monthly_limit_minor INTEGER,
   brand TEXT NOT NULL,
   last4 TEXT NOT NULL,
   status TEXT NOT NULL,

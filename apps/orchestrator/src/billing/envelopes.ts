@@ -241,3 +241,68 @@ export function listSpendLedger(limit = 100, agentId?: string | null): SpendLedg
     createdAt: row.created_at,
   }));
 }
+
+/**
+ * Whether adding authorised capacity on a rail stays inside its envelope.
+ *
+ * Distinct from `checkEnvelopes`, and deliberately so. A wallet spend is a
+ * transaction: money moves and the ledger sums it. A Stripe card limit or an ad
+ * daily budget is *capacity* — permission for money to move later, enforced by
+ * the provider at swipe or delivery time. Summing a ledger of past transactions
+ * would answer the wrong question for those, so the caller passes what is
+ * already committed on the rail and this checks the total.
+ *
+ * Same currency rule as everywhere else: mismatches are refused, never
+ * converted.
+ */
+export function checkCapacity(input: {
+  rail: SpendRail;
+  /** Capacity already authorised on this rail, in minor units. */
+  committedMinor: number;
+  addingMinor: number;
+  currency: string;
+  period: SpendPeriod;
+  agentId?: string | null;
+}): EnvelopeCheck {
+  const currency = input.currency.toUpperCase();
+  if (input.addingMinor < 0) {
+    return { allowed: false, reason: "Capacity cannot be negative." };
+  }
+
+  const applicable = listEnvelopes(input.agentId).filter(
+    (envelope) => envelope.rail === input.rail && envelope.period === input.period
+  );
+  if (applicable.length === 0) {
+    return {
+      allowed: false,
+      reason:
+        `No ${input.period}ly limit is set for the ${input.rail} rail, so Jarvis will not ` +
+        `authorise spending on it. Set one first.`,
+    };
+  }
+
+  const matching = applicable.filter((e) => e.currency === currency);
+  if (matching.length === 0) {
+    return {
+      allowed: false,
+      reason:
+        `The ${input.rail} limit is set in ${applicable[0].currency} but this is in ${currency}. ` +
+        `Jarvis does not convert between currencies — set a ${currency} limit.`,
+    };
+  }
+
+  for (const envelope of matching) {
+    const total = input.committedMinor + input.addingMinor;
+    if (total > envelope.limitMinor) {
+      return {
+        allowed: false,
+        envelope,
+        reason:
+          `This would authorise ${total} ${currency} minor units across the ${input.rail} rail, ` +
+          `over the ${envelope.period}ly limit of ${envelope.limitMinor}.`,
+      };
+    }
+  }
+
+  return { allowed: true };
+}

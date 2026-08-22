@@ -147,6 +147,7 @@ for (const migration of [
   { table: "tasks", column: "mission_id", sql: "ALTER TABLE tasks ADD COLUMN mission_id TEXT REFERENCES missions(id) ON DELETE SET NULL" },
   { table: "platform_actions", column: "external_post_id", sql: "ALTER TABLE platform_actions ADD COLUMN external_post_id TEXT" },
   { table: "content_publication_runs", column: "external_post_id", sql: "ALTER TABLE content_publication_runs ADD COLUMN external_post_id TEXT" },
+  { table: "stripe_cards", column: "monthly_limit_minor", sql: "ALTER TABLE stripe_cards ADD COLUMN monthly_limit_minor INTEGER" },
   { table: "workflow_characters", column: "version", sql: "ALTER TABLE workflow_characters ADD COLUMN version INTEGER NOT NULL DEFAULT 1" },
   { table: "content_items", column: "character_version", sql: "ALTER TABLE content_items ADD COLUMN character_version INTEGER" },
   { table: "workflow_generation_runs", column: "character_version", sql: "ALTER TABLE workflow_generation_runs ADD COLUMN character_version INTEGER" },
