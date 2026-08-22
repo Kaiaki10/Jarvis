@@ -366,6 +366,8 @@ export interface SignupEmailEvent {
 export interface StripeCardRecord {
   cardId: string;
   purposeLabel: string;
+  /** Monthly authority this card carries. Null for cards issued before it was recorded. */
+  monthlyLimitMinor: number | null;
   brand: string;
   last4: string;
   status: string;

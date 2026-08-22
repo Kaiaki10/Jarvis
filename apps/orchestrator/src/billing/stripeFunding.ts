@@ -15,6 +15,7 @@ import { getConnectionCredentials } from "../db/connectionsRepo.js";
 interface CardRow {
   card_id: string;
   purpose_label: string;
+  monthly_limit_minor: number | null;
   brand: string;
   last4: string;
   status: string;
@@ -25,6 +26,7 @@ function mapCard(row: CardRow): StripeCardRecord {
   return {
     cardId: row.card_id,
     purposeLabel: row.purpose_label,
+    monthlyLimitMinor: row.monthly_limit_minor,
     brand: row.brand,
     last4: row.last4,
     status: row.status,
@@ -99,7 +101,7 @@ export async function issueStripeCard(input: {
     `INSERT INTO stripe_cards (card_id, purpose_label, monthly_limit_minor, brand, last4, status, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(card.id, input.purposeLabel, input.monthlyLimitMinor, card.brand, card.last4, card.status, now);
-  return { cardId: card.id, purposeLabel: input.purposeLabel, brand: card.brand, last4: card.last4, status: card.status, createdAt: now };
+  return { cardId: card.id, purposeLabel: input.purposeLabel, monthlyLimitMinor: input.monthlyLimitMinor, brand: card.brand, last4: card.last4, status: card.status, createdAt: now };
 }
 
 /** Stripe has no real card deletion — this is the standard way to permanently retire one. */

@@ -81,6 +81,9 @@ import type {
   ChatModel,
   ClaudeModel,
   ClaudeUsageSnapshot,
+  SpendEnvelopeRecord,
+  SpendLedgerEntry,
+  SetSpendEnvelopeRequest,
   WorkflowCharacterRecord,
   SaveWorkflowCharacterRequest,
 } from "@jarvis/shared";
@@ -228,6 +231,12 @@ export const api = {
     request<MemoryRecord>(scoped(`/memories/${id}`), { method: "PATCH", body: JSON.stringify(patch) }),
   listSessions: () => request<SessionRecord[]>(scoped("/sessions")),
   /** Subscription headroom. Not agent-scoped — one Claude account behind them all. */
+getSpend: () =>
+    request<{ envelopes: SpendEnvelopeRecord[]; ledger: SpendLedgerEntry[] }>(scoped("/spend")),
+  setSpendEnvelope: (body: SetSpendEnvelopeRequest) =>
+    request<SpendEnvelopeRecord>(scoped("/spend/envelopes"), { method: "PUT", body: JSON.stringify(body) }),
+  removeSpendEnvelope: (id: string) =>
+    request<void>(`/spend/envelopes/${id}`, { method: "DELETE" }),
   getUsage: () => request<ClaudeUsageSnapshot>("/usage"),
   deleteSession: (id: string) =>
     request<void>(scoped(`/sessions/${id}`), { method: "DELETE" }),

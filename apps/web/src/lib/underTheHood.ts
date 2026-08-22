@@ -3,6 +3,8 @@ import {
   Brain,
   CalendarClock,
   Coins,
+  CreditCard,
+  Receipt,
   FlaskConical,
   Megaphone,
   Plug,
@@ -81,12 +83,14 @@ export const UNDER_THE_HOOD_MODULES: UnderTheHoodModule[] = [
     slug: "money",
     label: "Money",
     icon: Wallet,
-    description: "Cards, budgets, and the spend ledger",
-    enabled: false,
+    description: "What Jarvis may spend, and what it has spent",
+    enabled: true,
+    // Budgets first: a rail with no limit does not spend, so this is the switch
+    // that turns paid capability on rather than a report on it.
     features: [
-      { slug: "cards", label: "Cards", icon: Wallet },
       { slug: "budgets", label: "Budgets", icon: Wallet },
-      { slug: "transactions", label: "Transactions", icon: Wallet },
+      { slug: "transactions", label: "Transactions", icon: Receipt },
+      { slug: "cards", label: "Cards", icon: CreditCard },
     ],
   },
   {

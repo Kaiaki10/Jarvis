@@ -81,8 +81,10 @@ describe("stripeFunding", () => {
     const stored = listStripeCards().find((c) => c.cardId === "ic_test_1");
     expect(stored).toBeDefined();
     // Only what Stripe already shows on a receipt — nothing PCI-sensitive.
+    // `monthlyLimitMinor` is the authority the card carries, not card data, and
+    // the Money surface needs it to show what each card consumes of the budget.
     expect(Object.keys(stored as object).sort()).toEqual(
-      ["brand", "cardId", "createdAt", "last4", "purposeLabel", "status"].sort()
+      ["brand", "cardId", "createdAt", "last4", "monthlyLimitMinor", "purposeLabel", "status"].sort()
     );
   });
 
