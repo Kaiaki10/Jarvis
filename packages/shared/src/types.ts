@@ -1353,3 +1353,49 @@ export interface SaveWorkflowCharacterRequest {
 export const CHANNEL_BODY_LIMITS: Partial<Record<MarketingChannel, number>> = {
   x: 280,
 };
+
+// ---- Spend envelopes ----
+
+/** Which rail money moved over. */
+export type SpendRail = "wallet" | "card" | "ad_budget";
+export type SpendPeriod = "day" | "month";
+
+/**
+ * A money limit on one rail.
+ *
+ * Denominated in money rather than actions, because the daily action cap counts
+ * calls and cannot tell twenty cheap posts from twenty expensive ad buys. The
+ * currency is part of the envelope and is never converted — see the refusal in
+ * checkEnvelopes.
+ */
+export interface SpendEnvelopeRecord {
+  id: string;
+  /** Null applies to every agent. */
+  agentId: string | null;
+  rail: SpendRail;
+  period: SpendPeriod;
+  limitMinor: number;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SpendLedgerEntry {
+  id: string;
+  agentId: string | null;
+  rail: SpendRail;
+  amountMinor: number;
+  currency: string;
+  reason: string;
+  sessionId: string | null;
+  /** Provider reference: a transaction hash, a charge id. */
+  externalRef: string | null;
+  createdAt: string;
+}
+
+export interface SetSpendEnvelopeRequest {
+  rail: SpendRail;
+  period: SpendPeriod;
+  limitMinor: number;
+  currency: string;
+}

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { checkEnvelopes, recordSpend } from "./envelopes.js";
 import { CdpClient } from "@coinbase/cdp-sdk";
 import type { WalletPermission, WalletSpendRecord } from "@jarvis/shared";
 import { db } from "../db/db.js";
@@ -126,6 +127,19 @@ export async function spendFromPermission(input: {
     throw new Error("This permission was not granted to Jarvis's spender address.");
   }
 
+  // Checked before the chain call, so a blocked spend costs nothing — no gas,
+  // no transaction. The on-chain allowance is the real enforcement, but it
+  // fails after the money has moved and cannot express "per day". This fails
+  // first, locally, and in the operator's own terms.
+  const envelope = checkEnvelopes({
+    rail: "wallet",
+    amountMinor: input.amountMinor,
+    currency: tokenCurrency(match.permission.token),
+  });
+  if (!envelope.allowed) {
+    throw new Error(envelope.reason ?? "This spend is outside the wallet limit.");
+  }
+
   const { transactionHash } = await spender.useSpendPermission({
     spendPermission: match.permission,
     value: BigInt(input.amountMinor),
@@ -139,6 +153,16 @@ export async function spendFromPermission(input: {
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(id, input.purposeLabel, input.amountMinor, match.permission.token, transactionHash, now);
 
+  // Also to the shared ledger, so "what has Jarvis spent this month" is one
+  // query rather than a union across every provider that moves money.
+  recordSpend({
+    rail: "wallet",
+    amountMinor: input.amountMinor,
+    currency: tokenCurrency(match.permission.token),
+    reason: input.purposeLabel,
+    externalRef: transactionHash,
+  });
+
   return {
     id,
     purposeLabel: input.purposeLabel,
@@ -147,4 +171,16 @@ export async function spendFromPermission(input: {
     txHash: transactionHash,
     createdAt: now,
   };
+}
+
+/**
+ * The currency an on-chain token is denominated in.
+ *
+ * Conservative by design: an unrecognised token returns its own address rather
+ * than being assumed to be USDC. An envelope set in USDC then refuses it, which
+ * is the safe failure — quietly treating an unknown token as dollars is how a
+ * limit authorises the wrong amount.
+ */
+function tokenCurrency(token: string): string {
+  return KNOWN_TOKENS[token.toLowerCase()] ?? token.toLowerCase();
 }

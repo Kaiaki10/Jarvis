@@ -127,9 +127,26 @@ describe("walletFunding", () => {
     expect(cdpMocks.useSpendPermission).not.toHaveBeenCalled();
   });
 
+  it("refuses to spend on a rail with no envelope, before touching the chain", async () => {
+    await connectWallet();
+    mockSpender();
+    cdpMocks.listSpendPermissions.mockResolvedValue({ spendPermissions: [fakePermission({ permissionHash: "0xgood" })] });
+
+    const { spendFromPermission } = await import("./walletFunding.js");
+    await expect(
+      spendFromPermission({ purposeLabel: "Unbudgeted", amountMinor: 1_000, permissionHash: "0xgood" })
+    ).rejects.toThrow(/No spending limit is set/);
+
+    // The point of checking first: no transaction, so no gas was burned.
+    expect(cdpMocks.useSpendPermission).not.toHaveBeenCalled();
+  });
+
   it("spends within a valid permission and records the transaction locally", async () => {
     await connectWallet();
     mockSpender();
+    // An envelope is now required before any spend — see billing/envelopes.ts.
+    const { setEnvelope } = await import("./envelopes.js");
+    setEnvelope({ rail: "wallet", period: "day", limitMinor: 10_000_000, currency: "USDC" });
     cdpMocks.listSpendPermissions.mockResolvedValue({ spendPermissions: [fakePermission({ permissionHash: "0xgood" })] });
     cdpMocks.useSpendPermission.mockResolvedValue({ transactionHash: "0xtxhash123" });
 

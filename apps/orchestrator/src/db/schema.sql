@@ -747,3 +747,49 @@ CREATE TABLE IF NOT EXISTS workflow_character_versions (
   created_at TEXT NOT NULL,
   PRIMARY KEY (workflow_id, version)
 );
+
+-- A money limit on one rail (see UNDER_THE_HOOD_PLAN.md).
+--
+-- Denominated in money rather than actions: the existing daily cap counts
+-- calls, so twenty cheap posts and twenty expensive ad buys look identical to
+-- it. That cap stays as the runaway-loop guard; this bounds spend.
+--
+-- `currency` is part of the envelope and is never converted. A wallet spend in
+-- USDC minor units and a card charge in USD cents are different numbers, and
+-- comparing them would silently authorise the wrong amount. A mismatch is
+-- refused, not guessed -- there are no FX rates in this system.
+CREATE TABLE IF NOT EXISTS spend_envelopes (
+  id TEXT PRIMARY KEY,
+  -- Null applies to every agent, the same private-plus-shared shape as memories.
+  agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE,
+  -- wallet | card | ad_budget
+  rail TEXT NOT NULL,
+  -- day | month
+  period TEXT NOT NULL,
+  limit_minor INTEGER NOT NULL,
+  currency TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_spend_envelopes_scope
+  ON spend_envelopes(rail, period, currency, IFNULL(agent_id, ''));
+
+-- Every spend, whatever rail it moved over, so "what has Jarvis spent this
+-- month" is one query rather than three joins across two providers.
+CREATE TABLE IF NOT EXISTS spend_ledger (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+  rail TEXT NOT NULL,
+  amount_minor INTEGER NOT NULL,
+  currency TEXT NOT NULL,
+  -- What it was for, in words, so the ledger is readable without joins.
+  reason TEXT NOT NULL,
+  session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  -- The provider's own reference, when there is one (tx hash, charge id).
+  external_ref TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_spend_ledger_rail_created
+  ON spend_ledger(rail, created_at DESC);

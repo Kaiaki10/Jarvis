@@ -61,6 +61,7 @@ import {
   startIdleReaper,
 } from "../sessions/sessionManager.js";
 import { getUsageSnapshot } from "../sessions/claudeUsage.js";
+import { listEnvelopes, listSpendLedger, removeEnvelope, setEnvelope } from "../billing/envelopes.js";
 import { characterBrief, getCharacter, listCharacters, saveCharacter } from "../db/characterRepo.js";
 import {
   attachWorkflowAccount,
@@ -133,6 +134,7 @@ import {
   attachWorkflowAccountSchema,
   saveWorkflowCharacterSchema,
   setConnectionCapSchema,
+  setSpendEnvelopeSchema,
   createWorkflowSchema,
   updateWorkflowSchema,
   createContentItemSchema,
@@ -666,6 +668,29 @@ app.post("/chat", (req: Request, res: Response) => {
  * Not agent-scoped: there is one Claude account behind every agent, so the
  * answer is the same whoever is asking.
  */
+/**
+ * Money limits per rail, and the ledger of what was actually spent.
+ *
+ * A rail with no envelope refuses to spend at all, so these are the switch that
+ * turns paid capability on rather than a ceiling on something already running.
+ */
+app.get("/spend", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json({ envelopes: listEnvelopes(agentId), ledger: listSpendLedger(100, agentId) });
+});
+
+app.put("/spend/envelopes", (req: Request, res: Response) => {
+  const body = validatedBody(setSpendEnvelopeSchema, req, res);
+  if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(setEnvelope({ ...body, agentId }));
+});
+
+app.delete("/spend/envelopes/:id", (req: Request, res: Response) => {
+  removeEnvelope(req.params.id);
+  res.status(204).send();
+});
+
 app.get("/usage", (_req: Request, res: Response) => {
   res.json(getUsageSnapshot());
 });

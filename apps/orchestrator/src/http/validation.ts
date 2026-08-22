@@ -467,3 +467,13 @@ export const saveWorkflowCharacterSchema = z
 export const setConnectionCapSchema = z
   .object({ dailyActionCap: z.number().int().min(0).max(10_000).nullable() })
   .strict();
+
+export const setSpendEnvelopeSchema = z
+  .object({
+    rail: z.enum(["wallet", "card", "ad_budget"]),
+    period: z.enum(["day", "month"]),
+    /** Minor units: USDC has 6 decimals, USD cents 2. Never converted. */
+    limitMinor: z.number().int().min(0).max(1_000_000_000),
+    currency: z.string().trim().min(2).max(10),
+  })
+  .strict();
