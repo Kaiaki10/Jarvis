@@ -87,7 +87,7 @@ export function NotificationsList() {
           return (
             <div key={n.id} className="group relative">
               {n.sessionId ? (
-                <Link href={`/sessions/${n.sessionId}`} onClick={() => markRead(n.id)}>
+                <Link href={`/under-the-hood/brain/runs/${n.sessionId}`} onClick={() => markRead(n.id)}>
                   {body}
                 </Link>
               ) : (

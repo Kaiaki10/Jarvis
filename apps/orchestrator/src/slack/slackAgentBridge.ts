@@ -252,7 +252,7 @@ async function connect(runGeneration: number): Promise<void> {
   if (connection?.status !== "connected") return;
   if (!creds?.botToken || !creds.appToken) {
     recordTestResult(
-      "slack",
+      connection.id,
       false,
       null,
       "Real-time agent chat needs both the Bot User OAuth Token and the Socket Mode App Token. Add the missing token and test again."
@@ -262,7 +262,7 @@ async function connect(runGeneration: number): Promise<void> {
   }
   if (parseSlackUserIds(creds.allowedUserIds).size === 0) {
     recordTestResult(
-      "slack",
+      connection.id,
       false,
       null,
       "Real-time agent chat needs at least one Slack user ID on the allowlist before it will start — anyone else in the workspace could otherwise drive your agents. Add your own Slack user ID and test again."

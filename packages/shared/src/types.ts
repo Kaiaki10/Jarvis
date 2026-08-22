@@ -58,6 +58,20 @@ export type SessionStatus =
 /** Models available in the focused, simple Jarvis conversation. */
 export type ChatModel = "claude" | "gpt-5.6-sol";
 
+/** Which underlying Claude model answers, when `model` is "claude". */
+export type ClaudeModel = "default" | "opus" | "haiku" | "fable";
+
+export const CLAUDE_MODELS: Array<{ value: ClaudeModel; label: string; description: string }> = [
+  { value: "default", label: "Default", description: "Sonnet 5 · best for everyday tasks" },
+  { value: "opus", label: "Opus", description: "Opus 5 · most capable for complex work" },
+  { value: "haiku", label: "Haiku", description: "Haiku 4.5 · fastest for quick answers" },
+  {
+    value: "fable",
+    label: "Fable",
+    description: "Fable 5 · most capable for the hardest, longest-running tasks · draws on separate usage credits, not subscription usage",
+  },
+];
+
 export interface SessionRecord {
   id: string;
   /** Which agent owns this. Null only for rows that predate the agent migration. */
@@ -65,6 +79,15 @@ export interface SessionRecord {
   claudeSessionId: string | null;
   codexThreadId: string | null;
   model: ChatModel;
+  /** Only meaningful when `model` is "claude"; ignored by the Codex lane. */
+  claudeModel: ClaudeModel;
+  /**
+   * When true, Claude Code's own local tools (Bash, file edits, search, web
+   * fetch) run without a permission prompt. Jarvis's own outbound platform
+   * actions (posting, messaging, spending) are never affected by this — they
+   * always go through the approval gate regardless.
+   */
+  autoApproveLocalTools: boolean;
   title: string;
   status: SessionStatus;
   cwd: string;
@@ -90,6 +113,10 @@ export type SessionEventType =
   | "system"
   | "tool_progress"
   | "auth_status"
+  | "tool_use_summary"
+  | "rate_limit_event"
+  | "prompt_suggestion"
+  | "conversation_reset"
   | "permission_request"
   | "permission_response";
 
@@ -401,6 +428,14 @@ export interface WalletSpendRequest {
 export type ConnectionStatus = "not_connected" | "connected" | "error";
 
 export interface ConnectionRecord {
+  /** Stable id for this account. Several may exist for one platform. */
+  id: string;
+  /** Which agent owns it. Null means the shared pool every agent may use. */
+  agentId: string | null;
+  /** What to call this account in the UI, e.g. "@acme". Null for the original. */
+  label: string | null;
+  /** Daily action cap for this account. Null means the global default applies. */
+  dailyActionCap: number | null;
   platformId: string;
   status: ConnectionStatus;
   /** Human-readable proof of who we connected as, e.g. "Connected as @acme". */
@@ -470,6 +505,8 @@ export interface SettingsRecord {
 
 export interface PlatformUsage {
   platformId: string;
+  /** Which account. Null only for rows predating per-account tracking. */
+  connectionId: string | null;
   usedToday: number;
   cap: number;
   estimatedSpendToday: number;
@@ -610,15 +647,15 @@ export interface CreateEvolutionProposalRequest {
   rollbackPlan?: string;
 }
 
-export type CampaignStatus = "draft" | "active" | "paused" | "completed" | "archived";
-export type CampaignApprovalPolicy = "each_item" | "campaign";
+export type WorkflowStatus = "draft" | "active" | "paused" | "completed" | "archived";
+export type WorkflowApprovalPolicy = "each_item" | "campaign";
 export type MarketingChannel = "x" | "linkedin" | "instagram" | "facebook" | "email" | "blog";
 export type ContentFormat = "social_post" | "email" | "article" | "ad";
 export type ContentStatus = "idea" | "draft" | "review" | "scheduled" | "published" | "measured";
-export type CampaignGenerationStatus = "running" | "completed" | "failed";
+export type WorkflowGenerationStatus = "running" | "completed" | "failed";
 export type ContentPublicationStatus = "running" | "published" | "failed";
 
-export interface CampaignRecord {
+export interface WorkflowRecord {
   id: string;
   agentId: string | null;
   name: string;
@@ -627,8 +664,17 @@ export interface CampaignRecord {
   offer: string;
   channels: MarketingChannel[];
   primaryMetric: string;
-  approvalPolicy: CampaignApprovalPolicy;
-  status: CampaignStatus;
+  approvalPolicy: WorkflowApprovalPolicy;
+  status: WorkflowStatus;
+  /**
+   * How far five-stage onboarding has got. Resumable by design — a
+   * half-configured workflow is a normal state, since stages 3–5 have nothing
+   * to show until content exists.
+   */
+  onboardingStage: number;
+  /** Off by default. Automates publish timing, never the approval itself. */
+  autopilot: boolean;
+  autopilotIntervalHours: number;
   missionId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -637,7 +683,7 @@ export interface CampaignRecord {
 
 export interface ContentItemRecord {
   id: string;
-  campaignId: string;
+  workflowId: string;
   title: string;
   body: string;
   format: ContentFormat;
@@ -651,11 +697,11 @@ export interface ContentItemRecord {
   updatedAt: string;
 }
 
-export interface CampaignGenerationRunRecord {
+export interface WorkflowGenerationRunRecord {
   id: string;
-  campaignId: string;
+  workflowId: string;
   sessionId: string;
-  status: CampaignGenerationStatus;
+  status: WorkflowGenerationStatus;
   requestedCount: number;
   errorMessage: string | null;
   createdAt: string;
@@ -667,39 +713,52 @@ export interface ContentPublicationRunRecord {
   contentItemId: string;
   sessionId: string;
   platformId: string;
+  /** The platform's own id for the published post. Null until it succeeds. */
+  externalPostId: string | null;
   status: ContentPublicationStatus;
   errorMessage: string | null;
   createdAt: string;
   completedAt: string | null;
 }
 
-export interface CampaignOverview {
-  campaigns: CampaignRecord[];
+export interface WorkflowOverview {
+  workflows: WorkflowRecord[];
   content: ContentItemRecord[];
-  generationRuns: CampaignGenerationRunRecord[];
+  generationRuns: WorkflowGenerationRunRecord[];
   publicationRuns: ContentPublicationRunRecord[];
+  /** Stage 1 links, for every workflow in this list. */
+  accounts: WorkflowAccountRecord[];
+  /** The voice each workflow writes in, where one is set. */
+  characters: WorkflowCharacterRecord[];
+  /** Engagement observations per workflow, for stage 3. Zero until ingestion exists. */
+  metricCounts: Record<string, number>;
+  /** Stage 5 output per workflow. */
+  insightCounts: Record<string, number>;
 }
 
-export interface CreateCampaignRequest {
+export interface CreateWorkflowRequest {
   name: string;
   objective: string;
   audience: string;
   offer: string;
   channels: MarketingChannel[];
   primaryMetric: string;
-  approvalPolicy?: CampaignApprovalPolicy;
+  approvalPolicy?: WorkflowApprovalPolicy;
   missionId?: string;
 }
 
-export interface UpdateCampaignRequest {
+export interface UpdateWorkflowRequest {
   name?: string;
   objective?: string;
   audience?: string;
   offer?: string;
   channels?: MarketingChannel[];
   primaryMetric?: string;
-  approvalPolicy?: CampaignApprovalPolicy;
-  status?: CampaignStatus;
+  approvalPolicy?: WorkflowApprovalPolicy;
+  status?: WorkflowStatus;
+  /** Schedules approved content on a cadence. Never bypasses the approval gate. */
+  autopilot?: boolean;
+  autopilotIntervalHours?: number;
   missionId?: string | null;
 }
 
@@ -721,7 +780,7 @@ export interface UpdateContentItemRequest {
   performanceSummary?: string | null;
 }
 
-export interface GenerateCampaignContentRequest {
+export interface GenerateWorkflowContentRequest {
   count: number;
   formats: ContentFormat[];
   channels?: MarketingChannel[];
@@ -742,7 +801,7 @@ export type PaidGrowthDecisionStatus = "proposed" | "approved" | "rejected" | "a
 export interface PaidGrowthCampaignRecord {
   id: string;
   agentId: string | null;
-  campaignId: string | null;
+  workflowId: string | null;
   name: string;
   objective: string;
   platform: PaidMediaPlatform;
@@ -806,7 +865,7 @@ export interface PaidGrowthOverview {
 }
 
 export interface CreatePaidGrowthCampaignRequest {
-  campaignId?: string;
+  workflowId?: string;
   name: string;
   objective: string;
   platform: PaidMediaPlatform;
@@ -1053,7 +1112,7 @@ export interface AgentConversationDetail {
 }
 
 /**
- * Descriptive trend signals across content, campaigns, customers, and paid
+ * Descriptive trend signals across content, workflows, customers, and paid
  * spend — deliberately a read-only summary of what already exists, not a new
  * measurement system. No cross-channel attribution claim ("this post caused
  * that lead") and no automated allocation decision; see GAPS.md's open
@@ -1066,9 +1125,9 @@ export interface TrendsOverview {
     /** Content that has actually gone out, not just been drafted or scheduled. */
     publishedOrMeasured: number;
   };
-  campaigns: {
+  workflows: {
     total: number;
-    byStatus: Partial<Record<CampaignStatus, number>>;
+    byStatus: Partial<Record<WorkflowStatus, number>>;
     active: number;
   };
   customers: {
@@ -1086,3 +1145,202 @@ export interface TrendsOverview {
     roas: number | null;
   };
 }
+
+/**
+ * One rate-limit window on the Claude subscription these sessions run on.
+ *
+ * Deliberately not a cost. The subscription already includes this usage, so a
+ * dollar figure would imply a bill that does not exist — see the cost rule in
+ * CLAUDE.md. What is useful is how much of the window is spent and when it
+ * comes back.
+ */
+export interface ClaudeUsageWindow {
+  /** Which window: "five_hour", "seven_day", "seven_day_opus", … */
+  type: string;
+  status: "allowed" | "allowed_warning" | "rejected";
+  /**
+   * Percent of the window consumed, 0–100, or null when the SDK does not say.
+   * Observed absent on an ordinary `allowed` turn, so null genuinely means
+   * "unknown" — reporting it as 0 would claim a full tank on no evidence.
+   */
+  utilization: number | null;
+  /** Epoch seconds when the window resets, when the SDK reports one. */
+  resetsAt: number | null;
+  /** When Jarvis last heard about this window. */
+  updatedAt: string;
+}
+
+export interface ClaudeUsageSnapshot {
+  /** Every window currently known, most-constrained first. */
+  windows: ClaudeUsageWindow[];
+  /** The window closest to its limit — what actually bounds the next turn. */
+  binding: ClaudeUsageWindow | null;
+}
+
+// ---- Workflow stages ----
+
+export type WorkflowStageState = "done" | "ready" | "blocked";
+export type WorkflowStageKey =
+  | "accounts"
+  | "content"
+  | "metrics"
+  | "advertising"
+  | "learning";
+
+export interface WorkflowStageStatus {
+  key: WorkflowStageKey;
+  /** 1–5, shown in the rail. */
+  number: number;
+  label: string;
+  state: WorkflowStageState;
+  /** What is true right now, or why the stage cannot proceed. */
+  detail: string;
+}
+
+/** One account attached to a workflow (stage 1). */
+export interface WorkflowAccountRecord {
+  workflowId: string;
+  connectionId: string;
+  createdAt: string;
+}
+
+export interface WorkflowStageInput {
+  /** Connections attached to this workflow, already resolved. */
+  accounts: ConnectionRecord[];
+  content: ContentItemRecord[];
+  /** Publication runs for this workflow's content. */
+  publicationRuns: ContentPublicationRunRecord[];
+  /** How many engagement observations exist for this workflow's content. */
+  metricCount: number;
+  /** Ad campaigns linked to this workflow. */
+  adCampaigns: number;
+  /** Whether any advertising platform is connected at all. */
+  adPlatformConnected: boolean;
+  insightCount: number;
+}
+
+/**
+ * The five stages, computed from data rather than a stored flag.
+ *
+ * A stored per-stage flag drifts the moment an account is removed or a post is
+ * deleted, and a stage that claims done while its evidence is gone is worse
+ * than one that recomputes. `blocked` always carries the specific reason —
+ * "needs a published post" is actionable, "unavailable" is not.
+ */
+export function workflowStages(input: WorkflowStageInput): WorkflowStageStatus[] {
+  const connected = input.accounts.filter((account) => account.status === "connected");
+  const published = input.publicationRuns.filter((run) => run.status === "published");
+  const measurable = published.length;
+
+  const accountNames = connected
+    .map((account) => account.label ?? account.platformId)
+    .join(", ");
+
+  return [
+    {
+      key: "accounts",
+      number: 1,
+      label: "Accounts",
+      state: connected.length > 0 ? "done" : "ready",
+      detail:
+        connected.length > 0
+          ? accountNames
+          : input.accounts.length > 0
+            ? "Attached, but none are connected yet"
+            : "Attach an account this workflow posts as",
+    },
+    {
+      key: "content",
+      number: 2,
+      label: "Content",
+      state: input.content.length > 0 ? "done" : "ready",
+      detail:
+        input.content.length > 0
+          ? `${input.content.length} item${input.content.length === 1 ? "" : "s"}, ${published.length} published`
+          : "Generate or write the first draft",
+    },
+    {
+      key: "metrics",
+      number: 3,
+      label: "Metrics",
+      state: measurable === 0 ? "blocked" : input.metricCount > 0 ? "done" : "ready",
+      detail:
+        measurable === 0
+          ? "Needs a published post"
+          : input.metricCount > 0
+            ? `${input.metricCount} observation${input.metricCount === 1 ? "" : "s"}`
+            : `${measurable} post${measurable === 1 ? "" : "s"} ready to measure`,
+    },
+    {
+      key: "advertising",
+      number: 4,
+      label: "Advertising",
+      state: input.adCampaigns > 0 ? "done" : input.adPlatformConnected ? "ready" : "blocked",
+      detail:
+        input.adCampaigns > 0
+          ? `${input.adCampaigns} ad campaign${input.adCampaigns === 1 ? "" : "s"} linked`
+          : input.adPlatformConnected
+            ? "Link ad spend to this workflow"
+            : "No ad platform connected",
+    },
+    {
+      key: "learning",
+      number: 5,
+      label: "Learning",
+      state:
+        input.insightCount > 0 ? "done" : input.metricCount > 0 ? "ready" : "blocked",
+      detail:
+        input.insightCount > 0
+          ? `${input.insightCount} insight${input.insightCount === 1 ? "" : "s"}`
+          : input.metricCount > 0
+            ? "Enough measured content to look for a pattern"
+            : "Needs measured posts",
+    },
+  ];
+}
+
+/**
+ * The voice a workflow speaks in.
+ *
+ * `exemplars` are sample posts rather than a description of tone: current
+ * models match a voice far better from a writing sample than from adjectives,
+ * which makes this the highest-value field on the sheet.
+ */
+export interface WorkflowCharacterRecord {
+  workflowId: string;
+  name: string;
+  persona: string;
+  voiceRules: string;
+  exemplars: string[];
+  appearance: string;
+  /** Locked turnaround references. Empty until image generation exists. */
+  referenceImageIds: string[];
+  /**
+   * How this character is disclosed as AI. Required, never optional —
+   * presenting an AI persona as a real person is deceptive under FTC Section 5.
+   */
+  disclosure: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveWorkflowCharacterRequest {
+  name: string;
+  persona?: string;
+  voiceRules?: string;
+  exemplars?: string[];
+  appearance?: string;
+  disclosure: string;
+}
+
+/**
+ * Hard per-channel body limits, in characters.
+ *
+ * Shared so generation and publishing cannot disagree. They previously did:
+ * the publish gate enforced X's 280 while the generation prompt only said
+ * "match each channel's constraints", and every draft ever produced was
+ * rejectable — the pipeline generated content its own gate would refuse.
+ */
+export const CHANNEL_BODY_LIMITS: Partial<Record<MarketingChannel, number>> = {
+  x: 280,
+};

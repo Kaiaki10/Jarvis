@@ -48,7 +48,7 @@ function mockInitialRequests() {
       automaticRollbackReady: false,
     },
   });
-  vi.spyOn(api, "getCampaigns").mockResolvedValue({ campaigns: [], content: [], generationRuns: [], publicationRuns: [] });
+  vi.spyOn(api, "getWorkflows").mockResolvedValue({ workflows: [], content: [], generationRuns: [], publicationRuns: [], accounts: [], characters: [], metricCounts: {}, insightCounts: {} });
   vi.spyOn(api, "getCustomerOperations").mockResolvedValue({
     customers: [], conversations: [], messages: [], drafts: [], deliveries: [],
     policy: {
@@ -129,9 +129,9 @@ describe("StoreProvider", () => {
     await waitFor(() => expect(vi.mocked(api.listMissionUpdates).mock.calls.length).toBeGreaterThan(missionCalls));
     expect(FakeEventSource.instances).toHaveLength(1);
 
-    const campaignCalls = vi.mocked(api.getCampaigns).mock.calls.length;
-    FakeEventSource.instances[0].emit("campaigns-changed");
-    await waitFor(() => expect(vi.mocked(api.getCampaigns).mock.calls.length).toBeGreaterThan(campaignCalls));
+    const campaignCalls = vi.mocked(api.getWorkflows).mock.calls.length;
+    FakeEventSource.instances[0].emit("workflows-changed");
+    await waitFor(() => expect(vi.mocked(api.getWorkflows).mock.calls.length).toBeGreaterThan(campaignCalls));
     expect(FakeEventSource.instances).toHaveLength(1);
 
     const automationCalls = vi.mocked(api.listScheduledTasks).mock.calls.length;
@@ -205,7 +205,7 @@ describe("StoreProvider", () => {
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
 
     const before = {
-      campaigns: vi.mocked(api.getCampaigns).mock.calls.length,
+      campaigns: vi.mocked(api.getWorkflows).mock.calls.length,
       customers: vi.mocked(api.getCustomerOperations).mock.calls.length,
       growth: vi.mocked(api.getPaidGrowth).mock.calls.length,
       evolution: vi.mocked(api.getEvolution).mock.calls.length,
@@ -214,7 +214,7 @@ describe("StoreProvider", () => {
     };
     fireEvent.click(screen.getByRole("button", { name: "switch" }));
 
-    await waitFor(() => expect(vi.mocked(api.getCampaigns).mock.calls.length).toBeGreaterThan(before.campaigns));
+    await waitFor(() => expect(vi.mocked(api.getWorkflows).mock.calls.length).toBeGreaterThan(before.campaigns));
     expect(vi.mocked(api.getCustomerOperations).mock.calls.length).toBeGreaterThan(before.customers);
     expect(vi.mocked(api.getPaidGrowth).mock.calls.length).toBeGreaterThan(before.growth);
     expect(vi.mocked(api.getEvolution).mock.calls.length).toBeGreaterThan(before.evolution);

@@ -1,5 +1,5 @@
 import type { TrendsOverview } from "@jarvis/shared";
-import { listCampaigns, listContentItems } from "../db/campaignRepo.js";
+import { listWorkflows, listContentItems } from "../db/workflowRepo.js";
 import { listCustomerOperations } from "../db/customerRepo.js";
 import { paidGrowthOverview } from "../paidGrowth/service.js";
 
@@ -13,7 +13,7 @@ import { paidGrowthOverview } from "../paidGrowth/service.js";
  */
 export function trendsOverview(agentId?: string): TrendsOverview {
   const content = listContentItems(undefined, agentId);
-  const campaigns = listCampaigns(agentId);
+  const workflows = listWorkflows(agentId);
   const customers = listCustomerOperations(agentId);
   const paidGrowth = paidGrowthOverview(agentId);
 
@@ -22,8 +22,8 @@ export function trendsOverview(agentId?: string): TrendsOverview {
     contentByStatus[item.status] = (contentByStatus[item.status] ?? 0) + 1;
   }
 
-  const campaignsByStatus: TrendsOverview["campaigns"]["byStatus"] = {};
-  for (const campaign of campaigns) {
+  const campaignsByStatus: TrendsOverview["workflows"]["byStatus"] = {};
+  for (const campaign of workflows) {
     campaignsByStatus[campaign.status] = (campaignsByStatus[campaign.status] ?? 0) + 1;
   }
 
@@ -40,8 +40,8 @@ export function trendsOverview(agentId?: string): TrendsOverview {
       byStatus: contentByStatus,
       publishedOrMeasured: (contentByStatus.published ?? 0) + (contentByStatus.measured ?? 0),
     },
-    campaigns: {
-      total: campaigns.length,
+    workflows: {
+      total: workflows.length,
       byStatus: campaignsByStatus,
       active: campaignsByStatus.active ?? 0,
     },

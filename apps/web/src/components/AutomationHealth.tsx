@@ -30,7 +30,7 @@ export function AutomationHealth() {
         description="How each automation's last run went"
         action={
           <Link
-            href="/automations"
+            href="/under-the-hood/automations"
             className="text-label font-medium text-muted hover:text-foreground"
           >
             Manage
@@ -42,7 +42,7 @@ export function AutomationHealth() {
           <div className="flex items-center gap-2.5 px-3 py-3 text-body text-muted">
             <CalendarClock className="h-4 w-4" strokeWidth={1.75} />
             No automations yet.
-            <Link href="/automations" className="text-foreground hover:underline">
+            <Link href="/under-the-hood/automations" className="text-foreground hover:underline">
               Create one
             </Link>
           </div>
@@ -91,7 +91,7 @@ export function AutomationHealth() {
           return lastRun ? (
             <Link
               key={task.id}
-              href={`/sessions/${lastRun.id}`}
+              href={`/under-the-hood/brain/runs/${lastRun.id}`}
               className={`${rowClass} transition-colors hover:bg-white/[0.04]`}
             >
               {body}

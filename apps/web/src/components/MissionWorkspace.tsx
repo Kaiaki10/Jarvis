@@ -242,7 +242,7 @@ function MissionCard({ mission, tasks, deliverables, updates, refresh }: {
                 <Sparkles className="h-4 w-4 text-accent-bright" strokeWidth={1.75} />
                 <span className="text-heading text-foreground">Jarvis proposes a mission update</span>
                 <Badge tone="accent">Review</Badge>
-                <Link href={`/sessions/${update.sessionId}`} className="ml-auto flex items-center gap-1 text-micro text-muted hover:text-foreground">
+                <Link href={`/under-the-hood/brain/runs/${update.sessionId}`} className="ml-auto flex items-center gap-1 text-micro text-muted hover:text-foreground">
                   <Clock3 className="h-3 w-3" /> View run
                 </Link>
               </div>
@@ -284,7 +284,7 @@ function MissionCard({ mission, tasks, deliverables, updates, refresh }: {
             <div className="text-micro font-medium uppercase text-muted">Latest accepted progress</div>
             <div className="mt-0.5 text-label text-foreground-secondary">{latestApplied.summary}</div>
           </div>
-          <Link href={`/sessions/${latestApplied.sessionId}`} className="shrink-0 text-micro text-muted hover:text-foreground">View run →</Link>
+          <Link href={`/under-the-hood/brain/runs/${latestApplied.sessionId}`} className="shrink-0 text-micro text-muted hover:text-foreground">View run →</Link>
         </div>
       )}
 

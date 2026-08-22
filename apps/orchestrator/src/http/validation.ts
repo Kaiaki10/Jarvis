@@ -40,6 +40,8 @@ export const chatMessageSchema = z
     text: z.string().trim().min(1).max(100_000),
     agentId: z.string().uuid().optional(),
     model: z.enum(["claude", "gpt-5.6-sol"]).default("claude"),
+    claudeModel: z.enum(["default", "opus", "haiku", "fable"]).optional(),
+    autoApproveLocalTools: z.boolean().optional(),
   })
   .strict();
 
@@ -182,7 +184,7 @@ const contentFormat = z.enum(["social_post", "email", "article", "ad"]);
 const campaignChannels = z.array(marketingChannel).min(1).max(6)
   .refine((channels) => new Set(channels).size === channels.length, "channels must be unique");
 
-export const createCampaignSchema = z.object({
+export const createWorkflowSchema = z.object({
   name: z.string().trim().min(1).max(500),
   objective: z.string().trim().min(1).max(20_000),
   audience: z.string().trim().min(1).max(10_000),
@@ -193,7 +195,7 @@ export const createCampaignSchema = z.object({
   missionId: z.string().uuid().optional(),
 }).strict();
 
-export const updateCampaignSchema = z.object({
+export const updateWorkflowSchema = z.object({
   name: z.string().trim().min(1).max(500).optional(),
   objective: z.string().trim().min(1).max(20_000).optional(),
   audience: z.string().trim().min(1).max(10_000).optional(),
@@ -202,6 +204,9 @@ export const updateCampaignSchema = z.object({
   primaryMetric: z.string().trim().min(1).max(500).optional(),
   approvalPolicy: z.enum(["each_item", "campaign"]).optional(),
   status: z.enum(["draft", "active", "paused", "completed", "archived"]).optional(),
+  autopilot: z.boolean().optional(),
+  // One post an hour is already aggressive; a week is the sane upper bound.
+  autopilotIntervalHours: z.number().int().min(1).max(168).optional(),
   missionId: z.string().uuid().nullable().optional(),
 }).strict();
 
@@ -223,12 +228,14 @@ export const updateContentItemSchema = z.object({
   performanceSummary: z.string().max(20_000).nullable().optional(),
 }).strict();
 
-export const generateCampaignContentSchema = z.object({
+export const generateWorkflowContentSchema = z.object({
   count: z.number().int().min(1).max(12),
   formats: z.array(contentFormat).min(1).max(4)
     .refine((formats) => new Set(formats).size === formats.length, "formats must be unique"),
   channels: campaignChannels.optional(),
   direction: z.string().trim().max(10_000).optional(),
+  /** Defaults to opus for voice fidelity; overridable per run. */
+  claudeModel: z.enum(["default", "opus", "haiku", "fable"]).optional(),
 }).strict();
 
 const paidMediaPlatform = z.enum(["google_ads", "meta_ads", "x_ads"]);
@@ -237,7 +244,7 @@ const currency = z.string().trim().regex(/^[A-Z]{3}$/, "must be a three-letter c
 const externalPaidCampaignId = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/, "must contain only letters, numbers, hyphens, or underscores");
 
 export const createPaidGrowthCampaignSchema = z.object({
-  campaignId: z.string().uuid().optional(),
+  workflowId: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(500),
   objective: z.string().trim().min(1).max(20_000),
   platform: paidMediaPlatform,
@@ -438,4 +445,25 @@ export const createConversationSchema = z
 
 export const conversationMessageSchema = z
   .object({ text: z.string().trim().min(1).max(20_000) })
+  .strict();
+
+export const attachWorkflowAccountSchema = z
+  .object({ connectionId: z.string().trim().min(1).max(200) })
+  .strict();
+
+export const saveWorkflowCharacterSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    persona: z.string().max(20_000).optional(),
+    voiceRules: z.string().max(20_000).optional(),
+    exemplars: z.array(z.string().trim().min(1).max(10_000)).max(20).optional(),
+    appearance: z.string().max(20_000).optional(),
+    // Required, never optional — see CHARACTER_PLAN.md.
+    disclosure: z.string().trim().min(1).max(2_000),
+  })
+  .strict();
+
+/** Null clears the per-account override; the global default then applies. */
+export const setConnectionCapSchema = z
+  .object({ dailyActionCap: z.number().int().min(0).max(10_000).nullable() })
   .strict();

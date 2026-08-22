@@ -14,7 +14,7 @@ import { db, DEFAULT_AGENT_ID } from "./db.js";
 interface CampaignRow {
   id: string;
   agent_id: string | null;
-  campaign_id: string | null;
+  workflow_id: string | null;
   name: string;
   objective: string;
   platform: string;
@@ -42,7 +42,7 @@ function mapCampaign(row: CampaignRow): PaidGrowthCampaignRecord {
   return {
     id: row.id,
     agentId: row.agent_id,
-    campaignId: row.campaign_id,
+    workflowId: row.workflow_id,
     name: row.name,
     objective: row.objective,
     platform: row.platform as PaidGrowthCampaignRecord["platform"],
@@ -72,7 +72,7 @@ export function createPaidGrowthCampaign(input: CreatePaidGrowthCampaignRequest 
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO paid_growth_campaigns
-      (id, agent_id, campaign_id, name, objective, platform, external_campaign_id, external_budget_entity_id, status, currency,
+      (id, agent_id, workflow_id, name, objective, platform, external_campaign_id, external_budget_entity_id, status, currency,
        daily_budget_minor, lifetime_budget_minor, approved_budget_minor, spent_minor,
        revenue_minor, impressions, clicks, conversions, target_roas, start_date, end_date,
        last_synced_at, created_at, updated_at)
@@ -80,7 +80,7 @@ export function createPaidGrowthCampaign(input: CreatePaidGrowthCampaignRequest 
   ).run(
     id,
     input.agentId ?? DEFAULT_AGENT_ID,
-    input.campaignId ?? null,
+    input.workflowId ?? null,
     input.name,
     input.objective,
     input.platform,

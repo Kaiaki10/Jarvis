@@ -15,7 +15,7 @@ import {
   sendCodexFollowUp,
   startCodexSession,
 } from "../sessions/codexSessionManager.js";
-import type { ChatModel } from "@jarvis/shared";
+import type { ChatModel, ClaudeModel } from "@jarvis/shared";
 
 export type AgentChatFailureReason = "agent_not_found" | "working_directory_missing" | "at_capacity" | "busy";
 
@@ -24,7 +24,13 @@ export type AgentChatOutcome =
   | { ok: false; reason: AgentChatFailureReason; message: string };
 
 /** One continuous agent conversation, regardless of whether the turn came from the dashboard or Slack. */
-export function sendAgentChat(agentId: string, text: string, model: ChatModel = "claude"): AgentChatOutcome {
+export function sendAgentChat(
+  agentId: string,
+  text: string,
+  model: ChatModel = "claude",
+  claudeModel?: ClaudeModel,
+  autoApproveLocalTools?: boolean
+): AgentChatOutcome {
   const agent = getAgent(agentId);
   if (!agent || agent.status !== "active") {
     return { ok: false, reason: "agent_not_found", message: "That agent is not available." };
@@ -44,7 +50,7 @@ export function sendAgentChat(agentId: string, text: string, model: ChatModel = 
     }
     const outcome = model === "gpt-5.6-sol"
       ? sendCodexFollowUp(existing.id, text)
-      : sendFollowUp(existing.id, text, { memoryWritable: true });
+      : sendFollowUp(existing.id, text, { memoryWritable: true, claudeModel, autoApproveLocalTools });
     if (outcome.ok) return { ok: true, sessionId: existing.id, resumed: outcome.resumed, afterSeq };
     if (outcome.reason === "busy") {
       return { ok: false, reason: "busy", message: "GPT-5.6 Sol is still answering the previous message." };
@@ -80,6 +86,8 @@ export function sendAgentChat(agentId: string, text: string, model: ChatModel = 
     permissionMode: agent.permissionMode ?? "default",
     agentId,
     model,
+    claudeModel,
+    autoApproveLocalTools,
   });
   setAgentChatSessionId(agentId, session.id, model);
   globalBus.emit("session_updated", session.id);
@@ -96,6 +104,8 @@ export function sendAgentChat(agentId: string, text: string, model: ChatModel = 
       title: agent.name,
       memoryWritable: true,
       agentId,
+      claudeModel,
+      autoApproveLocalTools,
     });
   }
 

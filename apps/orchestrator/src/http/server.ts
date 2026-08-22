@@ -60,10 +60,22 @@ import {
   atConcurrencyLimit,
   startIdleReaper,
 } from "../sessions/sessionManager.js";
+import { getUsageSnapshot } from "../sessions/claudeUsage.js";
+import { characterBrief, getCharacter, listCharacters, saveCharacter } from "../db/characterRepo.js";
+import {
+  attachWorkflowAccount,
+  detachWorkflowAccount,
+  insightCountsByWorkflow,
+  listWorkflowAccounts,
+  metricCountsByWorkflow,
+} from "../db/workflowAccountsRepo.js";
 import {
   listConnections,
   getConnection,
   getConnectionCredentials,
+  getConnectionById,
+  setConnectionCap,
+  resolveConnectionId,
   saveConnection,
   recordTestResult,
   deleteConnection,
@@ -118,11 +130,14 @@ import {
   createEvolutionProposalSchema,
   updateEvolutionPolicySchema,
   updateEvolutionProposalSchema,
-  createCampaignSchema,
-  updateCampaignSchema,
+  attachWorkflowAccountSchema,
+  saveWorkflowCharacterSchema,
+  setConnectionCapSchema,
+  createWorkflowSchema,
+  updateWorkflowSchema,
   createContentItemSchema,
   updateContentItemSchema,
-  generateCampaignContentSchema,
+  generateWorkflowContentSchema,
   createAgentSchema,
   updateAgentSchema,
   createConversationSchema,
@@ -202,24 +217,24 @@ import {
   LAB_PATH,
 } from "../evolution/evolutionService.js";
 import {
-  createCampaign,
-  createCampaignGenerationRun,
+  createWorkflow,
+  createWorkflowGenerationRun,
   createContentItem,
-  deleteCampaign,
+  deleteWorkflow,
   deleteContentItem,
-  getCampaign,
+  getWorkflow,
   getContentItem,
-  listCampaignGenerationRuns,
-  listCampaigns,
+  listWorkflowGenerationRuns,
+  listWorkflows,
   listContentItems,
   listContentPublicationRuns,
-  updateCampaign,
+  updateWorkflow,
   updateContentItem,
-  recoverInterruptedCampaignRuns,
-} from "../db/campaignRepo.js";
-import { campaignGenerationPrompt } from "../campaigns/contentGeneration.js";
-import { startContentPublication } from "../campaigns/publicationService.js";
-import { startContentPublishingScheduler } from "../campaigns/publicationScheduler.js";
+  recoverInterruptedWorkflowRuns,
+} from "../db/workflowRepo.js";
+import { workflowGenerationPrompt } from "../workflows/contentGeneration.js";
+import { startContentPublication } from "../workflows/publicationService.js";
+import { startContentPublishingScheduler } from "../workflows/publicationScheduler.js";
 import {
   createCustomerConversation,
   createCustomerMessage,
@@ -328,7 +343,7 @@ const CONTENT_PUBLISHING_ENABLED = !PASSIVE_FALLBACK || process.env.JARVIS_ENABL
 // A temporary passive fallback shares the live database with the scheduled
 // service, so it must never rewrite session state simply because it started.
 if (!PASSIVE_FALLBACK) markInterruptedIfActive();
-recoverInterruptedCampaignRuns();
+recoverInterruptedWorkflowRuns();
 
 const app = express();
 app.use("/widget", (req: Request, res: Response, next) => {
@@ -631,18 +646,28 @@ app.get("/chat", (req: Request, res: Response) => {
 app.post("/chat", (req: Request, res: Response) => {
   const body = validatedBody(chatMessageSchema, req, res);
   if (!body) return;
-  const { text, model } = body;
+  const { text, model, claudeModel, autoApproveLocalTools } = body;
 
   const agentId = owningAgentId(req, res);
   if (agentId === null) return;
   if (!agentId) { res.status(503).json({ error: "No default agent is available." }); return; }
-  const outcome = sendAgentChat(agentId, text, model);
+  const outcome = sendAgentChat(agentId, text, model, claudeModel, autoApproveLocalTools);
   if (!outcome.ok) {
     res.status(outcome.reason === "at_capacity" ? 429 : outcome.reason === "busy" ? 409 : outcome.reason === "agent_not_found" ? 404 : 400)
       .json({ error: outcome.message });
     return;
   }
   res.status(outcome.resumed ? 202 : 201).json({ sessionId: outcome.sessionId, resumed: outcome.resumed });
+});
+
+/**
+ * Subscription headroom for the Claude account these sessions run on.
+ *
+ * Not agent-scoped: there is one Claude account behind every agent, so the
+ * answer is the same whoever is asking.
+ */
+app.get("/usage", (_req: Request, res: Response) => {
+  res.json(getUsageSnapshot());
 });
 
 app.delete("/sessions/:id", (req: Request, res: Response) => {
@@ -1210,8 +1235,8 @@ app.get("/events", (req: Request, res: Response) => {
 
   const onEvolution = () => sseSend(res, "evolution-changed", {});
   globalBus.on("evolution_changed", onEvolution);
-  const onCampaigns = () => sseSend(res, "campaigns-changed", {});
-  globalBus.on("campaigns_changed", onCampaigns);
+  const onCampaigns = () => sseSend(res, "workflows-changed", {});
+  globalBus.on("workflows_changed", onCampaigns);
   const onMemories = () => sseSend(res, "memories-changed", {});
   globalBus.on("memories_changed", onMemories);
   const onAutomations = () => sseSend(res, "automations-changed", {});
@@ -1228,6 +1253,8 @@ app.get("/events", (req: Request, res: Response) => {
   globalBus.on("conversations_changed", onConversations);
   const onPlatformSignup = () => sseSend(res, "platform-signup-changed", {});
   globalBus.on("platform_signup_changed", onPlatformSignup);
+  const onClaudeUsage = () => sseSend(res, "claude-usage-changed", getUsageSnapshot());
+  globalBus.on("claude_usage_changed", onClaudeUsage);
 
   const heartbeat = setInterval(() => res.write(": ping\n\n"), 15000);
 
@@ -1237,7 +1264,7 @@ app.get("/events", (req: Request, res: Response) => {
     globalBus.off("notifications_changed", onNotifications);
     globalBus.off("missions_changed", onMissions);
     globalBus.off("evolution_changed", onEvolution);
-    globalBus.off("campaigns_changed", onCampaigns);
+    globalBus.off("workflows_changed", onCampaigns);
     globalBus.off("memories_changed", onMemories);
     globalBus.off("automations_changed", onAutomations);
     globalBus.off("chat_changed", onChat);
@@ -1246,6 +1273,7 @@ app.get("/events", (req: Request, res: Response) => {
     globalBus.off("agents_changed", onAgents);
     globalBus.off("conversations_changed", onConversations);
     globalBus.off("platform_signup_changed", onPlatformSignup);
+    globalBus.off("claude_usage_changed", onClaudeUsage);
   });
 });
 
@@ -1543,36 +1571,96 @@ app.post("/mission-updates/:id/review", (req: Request, res: Response) => {
 
 // ---- Campaigns and Content Studio ----
 
-app.get("/campaigns", (req: Request, res: Response) => {
+app.get("/workflows", (req: Request, res: Response) => {
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
   res.json({
-    campaigns: listCampaigns(agentId),
+    workflows: listWorkflows(agentId),
     content: listContentItems(undefined, agentId),
-    generationRuns: listCampaignGenerationRuns(undefined, agentId),
+    generationRuns: listWorkflowGenerationRuns(undefined, agentId),
     publicationRuns: listContentPublicationRuns(undefined, agentId),
+    accounts: listWorkflowAccounts(agentId),
+    characters: listCharacters(agentId),
+    metricCounts: metricCountsByWorkflow(agentId),
+    insightCounts: insightCountsByWorkflow(agentId),
   });
 });
 
-app.post("/campaigns", (req: Request, res: Response) => {
-  const body = validatedBody(createCampaignSchema, req, res);
+/** The voice a workflow writes in. One character per workflow. */
+app.put("/workflows/:id/character", (req: Request, res: Response) => {
+  const body = validatedBody(saveWorkflowCharacterSchema, req, res);
+  if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const workflow = getWorkflow(req.params.id, agentId);
+  if (!workflow) { res.status(404).json({ error: "Workflow not found" }); return; }
+  const character = saveCharacter({ workflowId: workflow.id, ...body });
+  globalBus.emit("workflows_changed");
+  res.json(character);
+});
+
+app.get("/workflows/:id/character", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const workflow = getWorkflow(req.params.id, agentId);
+  if (!workflow) { res.status(404).json({ error: "Workflow not found" }); return; }
+  res.json({ character: getCharacter(workflow.id) ?? null });
+});
+
+/**
+ * Stage 1: which accounts a workflow may act as.
+ *
+ * Attaching is what makes publishing possible — `accountForContent` refuses to
+ * publish a workflow with no attached account for the channel, so this is the
+ * gate rather than a label.
+ */
+app.post("/workflows/:id/accounts", (req: Request, res: Response) => {
+  const body = validatedBody(attachWorkflowAccountSchema, req, res);
+  if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const workflow = getWorkflow(req.params.id, agentId);
+  if (!workflow) { res.status(404).json({ error: "Workflow not found" }); return; }
+
+  const connection = getConnectionById(body.connectionId);
+  if (!connection) { res.status(404).json({ error: "Account not found" }); return; }
+  // An account owned by another agent must never become reachable by this
+  // workflow — that is exactly the cross-business leak this design prevents.
+  if (connection.agentId && workflow.agentId && connection.agentId !== workflow.agentId) {
+    res.status(403).json({ error: "That account belongs to another agent." });
+    return;
+  }
+
+  attachWorkflowAccount(workflow.id, connection.id);
+  globalBus.emit("workflows_changed");
+  res.status(201).json({ workflowId: workflow.id, connectionId: connection.id });
+});
+
+app.delete("/workflows/:id/accounts/:connectionId", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const workflow = getWorkflow(req.params.id, agentId);
+  if (!workflow) { res.status(404).json({ error: "Workflow not found" }); return; }
+  detachWorkflowAccount(workflow.id, req.params.connectionId);
+  globalBus.emit("workflows_changed");
+  res.status(204).send();
+});
+
+app.post("/workflows", (req: Request, res: Response) => {
+  const body = validatedBody(createWorkflowSchema, req, res);
   if (!body) return;
   const agentId = owningAgentId(req, res); if (agentId === null) return;
   if (body.missionId && getMission(body.missionId)?.agentId !== agentId) {
     res.status(400).json({ error: "Mission not found" });
     return;
   }
-  const campaign = createCampaign({
+  const campaign = createWorkflow({
     ...body,
     approvalPolicy: body.approvalPolicy ?? "each_item",
     agentId,
   });
-  globalBus.emit("campaigns_changed");
+  globalBus.emit("workflows_changed");
   res.status(201).json(campaign);
 });
 
-app.get("/campaigns/:id", (req: Request, res: Response) => {
+app.get("/workflows/:id", (req: Request, res: Response) => {
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  const campaign = getCampaign(req.params.id, agentId);
+  const campaign = getWorkflow(req.params.id, agentId);
   if (!campaign) {
     res.status(404).json({ error: "Campaign not found" });
     return;
@@ -1580,45 +1668,45 @@ app.get("/campaigns/:id", (req: Request, res: Response) => {
   res.json({
     campaign,
     content: listContentItems(campaign.id, agentId),
-    generationRuns: listCampaignGenerationRuns(campaign.id, agentId),
+    generationRuns: listWorkflowGenerationRuns(campaign.id, agentId),
     publicationRuns: listContentPublicationRuns(campaign.id, agentId),
   });
 });
 
-app.patch("/campaigns/:id", (req: Request, res: Response) => {
-  const body = validatedBody(updateCampaignSchema, req, res);
+app.patch("/workflows/:id", (req: Request, res: Response) => {
+  const body = validatedBody(updateWorkflowSchema, req, res);
   if (!body) return;
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  if (!getCampaign(req.params.id, agentId)) { res.status(404).json({ error: "Campaign not found" }); return; }
+  if (!getWorkflow(req.params.id, agentId)) { res.status(404).json({ error: "Campaign not found" }); return; }
   if (body.missionId && getMission(body.missionId)?.agentId !== agentId) {
     res.status(400).json({ error: "Mission not found" });
     return;
   }
-  const campaign = updateCampaign(req.params.id, body);
+  const campaign = updateWorkflow(req.params.id, body);
   if (!campaign) {
     res.status(404).json({ error: "Campaign not found" });
     return;
   }
-  globalBus.emit("campaigns_changed");
+  globalBus.emit("workflows_changed");
   res.json(campaign);
 });
 
-app.delete("/campaigns/:id", (req: Request, res: Response) => {
+app.delete("/workflows/:id", (req: Request, res: Response) => {
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  if (!getCampaign(req.params.id, agentId)) {
+  if (!getWorkflow(req.params.id, agentId)) {
     res.status(404).json({ error: "Campaign not found" });
     return;
   }
-  deleteCampaign(req.params.id);
-  globalBus.emit("campaigns_changed");
+  deleteWorkflow(req.params.id);
+  globalBus.emit("workflows_changed");
   res.status(204).send();
 });
 
-app.post("/campaigns/:id/content", (req: Request, res: Response) => {
+app.post("/workflows/:id/content", (req: Request, res: Response) => {
   const body = validatedBody(createContentItemSchema, req, res);
   if (!body) return;
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  const campaign = getCampaign(req.params.id, agentId);
+  const campaign = getWorkflow(req.params.id, agentId);
   if (!campaign) {
     res.status(404).json({ error: "Campaign not found" });
     return;
@@ -1627,8 +1715,8 @@ app.post("/campaigns/:id/content", (req: Request, res: Response) => {
     res.status(400).json({ error: `${body.channel} is not an approved channel for this campaign` });
     return;
   }
-  const item = createContentItem({ campaignId: campaign.id, ...body });
-  globalBus.emit("campaigns_changed");
+  const item = createContentItem({ workflowId: campaign.id, ...body });
+  globalBus.emit("workflows_changed");
   res.status(201).json(item);
 });
 
@@ -1641,7 +1729,7 @@ app.patch("/content/:id", (req: Request, res: Response) => {
     res.status(404).json({ error: "Content item not found" });
     return;
   }
-  const campaign = getCampaign(current.campaignId);
+  const campaign = getWorkflow(current.workflowId);
   if (!campaign) {
     res.status(409).json({ error: "The content item no longer has a campaign" });
     return;
@@ -1672,7 +1760,7 @@ app.patch("/content/:id", (req: Request, res: Response) => {
     ...body,
     ...(body.scheduledFor ? { scheduledFor: new Date(body.scheduledFor).toISOString() } : {}),
   });
-  globalBus.emit("campaigns_changed");
+  globalBus.emit("workflows_changed");
   res.json(item);
 });
 
@@ -1683,7 +1771,7 @@ app.delete("/content/:id", (req: Request, res: Response) => {
     return;
   }
   deleteContentItem(req.params.id);
-  globalBus.emit("campaigns_changed");
+  globalBus.emit("workflows_changed");
   res.status(204).send();
 });
 
@@ -1702,11 +1790,11 @@ app.post("/content/:id/publish", (req: Request, res: Response) => {
   }
 });
 
-app.post("/campaigns/:id/generate", (req: Request, res: Response) => {
-  const body = validatedBody(generateCampaignContentSchema, req, res);
+app.post("/workflows/:id/generate", (req: Request, res: Response) => {
+  const body = validatedBody(generateWorkflowContentSchema, req, res);
   if (!body) return;
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  const campaign = getCampaign(req.params.id, agentId);
+  const campaign = getWorkflow(req.params.id, agentId);
   if (!campaign) {
     res.status(404).json({ error: "Campaign not found" });
     return;
@@ -1731,26 +1819,36 @@ app.post("/campaigns/:id/generate", (req: Request, res: Response) => {
     allowedTools: [],
     agentId,
   });
-  const generationRun = createCampaignGenerationRun({
-    campaignId: campaign.id,
+  const generationRun = createWorkflowGenerationRun({
+    workflowId: campaign.id,
     sessionId: session.id,
     requestedCount: body.count,
   });
-  if (campaign.status === "draft") updateCampaign(campaign.id, { status: "active" });
+  if (campaign.status === "draft") updateWorkflow(campaign.id, { status: "active" });
   globalBus.emit("session_updated", session.id);
-  globalBus.emit("campaigns_changed");
+  globalBus.emit("workflows_changed");
 
   void startSession({
     id: session.id,
-    prompt: campaignGenerationPrompt({ campaign, ...body, channels }),
+    prompt: workflowGenerationPrompt({
+      campaign,
+      ...body,
+      channels,
+      characterBrief: characterBrief(getCharacter(campaign.id)),
+    }),
     cwd: session.cwd,
     permissionMode: "default",
     allowedTools: [],
     title: session.title,
     isolated: true,
+    // Generation previously passed no model and so ran on the CLI default,
+    // while the model that actually wins voice fidelity sat unused. Congruity
+    // is the whole point of a character, so this is the one place worth
+    // spending the better model by default. See CHARACTER_PLAN.md.
+    claudeModel: body.claudeModel ?? "opus",
   });
 
-  res.status(201).json({ campaign: getCampaign(campaign.id), session, generationRun });
+  res.status(201).json({ campaign: getWorkflow(campaign.id), session, generationRun });
 });
 
 // ---- Scheduled tasks ----
@@ -2024,11 +2122,11 @@ app.get("/paid-growth", (req: Request, res: Response) => {
   res.json(paidGrowthOverview(agentId));
 });
 
-app.post("/paid-growth/campaigns", (req: Request, res: Response) => {
+app.post("/paid-growth/workflows", (req: Request, res: Response) => {
   const body = validatedBody(createPaidGrowthCampaignSchema, req, res);
   if (!body) return;
   const agentId = owningAgentId(req, res); if (agentId === null) return;
-  if (body.campaignId && !getCampaign(body.campaignId, agentId)) {
+  if (body.workflowId && !getWorkflow(body.workflowId, agentId)) {
     res.status(400).json({ error: "Linked campaign not found" });
     return;
   }
@@ -2037,7 +2135,7 @@ app.post("/paid-growth/campaigns", (req: Request, res: Response) => {
   res.status(201).json(campaign);
 });
 
-app.patch("/paid-growth/campaigns/:id", (req: Request, res: Response) => {
+app.patch("/paid-growth/workflows/:id", (req: Request, res: Response) => {
   const body = validatedBody(updatePaidGrowthCampaignSchema, req, res);
   if (!body) return;
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
@@ -2069,7 +2167,7 @@ app.patch("/paid-growth/campaigns/:id", (req: Request, res: Response) => {
   res.json(campaign);
 });
 
-app.post("/paid-growth/campaigns/:id/performance", (req: Request, res: Response) => {
+app.post("/paid-growth/workflows/:id/performance", (req: Request, res: Response) => {
   const body = validatedBody(updatePaidGrowthPerformanceSchema, req, res);
   if (!body) return;
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
@@ -2087,7 +2185,7 @@ app.post("/paid-growth/campaigns/:id/performance", (req: Request, res: Response)
   res.json(campaign);
 });
 
-app.post("/paid-growth/campaigns/:id/sync", async (req: Request, res: Response) => {
+app.post("/paid-growth/workflows/:id/sync", async (req: Request, res: Response) => {
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
   try {
     const result = await syncPaidGrowthCampaign(req.params.id, agentId);
@@ -2107,7 +2205,7 @@ app.post("/paid-growth/campaigns/:id/sync", async (req: Request, res: Response) 
   }
 });
 
-app.post("/paid-growth/campaigns/:id/request-launch", (req: Request, res: Response) => {
+app.post("/paid-growth/workflows/:id/request-launch", (req: Request, res: Response) => {
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
   try {
     const decision = requestPaidGrowthLaunch(req.params.id, agentId);
@@ -2283,8 +2381,17 @@ app.post("/connections/:platformId/test", async (req: Request, res: Response) =>
       message: err instanceof Error ? err.message : String(err),
     };
   }
+  // Resolved rather than assumed: the platform id stopped being the connection
+  // id when a platform gained the ability to hold several accounts.
+  const testedId = resolveConnectionId(platform.definition.id);
+  if (!testedId) {
+    res.status(409).json({
+      error: `Several ${platform.definition.name} accounts exist, so this platform-wide test is ambiguous. Test a specific account instead.`,
+    });
+    return;
+  }
   const connection = recordTestResult(
-    platform.definition.id,
+    testedId,
     result.ok,
     result.detail ?? null,
     result.ok ? null : (result.message ?? "Connection test failed")
@@ -2293,8 +2400,31 @@ app.post("/connections/:platformId/test", async (req: Request, res: Response) =>
   res.json({ result, connection });
 });
 
+/**
+ * Edit one account's daily action cap. Null clears the override so the global
+ * default applies again — clearing is not the same as removing the limit.
+ */
+app.patch("/connections/:connectionId/cap", (req: Request, res: Response) => {
+  const body = validatedBody(setConnectionCapSchema, req, res);
+  if (!body) return;
+  if (!getConnectionById(req.params.connectionId)) {
+    res.status(404).json({ error: "Account not found" });
+    return;
+  }
+  const connection = setConnectionCap(req.params.connectionId, body.dailyActionCap ?? null);
+  globalBus.emit("connections_changed");
+  res.json(connection);
+});
+
 app.delete("/connections/:platformId", (req: Request, res: Response) => {
-  deleteConnection(req.params.platformId);
+  const targetId = resolveConnectionId(req.params.platformId);
+  if (!targetId) {
+    res.status(409).json({
+      error: "Several accounts exist for this platform. Delete a specific account instead.",
+    });
+    return;
+  }
+  deleteConnection(targetId);
   if (req.params.platformId === "slack") stopSlackAgentBridge();
   res.status(204).send();
 });

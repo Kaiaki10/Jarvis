@@ -5,7 +5,7 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Control plane"
+        eyebrow="Under the hood"
         title="Settings"
         description="Business context, safety rails, storage, recovery, and operating limits"
       />

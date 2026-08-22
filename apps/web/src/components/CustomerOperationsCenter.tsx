@@ -429,7 +429,7 @@ export function CustomerOperationsCenter() {
                 {latestDraft.errorMessage && <p className="mt-2 text-label text-danger">{latestDraft.errorMessage}</p>}
                 <div className="mt-3 flex items-center gap-2">
                   {latestDraft.status === "ready" && <Button size="sm" onClick={() => applyDraft(latestDraft)}><Check className="h-4 w-4" strokeWidth={1.75} />Use draft</Button>}
-                  <Link href={`/sessions/${latestDraft.sessionId}`} className="text-micro text-muted hover:text-foreground">View drafting run</Link>
+                  <Link href={`/under-the-hood/brain/runs/${latestDraft.sessionId}`} className="text-micro text-muted hover:text-foreground">View drafting run</Link>
                 </div>
               </div>
             )}

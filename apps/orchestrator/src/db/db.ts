@@ -10,7 +10,6 @@ export const DB_PATH =
 export const db = new DatabaseSync(DB_PATH);
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA foreign_keys = ON;");
-db.exec(readFileSync(join(__dirname, "schema.sql"), "utf-8"));
 
 /**
  * Columns added after a table shipped. SQLite has no ADD COLUMN IF NOT EXISTS,
@@ -23,6 +22,92 @@ function hasColumn(table: string, column: string): boolean {
   }>;
   return rows.some((row) => row.name === column);
 }
+
+function hasTable(name: string): boolean {
+  return (
+    db
+      .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`)
+      .get(name) !== undefined
+  );
+}
+
+/**
+ * Renames that must happen *before* schema.sql runs.
+ *
+ * `CREATE TABLE IF NOT EXISTS workflows` would otherwise create an empty table,
+ * the "has it been renamed yet" guard would read as already-done, and every
+ * existing campaign would be stranded in a table nothing reads.
+ *
+ * `ALTER TABLE … RENAME TO` is used rather than create-copy-drop because SQLite
+ * rewrites foreign keys that point at the renamed table — `content_items`
+ * follows automatically. Doing it by hand would leave that FK dangling at the
+ * moment the old table was dropped.
+ */
+function renameLegacyTables(): void {
+  /**
+   * The pre-rename names, assembled rather than written as plain literals.
+   *
+   * A project-wide campaign→workflow rename rewrote these literals twice while
+   * this migration was being written — turning `hasTable("campaigns")` into
+   * `hasTable("workflows")` and `RENAME TO workflows` into a rename of a table
+   * to itself. Both times the guard then read as already-migrated and the whole
+   * step was skipped silently, which is the worst possible failure for code
+   * whose entire job is to run exactly once on old data.
+   *
+   * Splitting the strings makes this migration invisible to a blind
+   * search-and-replace over the word, which is exactly what keeps breaking it.
+   */
+  const LEGACY = {
+    workflows: "camp" + "aigns",
+    generationRuns: "camp" + "aign_generation_runs",
+    column: "camp" + "aign_id",
+  };
+
+  if (hasTable(LEGACY.workflows) && !hasTable("workflows")) {
+    db.exec("PRAGMA foreign_keys = OFF;");
+    db.exec(`
+      BEGIN;
+      ALTER TABLE ${LEGACY.workflows} RENAME TO workflows;
+      COMMIT;
+    `);
+    db.exec("PRAGMA foreign_keys = ON;");
+  }
+
+  if (hasTable("content_items") && hasColumn("content_items", LEGACY.column)) {
+    db.exec("PRAGMA foreign_keys = OFF;");
+    db.exec(`
+      BEGIN;
+      ALTER TABLE content_items RENAME COLUMN ${LEGACY.column} TO workflow_id;
+      COMMIT;
+    `);
+    db.exec("PRAGMA foreign_keys = ON;");
+  }
+  if (hasTable(LEGACY.generationRuns) && !hasTable("workflow_generation_runs")) {
+    db.exec("PRAGMA foreign_keys = OFF;");
+    db.exec(`
+      BEGIN;
+      ALTER TABLE ${LEGACY.generationRuns} RENAME TO workflow_generation_runs;
+      ALTER TABLE workflow_generation_runs RENAME COLUMN ${LEGACY.column} TO workflow_id;
+      COMMIT;
+    `);
+    db.exec("PRAGMA foreign_keys = ON;");
+  }
+  // Stage 4's link. `paid_growth_campaigns` keeps its name deliberately — those
+  // are real ad campaigns on Google and Meta, which is the platforms' own word,
+  // not the marketing-workflow sense being renamed here.
+  if (hasTable("paid_growth_campaigns") && hasColumn("paid_growth_campaigns", LEGACY.column)) {
+    db.exec("PRAGMA foreign_keys = OFF;");
+    db.exec(`
+      BEGIN;
+      ALTER TABLE paid_growth_campaigns RENAME COLUMN ${LEGACY.column} TO workflow_id;
+      COMMIT;
+    `);
+    db.exec("PRAGMA foreign_keys = ON;");
+  }
+}
+
+renameLegacyTables();
+db.exec(readFileSync(join(__dirname, "schema.sql"), "utf-8"));
 
 /**
  * The agent every pre-v2 row belongs to.
@@ -42,7 +127,7 @@ export const AGENT_SCOPED_TABLES = [
   "scheduled_tasks",
   "tasks",
   "missions",
-  "campaigns",
+  "workflows",
   "paid_growth_campaigns",
   "customers",
   "evolution_proposals",
@@ -55,9 +140,17 @@ for (const migration of [
   { table: "sessions", column: "current_activity", sql: "ALTER TABLE sessions ADD COLUMN current_activity TEXT" },
   { table: "sessions", column: "codex_thread_id", sql: "ALTER TABLE sessions ADD COLUMN codex_thread_id TEXT" },
   { table: "sessions", column: "model", sql: "ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT 'claude'" },
+  { table: "sessions", column: "claude_model", sql: "ALTER TABLE sessions ADD COLUMN claude_model TEXT NOT NULL DEFAULT 'default'" },
+  { table: "sessions", column: "auto_approve_local_tools", sql: "ALTER TABLE sessions ADD COLUMN auto_approve_local_tools INTEGER NOT NULL DEFAULT 0" },
   { table: "agents", column: "codex_chat_session_id", sql: "ALTER TABLE agents ADD COLUMN codex_chat_session_id TEXT" },
   { table: "scheduled_tasks", column: "retry_count", sql: "ALTER TABLE scheduled_tasks ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0" },
   { table: "tasks", column: "mission_id", sql: "ALTER TABLE tasks ADD COLUMN mission_id TEXT REFERENCES missions(id) ON DELETE SET NULL" },
+  { table: "platform_actions", column: "external_post_id", sql: "ALTER TABLE platform_actions ADD COLUMN external_post_id TEXT" },
+  { table: "content_publication_runs", column: "external_post_id", sql: "ALTER TABLE content_publication_runs ADD COLUMN external_post_id TEXT" },
+  { table: "connections", column: "daily_action_cap", sql: "ALTER TABLE connections ADD COLUMN daily_action_cap INTEGER" },
+  { table: "workflows", column: "autopilot", sql: "ALTER TABLE workflows ADD COLUMN autopilot INTEGER NOT NULL DEFAULT 0" },
+  { table: "workflows", column: "autopilot_interval_hours", sql: "ALTER TABLE workflows ADD COLUMN autopilot_interval_hours INTEGER NOT NULL DEFAULT 24" },
+  { table: "workflows", column: "onboarding_stage", sql: "ALTER TABLE workflows ADD COLUMN onboarding_stage INTEGER NOT NULL DEFAULT 0" },
   { table: "customer_reply_drafts", column: "confidence", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN confidence REAL" },
   { table: "customer_reply_drafts", column: "requires_approval", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN requires_approval INTEGER NOT NULL DEFAULT 1" },
   { table: "customer_reply_drafts", column: "escalation_reason", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN escalation_reason TEXT" },
@@ -118,6 +211,62 @@ db.exec(`
 // agent is never dragged back to Jarvis on the next restart.
 for (const table of AGENT_SCOPED_TABLES) {
   db.prepare(`UPDATE ${table} SET agent_id = ? WHERE agent_id IS NULL`).run(DEFAULT_AGENT_ID);
+}
+
+/**
+ * Gives connections an owner, so one Jarvis can run several businesses.
+ *
+ * `platform_id` was the PRIMARY KEY, which is precisely the "one X account"
+ * assumption v2 wrote down and this reverses. A primary key cannot be dropped
+ * by ALTER, so this is create, copy, drop, rename — the same shape as the
+ * memories rebuild below.
+ *
+ * Existing rows become **shared** (`agent_id IS NULL`) rather than the default
+ * agent's. That is the opposite choice to memories, deliberately: a memory is
+ * something one agent learned, but a credential that every session could
+ * already reach must keep working for every agent, or this migration silently
+ * disconnects a running system.
+ *
+ * Foreign keys are suspended for the swap for the same reason as below — rows
+ * are copied verbatim and must not be re-validated mid-move.
+ */
+if (!hasColumn("connections", "agent_id")) {
+  db.exec("PRAGMA foreign_keys = OFF;");
+  db.exec(`
+    BEGIN;
+    CREATE TABLE connections_v2 (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE,
+      label TEXT,
+      platform_id TEXT NOT NULL,
+      credentials TEXT NOT NULL,
+      status TEXT NOT NULL,
+      detail TEXT,
+      error_message TEXT,
+      last_tested_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO connections_v2 (id, agent_id, label, platform_id, credentials, status,
+                                detail, error_message, last_tested_at, created_at, updated_at)
+      SELECT platform_id, NULL, NULL, platform_id, credentials, status,
+             detail, error_message, last_tested_at, created_at, updated_at
+      FROM connections;
+    DROP TABLE connections;
+    ALTER TABLE connections_v2 RENAME TO connections;
+    CREATE INDEX idx_connections_platform ON connections(platform_id);
+    CREATE INDEX idx_connections_agent ON connections(agent_id, platform_id);
+    COMMIT;
+  `);
+  db.exec("PRAGMA foreign_keys = ON;");
+}
+
+/** Which account an outbound action was charged to, for per-account caps. */
+if (!hasColumn("platform_actions", "connection_id")) {
+  db.exec("ALTER TABLE platform_actions ADD COLUMN connection_id TEXT");
+  // Pre-migration rows all belong to the single connection that existed then,
+  // whose id is now its platform_id (see the rebuild above).
+  db.exec("UPDATE platform_actions SET connection_id = platform_id WHERE connection_id IS NULL");
 }
 
 /**

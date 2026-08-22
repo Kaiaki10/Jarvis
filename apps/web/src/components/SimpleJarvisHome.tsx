@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, AudioLines, Brain, Loader2, Mic, MicOff, Sparkles } from "lucide-react";
+import { ArrowUp, AudioLines, Brain, Loader2, Mic, MicOff, ShieldCheck, ShieldOff, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSessionStream } from "@/lib/hooks";
 import { useAgents, useConnectionStatus, useMemories, useStore } from "@/lib/store";
@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
 import { SessionTranscript } from "@/components/SessionTranscript";
 import { ExperienceModeToggle } from "@/components/ExperienceModeToggle";
-import type { ChatModel } from "@jarvis/shared";
+import { Select } from "@/components/ui/Input";
+import { ClaudeUsageBadge } from "@/components/ClaudeUsageBadge";
+import { CLAUDE_MODELS, type ChatModel, type ClaudeModel } from "@jarvis/shared";
 
 interface BrowserSpeechRecognition {
   lang: string;
@@ -39,6 +41,8 @@ export function SimpleJarvisHome() {
   const connectionStatus = useConnectionStatus();
   const [sentSessions, setSentSessions] = useState<Partial<Record<ChatModel, { agentId: string | null; sessionId: string }>>>({});
   const [model, setModel] = useState<ChatModel>("claude");
+  const [claudeModel, setClaudeModel] = useState<ClaudeModel>("default");
+  const [autoApproveLocalTools, setAutoApproveLocalTools] = useState(false);
   const [loadedConversationKey, setLoadedConversationKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -65,6 +69,20 @@ export function SimpleJarvisHome() {
   }, []);
 
   useEffect(() => {
+    const saved = window.localStorage.getItem("jarvis-simple-claude-model");
+    if (saved !== "default" && saved !== "opus" && saved !== "haiku" && saved !== "fable") return;
+    const frame = window.requestAnimationFrame(() => setClaudeModel(saved));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("jarvis-simple-auto-approve");
+    if (saved !== "true") return;
+    const frame = window.requestAnimationFrame(() => setAutoApproveLocalTools(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const conversationKey = `${activeAgent?.id ?? "default"}:${model}`;
     api.getChat(model)
@@ -74,6 +92,10 @@ export function SimpleJarvisHome() {
           ...current,
           [model]: session ? { agentId: activeAgent?.id ?? null, sessionId: session.id } : undefined,
         }));
+        if (session && model === "claude") {
+          setClaudeModel(session.claudeModel);
+          setAutoApproveLocalTools(session.autoApproveLocalTools);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -94,7 +116,7 @@ export function SimpleJarvisHome() {
     setError(null);
     setDraft("");
     try {
-      const { sessionId: id } = await api.sendChat(text, model);
+      const { sessionId: id } = await api.sendChat(text, model, claudeModel, autoApproveLocalTools);
       setSentSessions((current) => ({
         ...current,
         [model]: { agentId: activeAgent?.id ?? null, sessionId: id },
@@ -165,6 +187,21 @@ export function SimpleJarvisHome() {
     window.localStorage.setItem("jarvis-simple-model", next);
   }
 
+  function chooseClaudeModel(next: ClaudeModel) {
+    setClaudeModel(next);
+    window.localStorage.setItem("jarvis-simple-claude-model", next);
+    // Takes effect on the next message in this same conversation — see
+    // sendFollowUp's mid-conversation setModel handling in sessionManager.ts.
+  }
+
+  function toggleAutoApprove() {
+    const next = !autoApproveLocalTools;
+    setAutoApproveLocalTools(next);
+    window.localStorage.setItem("jarvis-simple-auto-approve", String(next));
+    // Also takes effect on the next message — sendFollowUp restarts the
+    // underlying query when this changes, same idea as the model switch above.
+  }
+
   return (
     <div className="simple-jarvis-shell min-h-screen overflow-hidden">
       <header className="relative z-20 flex items-center justify-between gap-4 px-5 py-5 sm:px-8">
@@ -214,7 +251,14 @@ export function SimpleJarvisHome() {
               <div className="mt-0.5 text-micro text-muted">Live, private, and continuous</div>
             </div>
             <div className="flex items-center gap-2">
+              <ClaudeUsageBadge />
               <ModelPicker model={model} onChange={chooseModel} />
+              {model === "claude" && (
+                <>
+                  <ClaudeModelPicker model={claudeModel} onChange={chooseClaudeModel} />
+                  <AutoApproveToggle enabled={autoApproveLocalTools} onToggle={toggleAutoApprove} />
+                </>
+              )}
               <div className="hidden items-center gap-2 rounded-full border border-border bg-black/20 px-3 py-1.5 text-micro text-muted sm:flex">
                 <AudioLines className={`h-3.5 w-3.5 ${isActive ? "text-accent-bright" : ""}`} strokeWidth={1.75} />
                 {listening ? "Listening" : voiceAvailable ? "Voice ready" : "Voice-ready"}
@@ -276,7 +320,11 @@ export function SimpleJarvisHome() {
             </div>
             <div className="mt-2 flex items-center justify-between gap-3 px-2 text-micro text-muted">
               <span>{error ?? "Enter to send · Shift+Enter for a new line"}</span>
-              <span className="hidden sm:inline">{model === "gpt-5.6-sol" ? "Sol · reasoning and workspace analysis" : "Claude · full Jarvis tools and approvals"}</span>
+              <span className="hidden sm:inline">
+                {model === "gpt-5.6-sol"
+                  ? "Sol · reasoning and workspace analysis"
+                  : `Claude${claudeModel === "default" ? "" : ` (${CLAUDE_MODELS.find((option) => option.value === claudeModel)?.label})`} · full Jarvis tools and approvals`}
+              </span>
             </div>
           </div>
         </section>
@@ -313,6 +361,45 @@ function ModelPicker({ model, onChange }: { model: ChatModel; onChange: (model: 
         Claude
       </Button>
     </div>
+  );
+}
+
+function ClaudeModelPicker({ model, onChange }: { model: ClaudeModel; onChange: (model: ClaudeModel) => void }) {
+  return (
+    <Select
+      aria-label="Claude model"
+      className="h-7 w-auto rounded-lg py-0 text-micro"
+      value={model}
+      onChange={(event) => onChange(event.target.value as ClaudeModel)}
+    >
+      {CLAUDE_MODELS.map((option) => (
+        <option key={option.value} value={option.value} title={option.description}>
+          {option.label}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
+function AutoApproveToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={enabled ? "secondary" : "ghost"}
+      className={`h-7 rounded-xl px-2.5 text-micro ${enabled ? "text-accent-bright" : "text-muted"}`}
+      role="switch"
+      aria-checked={enabled}
+      title={
+        enabled
+          ? "Local work (commands, file edits, search) runs without asking. Posting, messaging, and spending still always ask."
+          : "Turn on to let local work — commands, file edits, search — run without asking each time. Posting, messaging, and spending always still ask, regardless of this setting."
+      }
+      onClick={onToggle}
+    >
+      {enabled ? <ShieldOff className="h-3 w-3" strokeWidth={1.75} /> : <ShieldCheck className="h-3 w-3" strokeWidth={1.75} />}
+      {enabled ? "Auto-run on" : "Auto-run off"}
+    </Button>
   );
 }
 

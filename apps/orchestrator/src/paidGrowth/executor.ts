@@ -68,8 +68,8 @@ async function executeGoogle(campaign: PaidGrowthCampaignRecord, action: PaidGro
   }
 
   if (action.status) {
-    const resourceName = `customers/${customerId}/campaigns/${campaign.externalCampaignId}`;
-    const mutation = await request(`${root}/campaigns:mutate`, {
+    const resourceName = `customers/${customerId}/workflows/${campaign.externalCampaignId}`;
+    const mutation = await request(`${root}/workflows:mutate`, {
       method: "POST",
       headers,
       body: JSON.stringify({ operations: [{ update: { resourceName, status: action.status === "active" ? "ENABLED" : "PAUSED" }, updateMask: "status" }] }),
@@ -102,7 +102,7 @@ async function executeMeta(campaign: PaidGrowthCampaignRecord, action: PaidGrowt
 }
 
 async function executeX(campaign: PaidGrowthCampaignRecord, action: PaidGrowthPlatformAction, credentials: Credentials) {
-  const url = `https://ads-api.x.com/12/accounts/${encodeURIComponent(credentials.accountId)}/campaigns/${encodeURIComponent(campaign.externalCampaignId!)}`;
+  const url = `https://ads-api.x.com/12/accounts/${encodeURIComponent(credentials.accountId)}/workflows/${encodeURIComponent(campaign.externalCampaignId!)}`;
   const values: Record<string, string> = {};
   if (action.dailyBudgetMinor !== undefined) values.daily_budget_amount_local_micro = String(action.dailyBudgetMinor * 10_000);
   if (action.status) values.entity_status = action.status === "active" ? "ACTIVE" : "PAUSED";

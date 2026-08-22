@@ -20,14 +20,14 @@ import {
   WalletCards,
 } from "lucide-react";
 import type {
-  CampaignApprovalPolicy,
+  WorkflowApprovalPolicy,
   ContentFormat,
   MarketingChannel,
   TrendsOverview,
 } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import {
-  useCampaigns,
+  useWorkflows,
   useConnections,
   useCustomerOperations,
   useEvolution,
@@ -63,7 +63,7 @@ function formatsFor(channels: MarketingChannel[]): ContentFormat[] {
 
 export function AutonomousBusinessLoop() {
   const { missions, refresh: refreshMissions } = useMissionsList();
-  const { overview: campaigns, refresh: refreshCampaigns } = useCampaigns();
+  const { overview: workflows, refresh: refreshWorkflows } = useWorkflows();
   const { overview: customers, refresh: refreshCustomers } = useCustomerOperations();
   const { memories, reflections } = useMemories();
   const { evolution } = useEvolution();
@@ -73,23 +73,23 @@ export function AutonomousBusinessLoop() {
   const { overview: trends } = useTrends();
 
   const activeMissions = missions.filter((mission) => mission.status === "active");
-  const activeCampaigns = campaigns?.campaigns.filter((campaign) => campaign.status === "active") ?? [];
-  const reviewCount = campaigns?.content.filter((item) => item.status === "review").length ?? 0;
-  const scheduledCount = campaigns?.content.filter((item) => item.status === "scheduled").length ?? 0;
-  const publishedCount = campaigns?.content.filter((item) => ["published", "measured"].includes(item.status)).length ?? 0;
-  const measuredCount = campaigns?.content.filter((item) => item.status === "measured").length ?? 0;
+  const activeWorkflows = workflows?.workflows.filter((workflow) => workflow.status === "active") ?? [];
+  const reviewCount = workflows?.content.filter((item) => item.status === "review").length ?? 0;
+  const scheduledCount = workflows?.content.filter((item) => item.status === "scheduled").length ?? 0;
+  const publishedCount = workflows?.content.filter((item) => ["published", "measured"].includes(item.status)).length ?? 0;
+  const measuredCount = workflows?.content.filter((item) => item.status === "measured").length ?? 0;
   const openCustomers = customers?.conversations.filter((conversation) => conversation.status === "open").length ?? 0;
   const activeMemories = memories.filter((memory) => memory.status === "active").length;
   const pendingEvolution = evolution?.proposals.filter((proposal) => !["promoted", "rolled_back"].includes(proposal.stage)).length ?? 0;
-  const runningGeneration = campaigns?.generationRuns.filter((run) => run.status === "running").length ?? 0;
+  const runningGeneration = workflows?.generationRuns.filter((run) => run.status === "running").length ?? 0;
   const connectedPlatforms = connections.filter((connection) => connection.status === "connected").length;
 
   const phases = [
     { href: "/missions", label: "Plan", detail: `${activeMissions.length} active mission${activeMissions.length === 1 ? "" : "s"}`, icon: Target, tone: activeMissions.length ? "accent" : "neutral" },
-    { href: "/campaigns", label: "Create", detail: runningGeneration ? `${runningGeneration} generation run${runningGeneration === 1 ? "" : "s"} live` : `${activeCampaigns.length} active campaign${activeCampaigns.length === 1 ? "" : "s"}`, icon: Sparkles, tone: runningGeneration ? "accent" : activeCampaigns.length ? "success" : "neutral" },
+    { href: "/under-the-hood/workflows", label: "Create", detail: runningGeneration ? `${runningGeneration} generation run${runningGeneration === 1 ? "" : "s"} live` : `${activeWorkflows.length} active campaign${activeWorkflows.length === 1 ? "" : "s"}`, icon: Sparkles, tone: runningGeneration ? "accent" : activeWorkflows.length ? "success" : "neutral" },
     { href: "/paid-growth", label: "Invest", detail: paidGrowth?.totals.waitingApproval ? `${paidGrowth.totals.waitingApproval} decision${paidGrowth.totals.waitingApproval === 1 ? "" : "s"} waiting` : `${paidGrowth?.campaigns.length ?? 0} paid campaign${paidGrowth?.campaigns.length === 1 ? "" : "s"}`, icon: WalletCards, tone: paidGrowth?.totals.waitingApproval ? "warning" : paidGrowth?.campaigns.length ? "accent" : "neutral" },
-    { href: "/campaigns", label: "Approve", detail: reviewCount ? `${reviewCount} asset${reviewCount === 1 ? "" : "s"} waiting` : "Queue clear", icon: ShieldCheck, tone: reviewCount ? "warning" : "success" },
-    { href: "/campaigns", label: "Distribute", detail: `${scheduledCount} scheduled · ${publishedCount} live`, icon: Send, tone: scheduledCount || publishedCount ? "accent" : "neutral" },
+    { href: "/under-the-hood/workflows", label: "Approve", detail: reviewCount ? `${reviewCount} asset${reviewCount === 1 ? "" : "s"} waiting` : "Queue clear", icon: ShieldCheck, tone: reviewCount ? "warning" : "success" },
+    { href: "/under-the-hood/workflows", label: "Distribute", detail: `${scheduledCount} scheduled · ${publishedCount} live`, icon: Send, tone: scheduledCount || publishedCount ? "accent" : "neutral" },
     { href: "/customers", label: "Serve", detail: customers?.policy.enabled ? `${openCustomers} open · autonomy on` : `${openCustomers} open · review only`, icon: Headphones, tone: customers?.policy.enabled ? "success" : openCustomers ? "warning" : "neutral" },
     { href: "/memory", label: "Learn", detail: `${measuredCount} measured · ${activeMemories} memories`, icon: Brain, tone: reflections[0]?.status === "failed" ? "warning" : activeMemories ? "success" : "neutral" },
     { href: "/evolution", label: "Improve", detail: `${pendingEvolution} proposal${pendingEvolution === 1 ? "" : "s"} in motion`, icon: FlaskConical, tone: pendingEvolution ? "accent" : "neutral" },
@@ -98,7 +98,7 @@ export function AutonomousBusinessLoop() {
   return (
     <div className="flex flex-col gap-5">
       <LoopPulse
-        activeLoops={activeCampaigns.filter((campaign) => campaign.missionId).length}
+        activeLoops={activeWorkflows.filter((workflow) => workflow.missionId).length}
         waiting={reviewCount}
         connected={connectedPlatforms}
         customerAutonomy={customers?.policy.enabled ?? false}
@@ -137,12 +137,12 @@ export function AutonomousBusinessLoop() {
       <TrendsCard trends={trends} />
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(440px,0.95fr)]">
-        <ActiveLoops missions={missions} campaigns={campaigns} />
+        <ActiveLoops missions={missions} campaigns={workflows} />
         <LaunchLoop
           settings={settings}
           customerAutonomy={customers?.policy.enabled ?? false}
           onRefresh={async () => {
-            await Promise.all([refreshMissions(), refreshCampaigns(), refreshCustomers()]);
+            await Promise.all([refreshMissions(), refreshWorkflows(), refreshCustomers()]);
           }}
           onSaveSettings={saveSettings}
         />
@@ -159,7 +159,7 @@ export function AutonomousBusinessLoop() {
             title="Publishing"
             value={reviewCount ? `${reviewCount} approvals waiting` : "Approval gate clear"}
             detail="Generated assets stay in the pipeline. Publishing uses the campaign approval policy and platform gate."
-            href="/campaigns"
+            href="/under-the-hood/workflows"
           />
           <Guardrail
             icon={Headphones}
@@ -173,7 +173,7 @@ export function AutonomousBusinessLoop() {
             title="Distribution"
             value={`${connectedPlatforms} tested connection${connectedPlatforms === 1 ? "" : "s"}`}
             detail={`Outbound actions are capped at ${settings?.dailyPlatformActionCap || "no fixed"} per platform each day.`}
-            href="/connections"
+            href="/under-the-hood/connections"
           />
         </div>
       </Card>
@@ -226,7 +226,7 @@ function TrendsCard({ trends }: { trends: TrendsOverview | null }) {
   if (!trends) return null;
   const hasData =
     trends.content.total > 0 ||
-    trends.campaigns.total > 0 ||
+    trends.workflows.total > 0 ||
     trends.customers.total > 0 ||
     trends.paidGrowth.spentMinor > 0;
   if (!hasData) return null;
@@ -245,9 +245,9 @@ function TrendsCard({ trends }: { trends: TrendsOverview | null }) {
             label="content live"
           />
         )}
-        {trends.campaigns.total > 0 && (
+        {trends.workflows.total > 0 && (
           <TrendStat
-            value={`${trends.campaigns.active}/${trends.campaigns.total}`}
+            value={`${trends.workflows.active}/${trends.workflows.total}`}
             label="campaigns active"
           />
         )}
@@ -283,9 +283,9 @@ function TrendStat({ value, label }: { value: string; label: string }) {
 
 function ActiveLoops({ missions, campaigns }: {
   missions: ReturnType<typeof useMissionsList>["missions"];
-  campaigns: ReturnType<typeof useCampaigns>["overview"];
+  campaigns: ReturnType<typeof useWorkflows>["overview"];
 }) {
-  const loops = useMemo(() => (campaigns?.campaigns ?? []).flatMap((campaign) => {
+  const loops = useMemo(() => (campaigns?.workflows ?? []).flatMap((campaign) => {
     const mission = missions.find((item) => item.id === campaign.missionId);
     return mission ? [{ mission, campaign }] : [];
   }).filter(({ mission, campaign }) => mission.status !== "archived" && campaign.status !== "archived"), [campaigns, missions]);
@@ -305,7 +305,7 @@ function ActiveLoops({ missions, campaigns }: {
             <p className="mt-1 max-w-sm text-label text-muted">Launch one here and Jarvis will connect the mission, campaign strategy, first draft run, and autonomy envelope.</p>
           </div>
         ) : loops.map(({ mission, campaign }) => {
-          const content = campaigns?.content.filter((item) => item.campaignId === campaign.id) ?? [];
+          const content = campaigns?.content.filter((item) => item.workflowId === campaign.id) ?? [];
           const review = content.filter((item) => item.status === "review").length;
           const live = content.filter((item) => ["published", "measured"].includes(item.status)).length;
           return (
@@ -321,7 +321,7 @@ function ActiveLoops({ missions, campaigns }: {
                 </div>
                 <div className="flex gap-2">
                   <Link href="/missions" className="text-label text-muted hover:text-foreground">Mission →</Link>
-                  <Link href="/campaigns" className="text-label text-accent-foreground hover:text-white">Campaign →</Link>
+                  <Link href="/under-the-hood/workflows" className="text-label text-accent-foreground hover:text-white">Campaign →</Link>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -351,14 +351,14 @@ function LaunchLoop({ settings, customerAutonomy, onRefresh, onSaveSettings }: {
   const [metric, setMetric] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [channels, setChannels] = useState<MarketingChannel[]>(["linkedin", "email"]);
-  const [approvalPolicy, setApprovalPolicy] = useState<CampaignApprovalPolicy>("each_item");
+  const [approvalPolicy, setApprovalPolicy] = useState<WorkflowApprovalPolicy>("each_item");
   const [draftCount, setDraftCount] = useState(4);
   const [generateDrafts, setGenerateDrafts] = useState(true);
   const [customerAutonomyOverride, setCustomerAutonomyOverride] = useState<boolean | null>(null);
   const [actionCapOverride, setActionCapOverride] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ missionId: string; campaignId: string; sessionId?: string } | null>(null);
+  const [result, setResult] = useState<{ missionId: string; workflowId: string; sessionId?: string } | null>(null);
 
   const enableCustomerAutonomy = customerAutonomyOverride ?? customerAutonomy;
   const actionCap = actionCapOverride ?? settings?.dailyPlatformActionCap ?? 25;
@@ -370,13 +370,13 @@ function LaunchLoop({ settings, customerAutonomy, onRefresh, onSaveSettings }: {
     setError(null);
     setResult(null);
     let missionId: string | null = null;
-    let campaignId: string | null = null;
+    let workflowId: string | null = null;
     try {
       const mission = await api.createMission({ title: name.trim(), outcome: outcome.trim(), targetDate: targetDate || undefined });
       missionId = mission.id;
       await api.updateMission(mission.id, { status: "active", nextAction: generateDrafts ? "Review and approve the first campaign content batch" : "Create the first campaign content batch" });
 
-      const campaign = await api.createCampaign({
+      const campaign = await api.createWorkflow({
         name: `${name.trim()} campaign`,
         objective: outcome.trim(),
         audience: audience.trim(),
@@ -386,8 +386,8 @@ function LaunchLoop({ settings, customerAutonomy, onRefresh, onSaveSettings }: {
         approvalPolicy,
         missionId: mission.id,
       });
-      campaignId = campaign.id;
-      await api.updateCampaign(campaign.id, { status: "active" });
+      workflowId = campaign.id;
+      await api.updateWorkflow(campaign.id, { status: "active" });
 
       if (settings && actionCap !== settings.dailyPlatformActionCap) {
         await onSaveSettings({ dailyPlatformActionCap: actionCap });
@@ -398,7 +398,7 @@ function LaunchLoop({ settings, customerAutonomy, onRefresh, onSaveSettings }: {
 
       let sessionId: string | undefined;
       if (generateDrafts) {
-        const generated = await api.generateCampaignContent(campaign.id, {
+        const generated = await api.generateWorkflowContent(campaign.id, {
           count: draftCount,
           channels,
           formats: formatsFor(channels),
@@ -407,7 +407,7 @@ function LaunchLoop({ settings, customerAutonomy, onRefresh, onSaveSettings }: {
         sessionId = generated.session.id;
       }
 
-      setResult({ missionId: mission.id, campaignId: campaign.id, sessionId });
+      setResult({ missionId: mission.id, workflowId: campaign.id, sessionId });
       setName("");
       setOutcome("");
       setAudience("");
@@ -419,9 +419,9 @@ function LaunchLoop({ settings, customerAutonomy, onRefresh, onSaveSettings }: {
       setActionCapOverride(null);
     } catch (reason) {
       await onRefresh();
-      const suffix = missionId || campaignId ? " The completed parts of the loop were preserved and are linked below." : "";
+      const suffix = missionId || workflowId ? " The completed parts of the loop were preserved and are linked below." : "";
       setError(`${reason instanceof Error ? reason.message : "Jarvis could not launch the loop."}${suffix}`);
-      if (missionId && campaignId) setResult({ missionId, campaignId });
+      if (missionId && workflowId) setResult({ missionId, workflowId });
     } finally {
       setBusy(false);
     }
@@ -469,7 +469,7 @@ function LaunchLoop({ settings, customerAutonomy, onRefresh, onSaveSettings }: {
         <div className="grid gap-3 sm:grid-cols-3">
           <label>
             <span className="mb-1.5 block text-label text-muted">Approval policy</span>
-            <Select value={approvalPolicy} onChange={(event) => setApprovalPolicy(event.target.value as CampaignApprovalPolicy)} className="w-full">
+            <Select value={approvalPolicy} onChange={(event) => setApprovalPolicy(event.target.value as WorkflowApprovalPolicy)} className="w-full">
               <option value="each_item">Every asset</option>
               <option value="campaign">Campaign batch</option>
             </Select>
@@ -508,8 +508,8 @@ function LaunchLoop({ settings, customerAutonomy, onRefresh, onSaveSettings }: {
             <div className="flex items-center gap-2 font-medium text-success"><CheckCircle2 className="h-4 w-4" /> Connected loop created</div>
             <div className="mt-2 flex flex-wrap gap-3">
               <Link href="/missions" className="text-foreground hover:text-white">Open mission →</Link>
-              <Link href="/campaigns" className="text-foreground hover:text-white">Open campaign →</Link>
-              {result.sessionId && <Link href={`/sessions/${result.sessionId}`} className="text-accent-foreground hover:text-white">Watch Jarvis create →</Link>}
+              <Link href="/under-the-hood/workflows" className="text-foreground hover:text-white">Open campaign →</Link>
+              {result.sessionId && <Link href={`/under-the-hood/brain/runs/${result.sessionId}`} className="text-accent-foreground hover:text-white">Watch Jarvis create →</Link>}
             </div>
           </div>
         )}

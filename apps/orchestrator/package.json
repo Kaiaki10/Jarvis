@@ -12,7 +12,7 @@
     "start": "node dist/http/server.js"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.238",
     "@coinbase/cdp-sdk": "^1.55.0",
     "@jarvis/shared": "*",
     "@openai/codex-sdk": "^0.148.0",

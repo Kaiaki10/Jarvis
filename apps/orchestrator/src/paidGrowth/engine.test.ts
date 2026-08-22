@@ -5,7 +5,7 @@ import { paidGrowthMetrics, recommendPaidGrowthActions } from "./engine.js";
 function campaign(patch: Partial<PaidGrowthCampaignRecord> = {}): PaidGrowthCampaignRecord {
   return {
     id: "a",
-    campaignId: null,
+    workflowId: null,
     name: "Growth",
     objective: "Acquire customers",
     platform: "google_ads",

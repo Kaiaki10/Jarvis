@@ -13,8 +13,9 @@ import {
   getSettings,
   updateSession,
 } from "../db/repo.js";
-import type { SessionEventRecord } from "@jarvis/shared";
+import type { ClaudeModel, SessionEventRecord, SessionRecord } from "@jarvis/shared";
 import { createPushable, type Pushable } from "./pushableIterable.js";
+import { recordRateLimit } from "./claudeUsage.js";
 import { createDeferredWithTimeout } from "./deferredWithTimeout.js";
 import { describeActivity, extractSummary } from "./describeActivity.js";
 import { globalBus } from "../events/globalBus.js";
@@ -29,8 +30,8 @@ import {
   collectArtifactsFromResult,
   reconcileMissionTurn,
 } from "../missions/missionReconciler.js";
-import { reconcileCampaignGeneration } from "../campaigns/contentGeneration.js";
-import { reconcileContentPublication } from "../campaigns/publicationReconciler.js";
+import { reconcileWorkflowGeneration } from "../workflows/contentGeneration.js";
+import { reconcileContentPublication } from "../workflows/publicationReconciler.js";
 import { reconcileCustomerReplyDraft } from "../customers/replyDraft.js";
 
 interface PendingPermission {
@@ -46,6 +47,11 @@ interface SessionHandle {
   pendingPermissions: Map<string, PendingPermission>;
   claudeSessionId: string | null;
   interrupt: () => Promise<void>;
+  setModel: (model: ClaudeModel) => Promise<void>;
+  /** Tracked so a follow-up only calls setModel when the picker actually changed. */
+  claudeModel: ClaudeModel;
+  /** Tracked so a follow-up only restarts the query when the toggle actually changed. */
+  autoApproveLocalTools: boolean;
   /** Mid-turn. Idle sessions stay open for follow-ups but occupy no work slot. */
   working: boolean;
   lastActivityAt: number;
@@ -117,6 +123,31 @@ function recordUserTurn(sessionId: string, text: string): void {
   publishSessionEvent(sessionId, event);
 }
 
+interface FollowUpOptions {
+  memoryWritable?: boolean;
+  claudeModel?: ClaudeModel;
+  autoApproveLocalTools?: boolean;
+}
+
+/** Shared by both revival paths below so their startSession args can't drift apart. */
+function reviveSession(record: SessionRecord, prompt: string, options: FollowUpOptions): void {
+  void startSession({
+    id: record.id,
+    prompt,
+    cwd: record.cwd,
+    permissionMode: record.permissionMode,
+    allowedTools: record.allowedTools ?? undefined,
+    title: record.title,
+    resumeClaudeSessionId: record.claudeSessionId ?? undefined,
+    memoryWritable: options.memoryWritable,
+    // A revived session must come back as the same agent, or the follow-up
+    // would answer with a different persona than the thread it is continuing.
+    agentId: record.agentId,
+    claudeModel: options.claudeModel ?? record.claudeModel,
+    autoApproveLocalTools: options.autoApproveLocalTools ?? record.autoApproveLocalTools,
+  });
+}
+
 /**
  * Continues a conversation, transparently reviving it if the session was reaped.
  *
@@ -128,13 +159,36 @@ function recordUserTurn(sessionId: string, text: string): void {
 export function sendFollowUp(
   sessionId: string,
   text: string,
-  options: { memoryWritable?: boolean } = {}
+  options: FollowUpOptions = {}
 ): FollowUpOutcome {
   const handle = sessions.get(sessionId);
 
   if (handle) {
     if (!handle.working && atConcurrencyLimit()) {
       return { ok: false, reason: "at_capacity" };
+    }
+    // Switching the picker mid-conversation changes what answers next rather
+    // than forking a new thread, mirroring the CLI's own /model behavior.
+    if (options.claudeModel && options.claudeModel !== handle.claudeModel) {
+      handle.claudeModel = options.claudeModel;
+      void handle.setModel(options.claudeModel);
+      updateSession(sessionId, { claudeModel: options.claudeModel });
+    }
+    // There's no live equivalent of setModel for tool permissions, so a change
+    // here restarts the underlying query (resuming the same transcript) rather
+    // than waiting out the 30-minute idle reap. Only done between turns —
+    // mid-turn, the toggle just takes effect from the next message onward.
+    if (
+      !handle.working &&
+      options.autoApproveLocalTools !== undefined &&
+      options.autoApproveLocalTools !== handle.autoApproveLocalTools
+    ) {
+      const record = getSession(sessionId);
+      if (record?.claudeSessionId) {
+        sessions.delete(sessionId);
+        reviveSession(record, text, options);
+        return { ok: true, resumed: true };
+      }
     }
     handle.working = true;
     handle.lastActivityAt = Date.now();
@@ -159,19 +213,7 @@ export function sendFollowUp(
   }
   if (atConcurrencyLimit()) return { ok: false, reason: "at_capacity" };
 
-  void startSession({
-    id: record.id,
-    prompt: text,
-    cwd: record.cwd,
-    permissionMode: record.permissionMode,
-    allowedTools: record.allowedTools ?? undefined,
-    title: record.title,
-    resumeClaudeSessionId: record.claudeSessionId,
-    memoryWritable: options.memoryWritable,
-    // A revived session must come back as the same agent, or the follow-up
-    // would answer with a different persona than the thread it is continuing.
-    agentId: record.agentId,
-  });
+  reviveSession(record, text, options);
 
   return { ok: true, resumed: true };
 }
@@ -240,7 +282,59 @@ export interface StartSessionParams {
   agentId?: string | null;
   /** Legacy override retained for resumed records; all non-isolated runs now reflect memory. */
   memoryWritable?: boolean;
+  /**
+   * Pins outbound tools to exactly one connected account. Publication runs set
+   * this from the campaign, so the session is handed one account and has no
+   * other to choose from.
+   */
+  connectionId?: string | null;
+  /** Which Claude model answers. Defaults to the CLI's own default model. */
+  claudeModel?: ClaudeModel;
+  /**
+   * When true, local work (commands, file edits, search, web fetch) runs
+   * without a permission prompt. Never affects Jarvis's own outbound platform
+   * tools — those are built separately in platforms/actions.ts and are never
+   * part of this list, so they always still hit the approval gate.
+   */
+  autoApproveLocalTools?: boolean;
 }
+
+/**
+ * Fable is only selectable via its full versioned model id — the CLI has no
+ * short alias for it the way "opus"/"haiku" are aliases. "default" maps to
+ * undefined, which asks the CLI for its own default rather than pinning one.
+ */
+function resolveModelId(model: ClaudeModel): string | undefined {
+  if (model === "default") return undefined;
+  if (model === "fable") return "claude-fable-5[1m]";
+  return model;
+}
+
+/**
+ * Claude Code's own local tools — none of them can post publicly, message
+ * anyone, or spend money. Those live behind mcp__jarvis__* tools instead,
+ * which are built from connected credentials in platforms/actions.ts and are
+ * deliberately never on this list, so the "allow all" toggle can't reach them.
+ */
+const LOCAL_WORK_TOOLS = [
+  "Bash",
+  "BashOutput",
+  "KillShell",
+  "Read",
+  "Write",
+  "Edit",
+  "NotebookEdit",
+  "Glob",
+  "Grep",
+  "WebFetch",
+  "WebSearch",
+  "TodoWrite",
+  "TaskCreate",
+  "TaskUpdate",
+  "TaskGet",
+  "TaskList",
+  "Skill",
+];
 
 const SAFE_PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "dontAsk"]);
 
@@ -262,12 +356,17 @@ export async function startSession(params: StartSessionParams): Promise<void> {
   const input = createPushable<SDKUserMessage>();
   const pendingPermissions = new Map<string, PendingPermission>();
 
+  const claudeModel = params.claudeModel ?? "default";
+  const autoApproveLocalTools = params.autoApproveLocalTools ?? false;
   const handle: SessionHandle = {
     emitter,
     input,
     pendingPermissions,
     claudeSessionId: null,
     interrupt: async () => {},
+    setModel: async () => {},
+    claudeModel,
+    autoApproveLocalTools,
     working: true,
     lastActivityAt: Date.now(),
   };
@@ -353,7 +452,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
   });
   recordUserTurn(params.id, params.prompt);
 
-  updateSession(params.id, { status: "running" });
+  updateSession(params.id, { status: "running", claudeModel, autoApproveLocalTools });
   globalBus.emit("session_updated", params.id);
 
   // An agent's own persona replaces the single global business context. Runs
@@ -365,7 +464,7 @@ export async function startSession(params: StartSessionParams): Promise<void> {
     : getSettings().businessContext;
   const platformToolset = params.isolated
     ? { capabilitySummary: "", autoAllowTools: [] }
-    : buildPlatformToolset(params.id);
+    : buildPlatformToolset(params.id, { agentId: params.agentId, connectionId: params.connectionId });
   let memoriesAddedThisTurn = 0;
   let memoriesConfirmedThisTurn = 0;
   const memoryToolset = !params.isolated
@@ -405,7 +504,12 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       options: {
         cwd: params.cwd,
         permissionMode: safePermissionMode(params.permissionMode),
-        allowedTools: [...safeCallerAllowedTools(params.allowedTools), ...autoAllowTools],
+        allowedTools: [
+          ...safeCallerAllowedTools(params.allowedTools),
+          ...autoAllowTools,
+          ...(autoApproveLocalTools ? LOCAL_WORK_TOOLS : []),
+        ],
+        model: resolveModelId(claudeModel),
         includePartialMessages: true,
         // Loads the working directory's CLAUDE.md automatically. Without this the
         // SDK runs in isolation mode and a session only sees the conventions if a
@@ -435,7 +539,8 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         },
       },
     });
-    handle.interrupt = () => q.interrupt();
+    handle.interrupt = async () => { await q.interrupt(); };
+    handle.setModel = (nextModel) => q.setModel(resolveModelId(nextModel));
 
     for await (const message of q) {
       if (message.session_id) {
@@ -449,6 +554,13 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         message
       );
       publishSessionEvent(params.id, event);
+
+      // Subscription headroom, reported by the SDK whenever it changes. Kept
+      // outside the session's own state because it describes the account, not
+      // this run — every session updates the same picture.
+      if (message.type === "rate_limit_event") {
+        recordRateLimit((message as { rate_limit_info?: unknown }).rate_limit_info);
+      }
 
       for (const artifact of collectArtifactsFromMessage(message, params.cwd)) {
         missionArtifacts.add(artifact);
@@ -511,18 +623,18 @@ export async function startSession(params: StartSessionParams): Promise<void> {
           missionArtifacts.clear();
         }
         try {
-          if (reconcileCampaignGeneration({ sessionId: params.id, result, ok: !message.is_error })) {
-            globalBus.emit("campaigns_changed");
+          if (reconcileWorkflowGeneration({ sessionId: params.id, result, ok: !message.is_error })) {
+            globalBus.emit("workflows_changed");
           }
         } catch (err) {
-          console.error("[campaigns] could not reconcile generated content:", err);
+          console.error("[workflows] could not reconcile generated content:", err);
         }
         try {
           if (reconcileContentPublication({ sessionId: params.id, ok: !message.is_error })) {
-            globalBus.emit("campaigns_changed");
+            globalBus.emit("workflows_changed");
           }
         } catch (err) {
-          console.error("[campaigns] could not reconcile publication:", err);
+          console.error("[workflows] could not reconcile publication:", err);
         }
         try {
           if (await reconcileCustomerReplyDraft({ sessionId: params.id, result, ok: !message.is_error })) {
@@ -576,18 +688,18 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       console.error("[memory] could not record failed reflection:", reflectionError);
     }
     try {
-      if (reconcileCampaignGeneration({ sessionId: params.id, result: null, ok: false })) {
-        globalBus.emit("campaigns_changed");
+      if (reconcileWorkflowGeneration({ sessionId: params.id, result: null, ok: false })) {
+        globalBus.emit("workflows_changed");
       }
     } catch (reconcileError) {
-      console.error("[campaigns] could not record failed generation:", reconcileError);
+      console.error("[workflows] could not record failed generation:", reconcileError);
     }
     try {
       if (reconcileContentPublication({ sessionId: params.id, ok: false })) {
-        globalBus.emit("campaigns_changed");
+        globalBus.emit("workflows_changed");
       }
     } catch (reconcileError) {
-      console.error("[campaigns] could not record failed publication:", reconcileError);
+      console.error("[workflows] could not record failed publication:", reconcileError);
     }
     try {
       if (await reconcileCustomerReplyDraft({ sessionId: params.id, result: null, ok: false })) {

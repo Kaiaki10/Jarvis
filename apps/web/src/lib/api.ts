@@ -36,16 +36,16 @@ import type {
   CreateEvolutionProposalRequest,
   EvolutionAutonomy,
   EvolutionChangeClass,
-  CampaignOverview,
-  CampaignRecord,
+  WorkflowOverview,
+  WorkflowRecord,
   ContentItemRecord,
-  CampaignGenerationRunRecord,
+  WorkflowGenerationRunRecord,
   ContentPublicationRunRecord,
-  CreateCampaignRequest,
-  UpdateCampaignRequest,
+  CreateWorkflowRequest,
+  UpdateWorkflowRequest,
   CreateContentItemRequest,
   UpdateContentItemRequest,
-  GenerateCampaignContentRequest,
+  GenerateWorkflowContentRequest,
   MemoryRecord,
   MemoryReflectionRecord,
   CreateMemoryRequest,
@@ -79,6 +79,10 @@ import type {
   UpdatePaidGrowthCampaignRequest,
   UpdatePaidGrowthPerformanceRequest,
   ChatModel,
+  ClaudeModel,
+  ClaudeUsageSnapshot,
+  WorkflowCharacterRecord,
+  SaveWorkflowCharacterRequest,
 } from "@jarvis/shared";
 
 /**
@@ -223,15 +227,28 @@ export const api = {
   updateMemory: (id: string, patch: UpdateMemoryRequest) =>
     request<MemoryRecord>(scoped(`/memories/${id}`), { method: "PATCH", body: JSON.stringify(patch) }),
   listSessions: () => request<SessionRecord[]>(scoped("/sessions")),
+  /** Subscription headroom. Not agent-scoped — one Claude account behind them all. */
+  getUsage: () => request<ClaudeUsageSnapshot>("/usage"),
   deleteSession: (id: string) =>
     request<void>(scoped(`/sessions/${id}`), { method: "DELETE" }),
 
   getChat: (model: ChatModel = "claude") =>
     request<{ session: SessionRecord | null }>(scoped(`/chat?model=${encodeURIComponent(model)}`)),
-  sendChat: (text: string, model: ChatModel = "claude") =>
+  sendChat: (
+    text: string,
+    model: ChatModel = "claude",
+    claudeModel?: ClaudeModel,
+    autoApproveLocalTools?: boolean
+  ) =>
     request<{ sessionId: string; resumed: boolean }>("/chat", {
       method: "POST",
-      body: JSON.stringify({ text, model, agentId: getActiveAgentId() ?? undefined }),
+      body: JSON.stringify({
+        text,
+        model,
+        claudeModel,
+        autoApproveLocalTools,
+        agentId: getActiveAgentId() ?? undefined,
+      }),
     }),
   getSession: (id: string) => request<SessionRecord>(scoped(`/sessions/${id}`)),
   createSession: (body: CreateSessionRequest) =>
@@ -314,18 +331,36 @@ export const api = {
   startEvolutionBuild: (id: string) => request<{ proposal: EvolutionProposalRecord; session: SessionRecord }>(scoped(`/evolution/proposals/${id}/start-build`), { method: "POST" }),
   promoteEvolutionProposal: (id: string) => request<{ ok: boolean; proposal: EvolutionProposalRecord }>(scoped(`/evolution/proposals/${id}/promote`), { method: "POST" }),
 
-  getCampaigns: () => request<CampaignOverview>(scoped("/campaigns")),
-  getCampaign: (id: string) => request<{ campaign: CampaignRecord; content: ContentItemRecord[]; generationRuns: CampaignGenerationRunRecord[]; publicationRuns: ContentPublicationRunRecord[] }>(scoped(`/campaigns/${id}`)),
-  createCampaign: (body: CreateCampaignRequest) => request<CampaignRecord>(scoped("/campaigns"), {
+  getWorkflows: () => request<WorkflowOverview>(scoped("/workflows")),
+  getWorkflow: (id: string) => request<{ workflow: WorkflowRecord; content: ContentItemRecord[]; generationRuns: WorkflowGenerationRunRecord[]; publicationRuns: ContentPublicationRunRecord[] }>(scoped(`/workflows/${id}`)),
+  createWorkflow: (body: CreateWorkflowRequest) => request<WorkflowRecord>(scoped("/workflows"), {
     method: "POST",
     body: JSON.stringify(body),
   }),
-  updateCampaign: (id: string, patch: UpdateCampaignRequest) => request<CampaignRecord>(scoped(`/campaigns/${id}`), {
+  updateWorkflow: (id: string, patch: UpdateWorkflowRequest) => request<WorkflowRecord>(scoped(`/workflows/${id}`), {
     method: "PATCH",
     body: JSON.stringify(patch),
   }),
-  deleteCampaign: (id: string) => request<void>(scoped(`/campaigns/${id}`), { method: "DELETE" }),
-  createContentItem: (campaignId: string, body: CreateContentItemRequest) => request<ContentItemRecord>(scoped(`/campaigns/${campaignId}/content`), {
+  saveWorkflowCharacter: (workflowId: string, body: SaveWorkflowCharacterRequest) =>
+    request<WorkflowCharacterRecord>(scoped(`/workflows/${workflowId}/character`), {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  /** Null clears the override so the global default applies again. */
+  setConnectionCap: (connectionId: string, dailyActionCap: number | null) =>
+    request<ConnectionRecord>(`/connections/${connectionId}/cap`, {
+      method: "PATCH",
+      body: JSON.stringify({ dailyActionCap }),
+    }),
+  attachWorkflowAccount: (workflowId: string, connectionId: string) =>
+    request<{ workflowId: string; connectionId: string }>(scoped(`/workflows/${workflowId}/accounts`), {
+      method: "POST",
+      body: JSON.stringify({ connectionId }),
+    }),
+  detachWorkflowAccount: (workflowId: string, connectionId: string) =>
+    request<void>(scoped(`/workflows/${workflowId}/accounts/${connectionId}`), { method: "DELETE" }),
+  deleteWorkflow: (id: string) => request<void>(scoped(`/workflows/${id}`), { method: "DELETE" }),
+  createContentItem: (workflowId: string, body: CreateContentItemRequest) => request<ContentItemRecord>(scoped(`/workflows/${workflowId}/content`), {
     method: "POST",
     body: JSON.stringify(body),
   }),
@@ -335,7 +370,7 @@ export const api = {
   }),
   deleteContentItem: (id: string) => request<void>(scoped(`/content/${id}`), { method: "DELETE" }),
   publishContentItem: (id: string) => request<{ sessionId: string; runId: string }>(scoped(`/content/${id}/publish`), { method: "POST" }),
-  generateCampaignContent: (id: string, body: GenerateCampaignContentRequest) => request<{ campaign: CampaignRecord; session: SessionRecord; generationRun: CampaignGenerationRunRecord }>(scoped(`/campaigns/${id}/generate`), {
+  generateWorkflowContent: (id: string, body: GenerateWorkflowContentRequest) => request<{ workflow: WorkflowRecord; session: SessionRecord; generationRun: WorkflowGenerationRunRecord }>(scoped(`/workflows/${id}/generate`), {
     method: "POST",
     body: JSON.stringify(body),
   }),

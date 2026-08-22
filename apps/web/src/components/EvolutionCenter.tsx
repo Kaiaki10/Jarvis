@@ -289,10 +289,10 @@ function ProposalCard({ proposal, labAvailable, promotionReady, busy, onPlan, on
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {proposal.stage === "observed" && <Button size="sm" variant="secondary" disabled={busy} onClick={onPlan}>Plan <ArrowRight className="h-3.5 w-3.5" /></Button>}
         {proposal.stage === "planned" && <Button size="sm" disabled={busy || !labAvailable} onClick={onBuild}><FlaskConical className="h-3.5 w-3.5" /> {busy ? "Starting…" : "Build in Lab"}</Button>}
-        {proposal.stage === "building" && proposal.labSessionId && <Link href={`/sessions/${proposal.labSessionId}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-strong bg-surface-hover px-3 text-label text-foreground hover:bg-white/10">View live run <ArrowRight className="h-3.5 w-3.5" /></Link>}
+        {proposal.stage === "building" && proposal.labSessionId && <Link href={`/under-the-hood/brain/runs/${proposal.labSessionId}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-strong bg-surface-hover px-3 text-label text-foreground hover:bg-white/10">View live run <ArrowRight className="h-3.5 w-3.5" /></Link>}
         {proposal.stage === "review" && (
           <>
-            {proposal.labSessionId && <Link href={`/sessions/${proposal.labSessionId}`} className="text-label text-accent-foreground hover:text-white">Review run →</Link>}
+            {proposal.labSessionId && <Link href={`/under-the-hood/brain/runs/${proposal.labSessionId}`} className="text-label text-accent-foreground hover:text-white">Review run →</Link>}
             <Button size="sm" variant="secondary" disabled={busy} onClick={onReturn}>Send back</Button>
             <Button
               size="sm"

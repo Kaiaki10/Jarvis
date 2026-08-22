@@ -20,7 +20,7 @@ describe("isUnauthenticatedPath", () => {
       "/connections",
       "/settings",
       "/events",
-      "/campaigns",
+      "/workflows",
       "/paid-growth",
     ]) {
       expect(isUnauthenticatedPath(path)).toBe(false);

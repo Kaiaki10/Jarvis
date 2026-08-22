@@ -12,7 +12,7 @@ import {
   Orbit,
 } from "lucide-react";
 import {
-  useCampaigns,
+  useWorkflows,
   useCustomerOperations,
   useEvolution,
   useMemories,
@@ -25,7 +25,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 
 export function CapabilityMap() {
   const { missions } = useMissionsList();
-  const { overview: campaigns } = useCampaigns();
+  const { overview: campaigns } = useWorkflows();
   const { overview: customerOperations } = useCustomerOperations();
   const { memories } = useMemories();
   const { tasks: automations } = useScheduledTasksList();
@@ -42,10 +42,10 @@ export function CapabilityMap() {
       icon: Flag,
     },
     {
-      href: "/campaigns",
+      href: "/under-the-hood/workflows",
       title: "Growth engine",
       description: "Create content, manage paid investment, publish, measure, and learn.",
-      status: `${campaigns?.campaigns.filter((campaign) => campaign.status === "active").length ?? 0} owned · ${paidGrowth?.totals.active ?? 0} paid`,
+      status: `${campaigns?.workflows.filter((campaign) => campaign.status === "active").length ?? 0} owned · ${paidGrowth?.totals.active ?? 0} paid`,
       tone: "accent" as const,
       icon: Megaphone,
     },

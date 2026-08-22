@@ -6,6 +6,7 @@ import type {
   SessionEventType,
   SessionStatus,
   ChatModel,
+  ClaudeModel,
   ScheduledTaskRecord,
   SettingsRecord,
   TaskRecord,
@@ -41,6 +42,8 @@ interface SessionRow {
   claude_session_id: string | null;
   codex_thread_id: string | null;
   model: string;
+  claude_model: string;
+  auto_approve_local_tools: number;
   title: string;
   status: string;
   cwd: string;
@@ -63,6 +66,8 @@ function mapSession(row: SessionRow): SessionRecord {
     claudeSessionId: row.claude_session_id,
     codexThreadId: row.codex_thread_id,
     model: row.model as ChatModel,
+    claudeModel: row.claude_model as ClaudeModel,
+    autoApproveLocalTools: row.auto_approve_local_tools === 1,
     title: row.title,
     status: row.status as SessionStatus,
     cwd: row.cwd,
@@ -87,16 +92,20 @@ export function createSession(input: {
   taskId?: string;
   agentId?: string | null;
   model?: ChatModel;
+  claudeModel?: ClaudeModel;
+  autoApproveLocalTools?: boolean;
 }): SessionRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO sessions (id, agent_id, claude_session_id, codex_thread_id, model, title, status, cwd, permission_mode, allowed_tools, task_id, cost_usd, turns, error_message, created_at, updated_at)
-     VALUES (?, ?, NULL, NULL, ?, ?, 'starting', ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`
+    `INSERT INTO sessions (id, agent_id, claude_session_id, codex_thread_id, model, claude_model, auto_approve_local_tools, title, status, cwd, permission_mode, allowed_tools, task_id, cost_usd, turns, error_message, created_at, updated_at)
+     VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, 'starting', ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`
   ).run(
     id,
     input.agentId ?? null,
     input.model ?? "claude",
+    input.claudeModel ?? "default",
+    input.autoApproveLocalTools ? 1 : 0,
     input.title,
     input.cwd,
     input.permissionMode,
@@ -128,6 +137,8 @@ export function updateSession(
   patch: Partial<{
     claudeSessionId: string;
     codexThreadId: string;
+    claudeModel: ClaudeModel;
+    autoApproveLocalTools: boolean;
     status: SessionStatus;
     costUsd: number;
     turns: number;
@@ -141,10 +152,12 @@ export function updateSession(
   if (!current) return;
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE sessions SET claude_session_id = ?, codex_thread_id = ?, status = ?, cost_usd = ?, turns = ?, error_message = ?, summary = ?, current_activity = ?, updated_at = ? WHERE id = ?`
+    `UPDATE sessions SET claude_session_id = ?, codex_thread_id = ?, claude_model = ?, auto_approve_local_tools = ?, status = ?, cost_usd = ?, turns = ?, error_message = ?, summary = ?, current_activity = ?, updated_at = ? WHERE id = ?`
   ).run(
     patch.claudeSessionId ?? current.claudeSessionId,
     patch.codexThreadId ?? current.codexThreadId,
+    patch.claudeModel ?? current.claudeModel,
+    (patch.autoApproveLocalTools ?? current.autoApproveLocalTools) ? 1 : 0,
     patch.status ?? current.status,
     patch.costUsd ?? current.costUsd,
     patch.turns ?? current.turns,

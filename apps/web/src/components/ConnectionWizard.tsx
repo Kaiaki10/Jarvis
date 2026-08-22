@@ -60,7 +60,7 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
     return (
       <div className="px-8 py-8 text-body text-muted">
         Loading platform…{" "}
-        <Link href="/connections" className="underline">
+        <Link href="/under-the-hood/connections" className="underline">
           Back to connections
         </Link>
       </div>
@@ -120,7 +120,7 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
   return (
     <div className="px-8 pb-12">
       <Link
-        href="/connections"
+        href="/under-the-hood/connections"
         className="mb-6 inline-flex items-center gap-1.5 text-body text-muted hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />

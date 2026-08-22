@@ -25,7 +25,7 @@ import type {
   DeliverableRecord,
   MissionUpdateRecord,
   EvolutionOverview,
-  CampaignOverview,
+  WorkflowOverview,
   MemoryRecord,
   MemoryReflectionRecord,
   CustomerOperationsOverview,
@@ -33,6 +33,7 @@ import type {
   TrendsOverview,
   PlatformSignupProgress,
   SignupEmailEvent,
+  ClaudeUsageSnapshot,
 } from "@jarvis/shared";
 import { api, globalEventsUrl, setActiveAgentId } from "./api";
 
@@ -69,8 +70,8 @@ interface StoreValue {
   refreshMissions: () => Promise<void>;
   evolution: EvolutionOverview | null;
   refreshEvolution: () => Promise<void>;
-  campaigns: CampaignOverview | null;
-  refreshCampaigns: () => Promise<void>;
+  campaigns: WorkflowOverview | null;
+  refreshWorkflows: () => Promise<void>;
   customerOperations: CustomerOperationsOverview | null;
   refreshCustomerOperations: () => Promise<void>;
   paidGrowth: PaidGrowthOverview | null;
@@ -99,6 +100,8 @@ interface StoreValue {
   notifications: NotificationRecord[];
   unreadNotifications: number;
   refreshNotifications: () => Promise<void>;
+  /** Null until the first session of this process reports a rate-limit window. */
+  claudeUsage: ClaudeUsageSnapshot | null;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -160,7 +163,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [deliverables, setDeliverables] = useState<DeliverableRecord[]>([]);
   const [missionUpdates, setMissionUpdates] = useState<MissionUpdateRecord[]>([]);
   const [evolution, setEvolution] = useState<EvolutionOverview | null>(null);
-  const [campaigns, setCampaigns] = useState<CampaignOverview | null>(null);
+  const [campaigns, setCampaigns] = useState<WorkflowOverview | null>(null);
   const [customerOperations, setCustomerOperations] = useState<CustomerOperationsOverview | null>(null);
   const [paidGrowth, setPaidGrowth] = useState<PaidGrowthOverview | null>(null);
   const [trends, setTrends] = useState<TrendsOverview | null>(null);
@@ -171,6 +174,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [platformSignup, setPlatformSignup] = useState<StoreValue["platformSignup"]>(null);
+  const [claudeUsage, setClaudeUsage] = useState<ClaudeUsageSnapshot | null>(null);
   const trackedSignupPlatformId = useRef<string | null>(null);
 
   const refreshTasks = useCallback(async () => {
@@ -234,8 +238,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setEvolution(await api.getEvolution());
   }, []);
 
-  const refreshCampaigns = useCallback(async () => {
-    setCampaigns(await api.getCampaigns());
+  const refreshWorkflows = useCallback(async () => {
+    setCampaigns(await api.getWorkflows());
   }, []);
 
   const refreshCustomerOperations = useCallback(async () => {
@@ -336,6 +340,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshNotifications().catch(() => {});
       });
 
+      // The payload is the whole snapshot, so this needs no follow-up fetch.
+      source.addEventListener("claude-usage-changed", (evt) => {
+        try {
+          setClaudeUsage(JSON.parse((evt as MessageEvent).data) as ClaudeUsageSnapshot);
+        } catch {
+          // A malformed frame should leave the last good reading on screen
+          // rather than blanking the indicator.
+        }
+      });
+
       source.addEventListener("missions-changed", () => {
         refreshMissions().catch(() => {});
         refreshTasks().catch(() => {});
@@ -345,8 +359,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshEvolution().catch(() => {});
       });
 
-      source.addEventListener("campaigns-changed", () => {
-        refreshCampaigns().catch(() => {});
+      source.addEventListener("workflows-changed", () => {
+        refreshWorkflows().catch(() => {});
         refreshTrends().catch(() => {});
       });
 
@@ -418,13 +432,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }),
           api.getSettings().then(setSettings),
           api.listPlatforms().then(setPlatforms),
+          // Fetched once at mount, then kept current by the stream. Not part of
+          // the agent-switch refresh — one Claude account serves every agent.
+          api.getUsage().then(setClaudeUsage),
           refreshConnections(),
           refreshNotifications(),
           refreshTasks(),
           refreshMissions(),
           refreshScheduledTasks(),
           refreshEvolution(),
-          refreshCampaigns(),
+          refreshWorkflows(),
             refreshMemories(),
             refreshConversations(),
             refreshPrimaryChat(),
@@ -455,7 +472,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (currentSource) currentSource.close();
     };
   }, [
-    refreshCampaigns,
+    refreshWorkflows,
     refreshCustomerOperations,
     refreshPaidGrowth,
     refreshTrends,
@@ -498,7 +515,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshMissions(),
         refreshScheduledTasks(),
         refreshPrimaryChat(),
-        refreshCampaigns(),
+        refreshWorkflows(),
         refreshCustomerOperations(),
         refreshPaidGrowth(),
         refreshTrends(),
@@ -507,7 +524,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshNotifications(),
       ]);
     },
-    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat, refreshCampaigns, refreshCustomerOperations, refreshPaidGrowth, refreshTrends, refreshEvolution, refreshMemories, refreshNotifications]
+    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat, refreshWorkflows, refreshCustomerOperations, refreshPaidGrowth, refreshTrends, refreshEvolution, refreshMemories, refreshNotifications]
   );
 
   const removeSession = useCallback(async (id: string) => {
@@ -547,7 +564,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       evolution,
       refreshEvolution,
       campaigns,
-      refreshCampaigns,
+      refreshWorkflows,
       customerOperations,
       refreshCustomerOperations,
       paidGrowth,
@@ -566,6 +583,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       notifications,
       unreadNotifications,
       refreshNotifications,
+      claudeUsage,
     }),
     [
       connectionStatus,
@@ -593,7 +611,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       evolution,
       refreshEvolution,
       campaigns,
-      refreshCampaigns,
+      refreshWorkflows,
       customerOperations,
       refreshCustomerOperations,
       paidGrowth,
@@ -612,6 +630,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       notifications,
       unreadNotifications,
       refreshNotifications,
+      claudeUsage,
     ]
   );
 
@@ -687,9 +706,9 @@ export function useEvolution() {
   return { evolution, refresh: refreshEvolution };
 }
 
-export function useCampaigns() {
-  const { campaigns, refreshCampaigns } = useStore();
-  return { overview: campaigns, refresh: refreshCampaigns };
+export function useWorkflows() {
+  const { campaigns, refreshWorkflows } = useStore();
+  return { overview: campaigns, refresh: refreshWorkflows };
 }
 
 export function useCustomerOperations() {
@@ -724,4 +743,10 @@ export function useAgents() {
 export function useMemories() {
   const { memories, memoryReflections, refreshMemories } = useStore();
   return { memories, reflections: memoryReflections, refresh: refreshMemories };
+}
+
+/** Subscription headroom for the Claude account behind every agent. */
+export function useClaudeUsage() {
+  const { claudeUsage } = useStore();
+  return claudeUsage;
 }

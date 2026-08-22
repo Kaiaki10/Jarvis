@@ -63,6 +63,11 @@ from an API route** — responses carry masked hints only.
 
 - `npx tsc --noEmit` in `apps/web` needs `.next/types` to exist (`LayoutProps` is generated
   by Next). Run `npx next build` first in a fresh checkout.
+- **After moving or renaming a page, `rm -rf .next/dev`.** Next generates route
+  validators under `.next/dev/types` that import each page by its old path; they
+  are not rebuilt on move, so both `tsc --noEmit` and `next build` fail with
+  `Cannot find module ../../src/app/<old-path>/page.js` until that directory is
+  deleted.
 - `node:sqlite` rows are typed loosely; repo functions cast through `unknown`.
 - PowerShell is the shell here. `&&` and `||` are unavailable; backticks are escape
   characters, so pass multi-line git messages via `git commit -F <file>`.

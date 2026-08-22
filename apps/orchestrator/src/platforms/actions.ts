@@ -5,7 +5,7 @@ import type {
   SdkMcpToolDefinition,
 } from "@anthropic-ai/claude-agent-sdk";
 import { oauth1Header } from "./oauth1.js";
-import { listConnections, getConnectionCredentials } from "../db/connectionsRepo.js";
+import { listConnections, getConnectionCredentialsById } from "../db/connectionsRepo.js";
 import { getPlatform } from "./definitions.js";
 import { checkDailyCap, recordAction, isDuplicate, contentHash } from "./spendGuard.js";
 import { notify } from "../notifications/notifier.js";
@@ -44,13 +44,25 @@ function fail(text: string) {
 async function guarded(
   platformId: string,
   toolName: string,
-  send: () => Promise<{ content: { type: "text"; text: string }[]; isError?: boolean }>,
+  /** Which account this action is charged to. Caps and dedupe key on it. */
+  connectionId: string | undefined,
+  /**
+   * May return `externalPostId` alongside its content. Returning it
+   * structurally rather than only inside the prose matters: the id was
+   * previously formatted into a sentence for the model and then discarded, so
+   * nothing published could ever be looked up or measured again.
+   */
+  send: () => Promise<{
+    content: { type: "text"; text: string }[];
+    isError?: boolean;
+    externalPostId?: string | null;
+  }>,
   /** Post body, when there is one, for duplicate detection and the ledger. */
   content?: string,
   sessionId?: string
 ) {
   return withPlatformLock(platformId, async () => {
-    const check = checkDailyCap(platformId);
+    const check = checkDailyCap(platformId, connectionId);
     if (!check.allowed) {
       notify({
         type: "session_failed",
@@ -71,7 +83,7 @@ async function guarded(
 
     const result = await send();
     if (!result.isError) {
-      recordAction(platformId, toolName, sessionId ?? null, content ? contentHash(content) : null);
+      recordAction(platformId, toolName, sessionId ?? null, content ? contentHash(content) : null, result.externalPostId ?? null, connectionId ?? null);
     }
     return result;
   });
@@ -167,7 +179,7 @@ async function uploadImageToX(creds: Creds, fileName: string): Promise<string> {
   return mediaId;
 }
 
-function buildXTools(creds: Creds, sessionId?: string): AnyTool[] {
+function buildXTools(creds: Creds, sessionId?: string, connectionId?: string): AnyTool[] {
   return erase([
     tool(
       "list_available_images",
@@ -206,7 +218,7 @@ function buildXTools(creds: Creds, sessionId?: string): AnyTool[] {
             "Optional filename of an image from the Jarvis images folder, as returned by list_available_images. Plain filename only."
           ),
       },
-      async (args) => guarded("x", "post_to_x", async () => {
+      async (args) => guarded("x", "post_to_x", connectionId, async () => {
         const url = "https://api.x.com/2/tweets";
 
         let mediaId: string | null = null;
@@ -257,7 +269,12 @@ function buildXTools(creds: Creds, sessionId?: string): AnyTool[] {
         try {
           const parsed = JSON.parse(body) as { data?: { id?: string } };
           const withImage = mediaId ? ` with image ${args.imageFile}` : "";
-          return ok(`Posted to X${withImage}. Post id: ${parsed.data?.id ?? "unknown"}`);
+          // Returned as data as well as prose. The prose is for the model; the
+          // field is what gets stored, and without it the post is unmeasurable.
+          return {
+            ...ok(`Posted to X${withImage}. Post id: ${parsed.data?.id ?? "unknown"}`),
+            externalPostId: parsed.data?.id ?? null,
+          };
         } catch {
           return ok("Posted to X.");
         }
@@ -266,7 +283,7 @@ function buildXTools(creds: Creds, sessionId?: string): AnyTool[] {
   ]);
 }
 
-function buildSlackTools(creds: Creds, sessionId?: string): AnyTool[] {
+function buildSlackTools(creds: Creds, sessionId?: string, connectionId?: string): AnyTool[] {
   return erase([
     tool(
       "post_to_slack",
@@ -275,7 +292,7 @@ function buildSlackTools(creds: Creds, sessionId?: string): AnyTool[] {
         channel: z.string().describe("Channel name (e.g. #general) or channel ID."),
         text: z.string().describe("Message body. Slack markdown is supported."),
       },
-      async (args) => guarded("slack", "post_to_slack", async () => {
+      async (args) => guarded("slack", "post_to_slack", connectionId, async () => {
         const res = await fetch("https://slack.com/api/chat.postMessage", {
           method: "POST",
           headers: {
@@ -293,7 +310,7 @@ function buildSlackTools(creds: Creds, sessionId?: string): AnyTool[] {
   ]);
 }
 
-function buildDiscordTools(creds: Creds, sessionId?: string): AnyTool[] {
+function buildDiscordTools(creds: Creds, sessionId?: string, connectionId?: string): AnyTool[] {
   return erase([
     tool(
       "post_to_discord",
@@ -302,7 +319,7 @@ function buildDiscordTools(creds: Creds, sessionId?: string): AnyTool[] {
         channelId: z.string().describe("Numeric Discord channel ID."),
         text: z.string().describe("Message body."),
       },
-      async (args) => guarded("discord", "post_to_discord", async () => {
+      async (args) => guarded("discord", "post_to_discord", connectionId, async () => {
         const res = await fetch(
           `https://discord.com/api/v10/channels/${encodeURIComponent(args.channelId)}/messages`,
           {
@@ -324,7 +341,7 @@ function buildDiscordTools(creds: Creds, sessionId?: string): AnyTool[] {
   ]);
 }
 
-function buildResendTools(creds: Creds, sessionId?: string): AnyTool[] {
+function buildResendTools(creds: Creds, sessionId?: string, connectionId?: string): AnyTool[] {
   return erase([
     tool(
       "send_email",
@@ -334,7 +351,7 @@ function buildResendTools(creds: Creds, sessionId?: string): AnyTool[] {
         subject: z.string().describe("Subject line."),
         body: z.string().describe("Plain-text email body."),
       },
-      async (args) => guarded("resend", "send_email", async () => {
+      async (args) => guarded("resend", "send_email", connectionId, async () => {
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
@@ -358,7 +375,7 @@ function buildResendTools(creds: Creds, sessionId?: string): AnyTool[] {
   ]);
 }
 
-const BUILDERS: Record<string, (creds: Creds, sessionId?: string) => AnyTool[]> = {
+const BUILDERS: Record<string, (creds: Creds, sessionId?: string, connectionId?: string) => AnyTool[]> = {
   x: buildXTools,
   slack: buildSlackTools,
   discord: buildDiscordTools,
@@ -384,17 +401,39 @@ const READ_ONLY_TOOLS = ["mcp__jarvis__list_available_images"];
  * Builds tools for platforms that are connected AND passed their last test.
  * Exposing tools for a broken connection just invites confident failures.
  */
-export function buildPlatformToolset(sessionId?: string): PlatformToolset {
+/**
+ * Which accounts a session may act as.
+ *
+ * `connectionId` pins it to exactly one — used by publication runs, where the
+ * campaign has already decided the account and the model must have no other
+ * option. `agentId` narrows to that agent's accounts plus the shared pool.
+ * Neither is a filter the model can talk its way past: a tool that was never
+ * built cannot be called.
+ */
+export interface ToolsetScope {
+  agentId?: string | null;
+  connectionId?: string | null;
+}
+
+export function buildPlatformToolset(
+  sessionId?: string,
+  scope: ToolsetScope = {}
+): PlatformToolset {
   const tools: AnyTool[] = [];
   const names: string[] = [];
 
-  for (const connection of listConnections()) {
+  const available = scope.connectionId
+    ? listConnections().filter((connection) => connection.id === scope.connectionId)
+    : listConnections(scope.agentId ?? undefined);
+
+  for (const connection of available) {
     if (connection.status !== "connected") continue;
     const builder = BUILDERS[connection.platformId];
-    const creds = getConnectionCredentials(connection.platformId);
+    const creds = getConnectionCredentialsById(connection.id);
     if (!builder || !creds) continue;
-    tools.push(...builder(creds, sessionId));
-    names.push(getPlatform(connection.platformId)?.definition.name ?? connection.platformId);
+    tools.push(...builder(creds, sessionId, connection.id));
+    const platformName = getPlatform(connection.platformId)?.definition.name ?? connection.platformId;
+    names.push(connection.label ? `${platformName} (${connection.label})` : platformName);
   }
 
   if (!tools.length) {

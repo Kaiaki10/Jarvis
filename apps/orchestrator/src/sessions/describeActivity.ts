@@ -52,6 +52,10 @@ function describeToolUse(block: ToolUseBlock): string | null {
     case "Grep":
       return "Searching the codebase";
     case "TodoWrite":
+    // Newer models track their to-do list with the Task family instead of
+    // TodoWrite; both mean the same thing here.
+    case "TaskCreate":
+    case "TaskUpdate":
       return "Planning";
     case "WebSearch":
     case "WebFetch":

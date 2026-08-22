@@ -101,7 +101,7 @@ export function JarvisChat() {
             </div>
           </div>
         </div>
-        <Link href="/memory" aria-label="Open Jarvis memory">
+        <Link href="/under-the-hood/brain/memory" aria-label="Open Jarvis memory">
           <Badge tone="accent"><Brain className="h-3 w-3" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} remembered</Badge>
         </Link>
       </div>

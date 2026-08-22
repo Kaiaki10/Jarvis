@@ -576,7 +576,7 @@ const metaAds: Platform = {
       {
         title: "Choose the ad account",
         body: ["Copy the numeric ad account ID from Ads Manager. Jarvis accepts it with or without the act_ prefix."],
-        warning: "Keep new campaigns paused until creative, targeting, conversion tracking, and the first budget have all been reviewed.",
+        warning: "Keep new workflows paused until creative, targeting, conversion tracking, and the first budget have all been reviewed.",
       },
     ],
   },
@@ -596,7 +596,7 @@ const xAds: Platform = {
   definition: {
     id: "x_ads",
     name: "X Ads",
-    tagline: "Measure and manage approved X advertising campaigns and funding limits.",
+    tagline: "Measure and manage approved X advertising workflows and funding limits.",
     category: "advertising",
     docsUrl: "https://docs.x.com/x-ads-api",
     fields: [

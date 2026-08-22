@@ -70,7 +70,7 @@ export function SessionList({
         action={
           showViewAll && runs.length > 0 ? (
             <Link
-              href="/sessions"
+              href="/under-the-hood/brain/runs"
               className="text-label font-medium text-muted hover:text-foreground"
             >
               View all
@@ -92,7 +92,7 @@ export function SessionList({
             key={session.id}
             className="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-body hover:bg-white/[0.04]"
           >
-            <Link href={`/sessions/${session.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+            <Link href={`/under-the-hood/brain/runs/${session.id}`} className="flex min-w-0 flex-1 items-center gap-3">
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-foreground">{session.title}</span>
                 {session.currentActivity ? (

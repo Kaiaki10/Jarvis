@@ -6,63 +6,71 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Terminal,
-  CalendarClock,
   ListChecks,
-  Plug,
   Bell,
-  Settings,
   WifiOff,
   Flag,
-  FlaskConical,
   Megaphone,
-  Brain,
   Headphones,
   Orbit,
   BadgeDollarSign,
-  Bot,
   MessagesSquare,
   Check,
   ChevronsUpDown,
   Menu,
+  type LucideIcon,
 } from "lucide-react";
 import { StoreProvider, useAgents, useConnectionStatus, useNotifications } from "@/lib/store";
 import { ExperienceModeProvider, useExperienceMode } from "@/lib/experienceMode";
+import {
+  UNDER_THE_HOOD_ROOT,
+  moduleHref,
+  visibleModules,
+} from "@/lib/underTheHood";
 
-const NAV_GROUPS = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  /** Prefix that counts as "here", when the link points at a child route. */
+  match?: string;
+}
+
+/**
+ * Two layers, deliberately: what you work on with Jarvis, and the machinery
+ * that lets him act. See UNDER_THE_HOOD_PLAN.md.
+ *
+ * The second layer is generated from the module registry, so a module that is
+ * still dark never appears and a new one needs no edit here.
+ */
+const NAV_GROUPS: Array<{ label: string | null; items: NavItem[] }> = [
   {
     label: null,
     items: [{ href: "/", label: "Jarvis", icon: LayoutDashboard }],
   },
   {
-    label: "Work",
+    label: "Jarvis",
     items: [
       { href: "/operate", label: "Operate", icon: Orbit },
       { href: "/missions", label: "Missions", icon: Flag },
-      { href: "/campaigns", label: "Campaigns", icon: Megaphone },
+      
       { href: "/paid-growth", label: "Paid growth", icon: BadgeDollarSign },
       { href: "/customers", label: "Customers", icon: Headphones },
       { href: "/tasks", label: "Tasks", icon: ListChecks },
-    ],
-  },
-  {
-    label: "Jarvis",
-    items: [
-      { href: "/agents", label: "Agents", icon: Bot },
       { href: "/conversations", label: "Conversations", icon: MessagesSquare },
-      { href: "/memory", label: "Memory", icon: Brain },
-      { href: "/sessions", label: "Runs", icon: Terminal },
-      { href: "/automations", label: "Automations", icon: CalendarClock },
-      { href: "/evolution", label: "Evolution", icon: FlaskConical },
+      { href: "/notifications", label: "Notifications", icon: Bell },
     ],
   },
   {
-    label: "System",
-    items: [
-      { href: "/notifications", label: "Notifications", icon: Bell },
-      { href: "/connections", label: "Connections", icon: Plug },
-      { href: "/settings", label: "Settings", icon: Settings },
-    ],
+    label: "Under the Hood",
+    items: visibleModules().map((module) => ({
+      href: moduleHref(module),
+      label: module.label,
+      icon: module.icon,
+      // A module's link points at its first feature, so the module's own root
+      // is what decides whether the tab is lit.
+      match: `${UNDER_THE_HOOD_ROOT}/${module.slug}`,
+    })),
   },
 ];
 
@@ -161,7 +169,7 @@ function AgentSwitcher() {
               </button>
             ))}
             <Link
-              href="/agents"
+              href="/under-the-hood/brain/agents"
               className="block border-t border-border px-3 py-2 text-label text-muted transition-colors hover:bg-white/[0.06] hover:text-foreground"
               onClick={() => setOpen(false)}
             >
@@ -216,8 +224,8 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
               </div>
             )}
             <div className="flex flex-col gap-0.5">
-              {group.items.map(({ href, label, icon: Icon }) => {
-                const active = isActive(pathname, href);
+              {group.items.map(({ href, label, icon: Icon, match }) => {
+                const active = isActive(pathname, match ?? href);
                 const badge = href === "/notifications" && unread > 0 ? unread : null;
                 return (
                   <Link

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { db } from "../db/db.js";
 import { getSettings } from "../db/repo.js";
+import { connectionCap } from "../db/connectionsRepo.js";
 
 /**
  * A ceiling on how many billable actions Jarvis can take per platform per day.
@@ -32,13 +33,24 @@ function startOfTodayIso(): string {
   return d.toISOString();
 }
 
-export function countActionsToday(platformId: string): number {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM platform_actions
-       WHERE platform_id = ? AND created_at >= ?`
-    )
-    .get(platformId, startOfTodayIso()) as unknown as { n: number };
+/**
+ * Actions today, per account when one is known.
+ *
+ * Keyed on the connection rather than the platform: two businesses posting
+ * through separate X accounts should not share one budget, or either can
+ * starve the other. Rows predating multi-account carry connection_id equal to
+ * their platform_id, so they still count against the account they belong to.
+ */
+export function countActionsToday(platformId: string, connectionId?: string | null): number {
+  const row = (connectionId
+    ? db.prepare(
+        `SELECT COUNT(*) AS n FROM platform_actions
+         WHERE connection_id = ? AND created_at >= ?`
+      ).get(connectionId, startOfTodayIso())
+    : db.prepare(
+        `SELECT COUNT(*) AS n FROM platform_actions
+         WHERE platform_id = ? AND created_at >= ?`
+      ).get(platformId, startOfTodayIso())) as unknown as { n: number };
   return row.n;
 }
 
@@ -46,18 +58,35 @@ export function recordAction(
   platformId: string,
   toolName: string,
   sessionId?: string | null,
-  contentHash?: string | null
+  contentHash?: string | null,
+  /** The platform's own id for what was posted, when it returns one. */
+  externalPostId?: string | null,
+  connectionId?: string | null
 ): void {
   db.prepare(
-    `INSERT INTO platform_actions (platform_id, tool_name, session_id, created_at, content_hash)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO platform_actions (platform_id, tool_name, session_id, created_at, content_hash, external_post_id, connection_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(
     platformId,
     toolName,
     sessionId ?? null,
     new Date().toISOString(),
-    contentHash ?? null
+    contentHash ?? null,
+    externalPostId ?? null,
+    connectionId ?? null
   );
+}
+
+/** The post id recorded for a session, for the publication reconciler. */
+export function externalPostIdForSession(sessionId: string, platformId: string): string | null {
+  const row = db
+    .prepare(
+      `SELECT external_post_id FROM platform_actions
+       WHERE session_id = ? AND platform_id = ? AND external_post_id IS NOT NULL
+       ORDER BY id DESC LIMIT 1`
+    )
+    .get(sessionId, platformId) as unknown as { external_post_id: string } | undefined;
+  return row?.external_post_id ?? null;
 }
 
 export function hasSuccessfulActionForSession(sessionId: string, platformId: string): boolean {
@@ -105,9 +134,13 @@ export interface CapCheck {
  * Checked before the outbound call, so a blocked action costs nothing. A cap of 0
  * means unlimited, for someone who would rather rely on the platform's own limit.
  */
-export function checkDailyCap(platformId: string): CapCheck {
-  const cap = getSettings().dailyPlatformActionCap;
-  const used = countActionsToday(platformId);
+export function checkDailyCap(platformId: string, connectionId?: string | null): CapCheck {
+  // An account's own cap wins; otherwise the global default applies. Falling
+  // back rather than treating "unset" as unlimited means a newly connected
+  // account is never unbounded by default.
+  const override = connectionId ? connectionCap(connectionId) : null;
+  const cap = override ?? getSettings().dailyPlatformActionCap;
+  const used = countActionsToday(platformId, connectionId);
 
   if (cap <= 0) return { allowed: true, used, cap };
   if (used < cap) return { allowed: true, used, cap };
@@ -125,24 +158,37 @@ export function checkDailyCap(platformId: string): CapCheck {
 
 export interface PlatformUsage {
   platformId: string;
+  connectionId: string | null;
   usedToday: number;
   cap: number;
   estimatedSpendToday: number;
 }
 
+/**
+ * Today's usage, one row per account rather than per platform.
+ *
+ * Grouping by platform would total two businesses together and report them
+ * against a cap neither of them is actually held to, which is the opposite of
+ * what per-account caps are for.
+ */
 export function getUsageToday(): PlatformUsage[] {
-  const cap = getSettings().dailyPlatformActionCap;
+  const fallback = getSettings().dailyPlatformActionCap;
   const rows = db
     .prepare(
-      `SELECT platform_id, COUNT(*) AS n FROM platform_actions
-       WHERE created_at >= ? GROUP BY platform_id`
+      `SELECT platform_id, connection_id, COUNT(*) AS n FROM platform_actions
+       WHERE created_at >= ? GROUP BY platform_id, connection_id`
     )
-    .all(startOfTodayIso()) as unknown as Array<{ platform_id: string; n: number }>;
+    .all(startOfTodayIso()) as unknown as Array<{
+      platform_id: string;
+      connection_id: string | null;
+      n: number;
+    }>;
 
   return rows.map((row) => ({
     platformId: row.platform_id,
+    connectionId: row.connection_id,
     usedToday: row.n,
-    cap,
+    cap: (row.connection_id ? connectionCap(row.connection_id) : null) ?? fallback,
     // Approximate: the ledger records that an action happened, not its exact
     // billed shape, so this is a floor rather than an invoice.
     estimatedSpendToday: row.n * (ACTION_COST_USD[`post_to_${row.platform_id}`]?.base ?? 0),

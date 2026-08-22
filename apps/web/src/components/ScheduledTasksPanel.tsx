@@ -99,7 +99,7 @@ function LastRunLine({
 
   return (
     <Link
-      href={`/sessions/${lastRun.id}`}
+      href={`/under-the-hood/brain/runs/${lastRun.id}`}
       onClick={(e) => e.stopPropagation()}
       title={text}
       className={`group/run mt-1 flex w-fit max-w-full items-center gap-1.5 rounded text-micro transition-colors ${
@@ -215,7 +215,7 @@ export function ScheduledTasksPanel() {
       {settings && !settings.automationsEnabled && (
         <div className="mx-5 mb-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-label text-warning">
           All automations are paused by the master switch in{" "}
-          <Link href="/settings" className="underline">
+          <Link href="/under-the-hood/settings" className="underline">
             Settings
           </Link>
           .
@@ -328,7 +328,7 @@ export function ScheduledTasksPanel() {
                 <span className="font-mono">{task.permissionMode}</span>
                 {task.lastSessionId && (
                   <Link
-                    href={`/sessions/${task.lastSessionId}`}
+                    href={`/under-the-hood/brain/runs/${task.lastSessionId}`}
                     className="hover:text-foreground"
                   >
                     Last run →

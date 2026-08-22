@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   claude_session_id TEXT,
   codex_thread_id TEXT,
   model TEXT NOT NULL DEFAULT 'claude',
+  claude_model TEXT NOT NULL DEFAULT 'default',
+  auto_approve_local_tools INTEGER NOT NULL DEFAULT 0,
   title TEXT NOT NULL,
   status TEXT NOT NULL,
   cwd TEXT NOT NULL,
@@ -117,7 +119,13 @@ CREATE INDEX IF NOT EXISTS idx_notifications_created
   ON notifications(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS connections (
-  platform_id TEXT PRIMARY KEY,
+  id TEXT PRIMARY KEY,
+  -- Per-account daily action cap. NULL means fall back to the global default
+  -- in settings, so an account that has never been tuned still has a limit.
+  daily_action_cap INTEGER,
+  agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE,
+  label TEXT,
+  platform_id TEXT NOT NULL,
   credentials TEXT NOT NULL,
   status TEXT NOT NULL,
   detail TEXT,
@@ -325,7 +333,7 @@ CREATE TABLE IF NOT EXISTS evolution_policies (
 
 CREATE INDEX IF NOT EXISTS idx_evolution_proposals_stage ON evolution_proposals(stage, updated_at DESC);
 
-CREATE TABLE IF NOT EXISTS campaigns (
+CREATE TABLE IF NOT EXISTS workflows (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   objective TEXT NOT NULL,
@@ -335,6 +343,13 @@ CREATE TABLE IF NOT EXISTS campaigns (
   primary_metric TEXT NOT NULL,
   approval_policy TEXT NOT NULL DEFAULT 'each_item',
   status TEXT NOT NULL DEFAULT 'draft',
+  -- How far five-stage onboarding has got. Resumable by design.
+  onboarding_stage INTEGER NOT NULL DEFAULT 0,
+  -- Off by default. When on, approved content is scheduled on a cadence
+  -- without a human picking each time. Publishing still hits the approval
+  -- gate -- this automates timing, not consent.
+  autopilot INTEGER NOT NULL DEFAULT 0,
+  autopilot_interval_hours INTEGER NOT NULL DEFAULT 24,
   mission_id TEXT REFERENCES missions(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -343,7 +358,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
 
 CREATE TABLE IF NOT EXISTS content_items (
   id TEXT PRIMARY KEY,
-  campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   body TEXT NOT NULL,
   format TEXT NOT NULL,
@@ -357,9 +372,9 @@ CREATE TABLE IF NOT EXISTS content_items (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS campaign_generation_runs (
+CREATE TABLE IF NOT EXISTS workflow_generation_runs (
   id TEXT PRIMARY KEY,
-  campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'running',
   requested_count INTEGER NOT NULL,
@@ -370,6 +385,7 @@ CREATE TABLE IF NOT EXISTS campaign_generation_runs (
 
 CREATE TABLE IF NOT EXISTS content_publication_runs (
   id TEXT PRIMARY KEY,
+  external_post_id TEXT,
   content_item_id TEXT NOT NULL REFERENCES content_items(id) ON DELETE CASCADE,
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   platform_id TEXT NOT NULL,
@@ -379,15 +395,16 @@ CREATE TABLE IF NOT EXISTS content_publication_runs (
   completed_at TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status, updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_content_items_campaign ON content_items(campaign_id, status, updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_campaign_generation_session ON campaign_generation_runs(session_id);
+CREATE INDEX IF NOT EXISTS idx_workflows_status ON workflows(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_items_workflow ON content_items(workflow_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_workflow_generation_session ON workflow_generation_runs(session_id);
 CREATE INDEX IF NOT EXISTS idx_content_publication_session ON content_publication_runs(session_id);
 CREATE INDEX IF NOT EXISTS idx_content_publication_item ON content_publication_runs(content_item_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS paid_growth_campaigns (
   id TEXT PRIMARY KEY,
-  campaign_id TEXT REFERENCES campaigns(id) ON DELETE SET NULL,
+  -- Stage 4: which workflow this ad spend belongs to.
+  workflow_id TEXT REFERENCES workflows(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   objective TEXT NOT NULL,
   platform TEXT NOT NULL,
@@ -431,6 +448,9 @@ CREATE TABLE IF NOT EXISTS platform_actions (
   platform_id TEXT NOT NULL,
   tool_name TEXT NOT NULL,
   session_id TEXT,
+  -- The platform's own id for what was posted. Without it a published post
+  -- can never be looked up again, so it can never be measured.
+  external_post_id TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -639,5 +659,66 @@ CREATE TABLE IF NOT EXISTS customer_service_policy (
   widget_name TEXT NOT NULL DEFAULT 'Jarvis Support',
   widget_welcome TEXT NOT NULL DEFAULT 'Hi — how can we help?',
   allowed_origins TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT NOT NULL
+);
+
+-- Stage 1: the accounts a workflow may act as. A workflow legitimately has
+-- several (an X account and an email sender), which one pin column could not
+-- express. A publication session is handed only these, so content cannot reach
+-- an account its workflow does not list.
+CREATE TABLE IF NOT EXISTS workflow_accounts (
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (workflow_id, connection_id)
+);
+
+-- Stage 3: one row per observation rather than per post, so performance has a
+-- history instead of a last-known value overwritten in place.
+CREATE TABLE IF NOT EXISTS social_metrics (
+  id TEXT PRIMARY KEY,
+  content_item_id TEXT NOT NULL REFERENCES content_items(id) ON DELETE CASCADE,
+  platform_id TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  value REAL NOT NULL,
+  captured_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_metrics_item ON social_metrics(content_item_id, metric, captured_at DESC);
+
+-- Stage 5: what the workflow appears to have learned, in words, with the
+-- evidence it came from. Deliberately carries no revenue column -- the system
+-- has no revenue signal, and a column invites someone to fill it with a guess.
+CREATE TABLE IF NOT EXISTS workflow_insights (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  statement TEXT NOT NULL,
+  evidence TEXT NOT NULL,
+  confidence TEXT NOT NULL DEFAULT 'low',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_insights_workflow ON workflow_insights(workflow_id, created_at DESC);
+
+-- The voice a workflow speaks in (see CHARACTER_PLAN.md).
+--
+-- `exemplars` carries sample posts rather than adjectives: current models match
+-- a voice far better from a writing sample than from a description of one, so
+-- it is the highest-value field here. `disclosure` is NOT NULL by construction —
+-- presenting an AI persona as a real person without disclosure is deceptive
+-- under FTC Section 5, so it cannot be an optional field someone forgets.
+CREATE TABLE IF NOT EXISTS workflow_characters (
+  workflow_id TEXT PRIMARY KEY REFERENCES workflows(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  persona TEXT NOT NULL DEFAULT '',
+  voice_rules TEXT NOT NULL DEFAULT '',
+  -- JSON array of sample posts.
+  exemplars TEXT NOT NULL DEFAULT '[]',
+  appearance TEXT NOT NULL DEFAULT '',
+  -- JSON array of locked turnaround reference image ids. Empty until image
+  -- generation exists.
+  reference_image_ids TEXT NOT NULL DEFAULT '[]',
+  disclosure TEXT NOT NULL,
+  created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

@@ -27,9 +27,9 @@ export interface PaidGrowthRecommendation {
 }
 
 export function recommendPaidGrowthActions(
-  campaigns: PaidGrowthCampaignRecord[]
+  workflows: PaidGrowthCampaignRecord[]
 ): PaidGrowthRecommendation[] {
-  const candidates = campaigns.filter((campaign) =>
+  const candidates = workflows.filter((campaign) =>
     ["approved", "active"].includes(campaign.status)
   );
   const recommendations: PaidGrowthRecommendation[] = [];

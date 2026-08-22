@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 describe("trendsOverview", () => {
-  it("counts content, campaigns, customer resolution, and paid ROAS for one agent, scoped away from another's", async () => {
+  it("counts content, workflows, customer resolution, and paid ROAS for one agent, scoped away from another's", async () => {
     const { createAgent } = await import("../db/agentRepo.js");
-    const { createCampaign, createContentItem, updateContentItem, updateCampaign } = await import(
-      "../db/campaignRepo.js"
+    const { createWorkflow, createContentItem, updateContentItem, updateWorkflow } = await import(
+      "../db/workflowRepo.js"
     );
     const { createCustomerConversation, updateCustomerConversation } = await import(
       "../db/customerRepo.js"
@@ -18,7 +18,7 @@ describe("trendsOverview", () => {
     const other = createAgent({ name: "Someone Else's Agent" });
 
     // Content: one published (counts toward publishedOrMeasured), one left as draft.
-    const campaign = createCampaign({
+    const campaign = createWorkflow({
       name: "Test campaign",
       objective: "Grow",
       audience: "Everyone",
@@ -28,9 +28,9 @@ describe("trendsOverview", () => {
       approvalPolicy: "each_item",
       agentId: agent.id,
     });
-    updateCampaign(campaign.id, { status: "active" });
+    updateWorkflow(campaign.id, { status: "active" });
     const published = createContentItem({
-      campaignId: campaign.id,
+      workflowId: campaign.id,
       title: "Published post",
       body: "...",
       format: "social_post",
@@ -38,7 +38,7 @@ describe("trendsOverview", () => {
     });
     updateContentItem(published.id, { status: "published" });
     createContentItem({
-      campaignId: campaign.id,
+      workflowId: campaign.id,
       title: "Still a draft",
       body: "...",
       format: "social_post",
@@ -88,8 +88,8 @@ describe("trendsOverview", () => {
     expect(overview.content.byStatus.published).toBe(1);
     expect(overview.content.byStatus.draft).toBe(1);
 
-    expect(overview.campaigns.total).toBe(1);
-    expect(overview.campaigns.active).toBe(1);
+    expect(overview.workflows.total).toBe(1);
+    expect(overview.workflows.active).toBe(1);
 
     expect(overview.customers.total).toBe(2);
     expect(overview.customers.resolutionRate).toBe(0.5);
@@ -101,7 +101,7 @@ describe("trendsOverview", () => {
     // The whole point of scoping: another agent's overview must not see any of this.
     const otherOverview = trendsOverview(other.id);
     expect(otherOverview.content.total).toBe(0);
-    expect(otherOverview.campaigns.total).toBe(0);
+    expect(otherOverview.workflows.total).toBe(0);
     expect(otherOverview.customers.total).toBe(0);
     expect(otherOverview.paidGrowth.spentMinor).toBe(0);
     expect(otherOverview.paidGrowth.roas).toBeNull();

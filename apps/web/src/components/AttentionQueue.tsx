@@ -79,7 +79,7 @@ export function AttentionQueue() {
           return (
             <Link
               key={session.id}
-              href={`/sessions/${session.id}`}
+              href={`/under-the-hood/brain/runs/${session.id}`}
               className="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-body hover:bg-white/[0.04]"
             >
               <Icon

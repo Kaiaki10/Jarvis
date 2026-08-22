@@ -65,7 +65,7 @@ export function TodaySchedule() {
         description="Automations that have run or are due today"
         action={
           <Link
-            href="/automations"
+            href="/under-the-hood/automations"
             className="text-label font-medium text-muted hover:text-foreground"
           >
             Manage
@@ -77,7 +77,7 @@ export function TodaySchedule() {
           <div className="flex items-center gap-2.5 px-3 py-3 text-body text-muted">
             <Calendar className="h-4 w-4" strokeWidth={1.75} />
             Nothing scheduled for today.
-            <Link href="/automations" className="text-foreground hover:underline">
+            <Link href="/under-the-hood/automations" className="text-foreground hover:underline">
               Schedule one
             </Link>
           </div>
@@ -118,7 +118,7 @@ export function TodaySchedule() {
           );
 
           return entry.sessionId ? (
-            <Link key={entry.key} href={`/sessions/${entry.sessionId}`}>
+            <Link key={entry.key} href={`/under-the-hood/brain/runs/${entry.sessionId}`}>
               {row}
             </Link>
           ) : (

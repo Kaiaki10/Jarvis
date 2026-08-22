@@ -5,9 +5,9 @@ export default function ConnectionsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Channels & delivery"
+        eyebrow="Under the hood"
         title="Connections"
-        description="Connect the platforms Jarvis can publish to, message through, measure, and grow from"
+        description="Every platform Jarvis can reach, grouped by what it does"
       />
       <div className="max-w-6xl px-8 pb-10">
         <ConnectionsList />

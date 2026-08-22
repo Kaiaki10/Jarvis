@@ -8,8 +8,8 @@ import { syncPaidGrowthCampaign } from "./service.js";
 
 const CHECK_INTERVAL_MS = 15 * 60_000;
 
-export function findPaidGrowthSyncCandidate(campaigns: PaidGrowthCampaignRecord[], now = Date.now()) {
-  return campaigns.find((campaign) => {
+export function findPaidGrowthSyncCandidate(workflows: PaidGrowthCampaignRecord[], now = Date.now()) {
+  return workflows.find((campaign) => {
     if (campaign.status !== "active" || !campaign.externalCampaignId) return false;
     if (getConnection(campaign.platform)?.status !== "connected") return false;
     return !campaign.lastSyncedAt || now - new Date(campaign.lastSyncedAt).getTime() >= CHECK_INTERVAL_MS;

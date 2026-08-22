@@ -4,7 +4,7 @@ import { executePaidGrowthActionWithCredentials } from "./executor.js";
 
 function campaign(platform: PaidGrowthCampaignRecord["platform"], patch: Partial<PaidGrowthCampaignRecord> = {}): PaidGrowthCampaignRecord {
   return {
-    id: "paid-1", campaignId: null, name: "Growth", objective: "Acquire customers", platform,
+    id: "paid-1", workflowId: null, name: "Growth", objective: "Acquire customers", platform,
     externalCampaignId: platform === "x_ads" ? "abc123" : "123456", externalBudgetEntityId: null,
     status: "approved", currency: "USD", dailyBudgetMinor: 2_500, lifetimeBudgetMinor: 50_000,
     approvedBudgetMinor: 50_000, spentMinor: 0, revenueMinor: 0, impressions: 0, clicks: 0,

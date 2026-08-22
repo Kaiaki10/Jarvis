@@ -50,7 +50,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     <div className="flex h-[calc(100dvh-3.75rem)] flex-col lg:h-screen">
       <div className="flex items-center gap-3 border-b border-border px-4 py-4 sm:px-8">
         <Link
-          href="/sessions"
+          href="/under-the-hood/brain/runs"
           className="flex items-center gap-1.5 text-body text-muted hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />

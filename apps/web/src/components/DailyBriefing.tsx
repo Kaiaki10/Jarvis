@@ -95,7 +95,7 @@ export function DailyBriefing() {
 
           <div className="grid min-w-[280px] grid-cols-2 gap-2 lg:min-w-[420px]">
             <BriefStat icon={Flag} value={briefing.active.length} label="Active missions" href="/missions" />
-            <BriefStat icon={ShieldQuestion} value={briefing.approvals.length + briefing.missionReviews.length} label="Decisions waiting" tone={briefing.approvals.length + briefing.missionReviews.length ? "warning" : "neutral"} href={briefing.approvals[0] ? `/sessions/${briefing.approvals[0].id}` : briefing.missionReviews.length ? "/missions" : "/sessions"} />
+            <BriefStat icon={ShieldQuestion} value={briefing.approvals.length + briefing.missionReviews.length} label="Decisions waiting" tone={briefing.approvals.length + briefing.missionReviews.length ? "warning" : "neutral"} href={briefing.approvals[0] ? `/under-the-hood/brain/runs/${briefing.approvals[0].id}` : briefing.missionReviews.length ? "/missions" : "/sessions"} />
             <BriefStat icon={CheckCircle2} value={briefing.completedToday.length} label="Steps done today" tone={briefing.completedToday.length ? "success" : "neutral"} href="/tasks" />
             <BriefStat icon={CalendarClock} value={briefing.ready.length} label="Ready to review" tone={briefing.ready.length ? "accent" : "neutral"} href="/missions" />
           </div>

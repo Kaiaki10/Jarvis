@@ -46,7 +46,20 @@ export function oauth1Header(
     oauth_version: "1.0",
   };
 
-  const allParams = { ...oauthParams, ...extraParams };
+  // RFC 5849 §3.4.1.2: the base string URI excludes the query, and §3.4.1.3
+  // requires those query parameters to be normalised in alongside the oauth_*
+  // ones. Signing the whole URL instead produces a signature X rejects with a
+  // bare 401 — which reads like a credentials or scope problem rather than a
+  // signing one. Every call here was previously query-free (POSTs to /2/tweets
+  // and the media endpoints), so this stayed latent until the first GET that
+  // needed parameters.
+  const [baseUrl, queryString = ""] = url.split("?");
+  const queryParams: Record<string, string> = {};
+  for (const [key, value] of new URLSearchParams(queryString)) {
+    queryParams[key] = value;
+  }
+
+  const allParams = { ...oauthParams, ...queryParams, ...extraParams };
   const paramString = Object.keys(allParams)
     .sort()
     .map((k) => `${pct(k)}=${pct(allParams[k])}`)
@@ -54,7 +67,7 @@ export function oauth1Header(
 
   const baseString = [
     method.toUpperCase(),
-    pct(url),
+    pct(baseUrl),
     pct(paramString),
   ].join("&");
 

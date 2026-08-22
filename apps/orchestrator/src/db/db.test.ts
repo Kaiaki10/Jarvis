@@ -30,7 +30,7 @@ describe("database initialization", () => {
     expect(paidGrowthColumns.some((column) => column.name === "external_budget_entity_id")).toBe(true);
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'missions'").get()).toBeTruthy();
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'deliverables'").get()).toBeTruthy();
-    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'campaigns'").get()).toBeTruthy();
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'workflows'").get()).toBeTruthy();
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'content_items'").get()).toBeTruthy();
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'content_publication_runs'").get()).toBeTruthy();
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'paid_growth_campaigns'").get()).toBeTruthy();

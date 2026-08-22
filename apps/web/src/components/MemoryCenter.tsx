@@ -92,7 +92,7 @@ export function MemoryCenter() {
           <CardHeader title="Automatic reflection" description="Runs after every Jarvis turn" icon={<Sparkles className="h-4 w-4" strokeWidth={1.75} />} />
           <CardBody className="space-y-2">
             {reflections.length ? reflections.slice(0, 5).map((reflection) => (
-              <Link key={reflection.id} href={`/sessions/${reflection.sessionId}`} className="flex items-start gap-2.5 rounded-lg border border-border bg-black/10 px-3 py-2.5 transition-colors hover:border-border-strong">
+              <Link key={reflection.id} href={`/under-the-hood/brain/runs/${reflection.sessionId}`} className="flex items-start gap-2.5 rounded-lg border border-border bg-black/10 px-3 py-2.5 transition-colors hover:border-border-strong">
                 <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${reflection.status === "reviewed" ? "text-success" : "text-muted"}`} strokeWidth={1.75} />
                 <div className="min-w-0"><div className="truncate text-label font-medium text-foreground">{reflection.sessionTitle}</div><div className="mt-0.5 text-micro text-muted">{reflection.status === "skipped" ? "Isolated run · memory protected" : reflection.status === "failed" ? "Reflection stopped with the run" : reflection.memoriesAdded ? `${reflection.memoriesAdded} new ${reflection.memoriesAdded === 1 ? "memory" : "memories"}` : reflection.memoriesConfirmed ? `${reflection.memoriesConfirmed} existing ${reflection.memoriesConfirmed === 1 ? "memory" : "memories"} confirmed` : "Reviewed · nothing durable added"} · {new Date(reflection.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div></div>
               </Link>

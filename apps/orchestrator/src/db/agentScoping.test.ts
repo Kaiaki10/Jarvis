@@ -142,7 +142,7 @@ describe("agent scoping", () => {
 
   it("isolates marketing, growth, customers, evolution, and notifications with their children", async () => {
     const { createAgent } = await import("./agentRepo.js");
-    const { createCampaign, createContentItem, listCampaigns, listContentItems } = await import("./campaignRepo.js");
+    const { createWorkflow, createContentItem, listWorkflows, listContentItems } = await import("./workflowRepo.js");
     const { createPaidGrowthCampaign, listPaidGrowthCampaigns } = await import("./paidGrowthRepo.js");
     const { createCustomerConversation, listCustomerOperations } = await import("./customerRepo.js");
     const { createEvolutionProposal, listEvolutionProposals } = await import("./repo.js");
@@ -150,10 +150,10 @@ describe("agent scoping", () => {
     const ivy = createAgent({ name: "Ivy" });
     const jude = createAgent({ name: "Jude" });
 
-    const ivyCampaign = createCampaign({ name: "Ivy launch", objective: "Grow", audience: "Teams", offer: "Demo", channels: ["blog"], primaryMetric: "leads", approvalPolicy: "campaign", agentId: ivy.id });
-    const judeCampaign = createCampaign({ name: "Jude launch", objective: "Sell", audience: "Founders", offer: "Trial", channels: ["email"], primaryMetric: "trials", approvalPolicy: "each_item", agentId: jude.id });
-    createContentItem({ campaignId: ivyCampaign.id, title: "Ivy article", body: "Body", format: "article", channel: "blog" });
-    createContentItem({ campaignId: judeCampaign.id, title: "Jude email", body: "Body", format: "email", channel: "email" });
+    const ivyCampaign = createWorkflow({ name: "Ivy launch", objective: "Grow", audience: "Teams", offer: "Demo", channels: ["blog"], primaryMetric: "leads", approvalPolicy: "campaign", agentId: ivy.id });
+    const judeCampaign = createWorkflow({ name: "Jude launch", objective: "Sell", audience: "Founders", offer: "Trial", channels: ["email"], primaryMetric: "trials", approvalPolicy: "each_item", agentId: jude.id });
+    createContentItem({ workflowId: ivyCampaign.id, title: "Ivy article", body: "Body", format: "article", channel: "blog" });
+    createContentItem({ workflowId: judeCampaign.id, title: "Jude email", body: "Body", format: "email", channel: "email" });
     createPaidGrowthCampaign({ name: "Ivy ads", objective: "Leads", platform: "google_ads", currency: "USD", dailyBudgetMinor: 100, lifetimeBudgetMinor: 1000, startDate: "2026-08-19", agentId: ivy.id });
     createPaidGrowthCampaign({ name: "Jude ads", objective: "Trials", platform: "meta_ads", currency: "USD", dailyBudgetMinor: 200, lifetimeBudgetMinor: 2000, startDate: "2026-08-19", agentId: jude.id });
     createCustomerConversation({ customerName: "Ivy Customer", customerEmail: "same@example.com", channel: "email", subject: "Ivy", message: "Hello", agentId: ivy.id });
@@ -163,7 +163,7 @@ describe("agent scoping", () => {
     notify({ type: "session_failed", severity: "error", title: "Ivy alert", body: "Ivy only", agentId: ivy.id });
     notify({ type: "session_failed", severity: "error", title: "Jude alert", body: "Jude only", agentId: jude.id });
 
-    expect(listCampaigns(ivy.id).map((item) => item.name)).toEqual(["Ivy launch"]);
+    expect(listWorkflows(ivy.id).map((item) => item.name)).toEqual(["Ivy launch"]);
     expect(listContentItems(undefined, ivy.id).map((item) => item.title)).toEqual(["Ivy article"]);
     expect(listPaidGrowthCampaigns(ivy.id).map((item) => item.name)).toEqual(["Ivy ads"]);
     expect(listCustomerOperations(ivy.id).customers.map((item) => item.name)).toEqual(["Ivy Customer"]);
