@@ -10,6 +10,7 @@ interface CharacterRow {
   appearance: string;
   reference_image_ids: string;
   disclosure: string;
+  version: number;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +35,7 @@ function mapCharacter(row: CharacterRow): WorkflowCharacterRecord {
     appearance: row.appearance,
     referenceImageIds: parseList(row.reference_image_ids),
     disclosure: row.disclosure,
+    version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -61,6 +63,58 @@ export function listCharacters(agentId?: string): WorkflowCharacterRecord[] {
   return rows.map(mapCharacter);
 }
 
+/**
+ * What counts as a different voice.
+ *
+ * `appearance` and `referenceImageIds` are excluded: they steer image
+ * generation, not writing, so changing them must not invalidate the attribution
+ * of text that was written before. Bumping on every save would make version
+ * numbers count edits rather than voices, and stage 5 would be correlating
+ * performance against noise.
+ */
+function voiceChanged(
+  before: WorkflowCharacterRecord,
+  after: { name: string; persona: string; voiceRules: string; exemplars: string[]; disclosure: string }
+): boolean {
+  return (
+    before.name !== after.name ||
+    before.persona !== after.persona ||
+    before.voiceRules !== after.voiceRules ||
+    before.disclosure !== after.disclosure ||
+    JSON.stringify(before.exemplars) !== JSON.stringify(after.exemplars)
+  );
+}
+
+/** Keeps a copy of a version, so "v3 outperformed v4" is answerable later. */
+function snapshotVersion(character: WorkflowCharacterRecord): void {
+  db.prepare(
+    `INSERT INTO workflow_character_versions
+       (workflow_id, version, name, persona, voice_rules, exemplars, appearance, disclosure, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(workflow_id, version) DO NOTHING`
+  ).run(
+    character.workflowId,
+    character.version,
+    character.name,
+    character.persona,
+    character.voiceRules,
+    JSON.stringify(character.exemplars),
+    character.appearance,
+    character.disclosure,
+    new Date().toISOString()
+  );
+}
+
+/** Every version this workflow's character has had, newest first. */
+export function listCharacterVersions(workflowId: string): Array<{ version: number; name: string; createdAt: string }> {
+  return db
+    .prepare(
+      `SELECT version, name, created_at FROM workflow_character_versions
+       WHERE workflow_id = ? ORDER BY version DESC`
+    )
+    .all(workflowId) as unknown as Array<{ version: number; name: string; createdAt: string }>;
+}
+
 export function saveCharacter(input: {
   workflowId: string;
   name: string;
@@ -73,10 +127,26 @@ export function saveCharacter(input: {
 }): WorkflowCharacterRecord {
   const now = new Date().toISOString();
   const existing = getCharacter(input.workflowId);
+
+  const resolved = {
+    name: input.name,
+    persona: input.persona ?? existing?.persona ?? "",
+    voiceRules: input.voiceRules ?? existing?.voiceRules ?? "",
+    exemplars: input.exemplars ?? existing?.exemplars ?? [],
+    disclosure: input.disclosure,
+  };
+
+  // The previous version is snapshotted before being overwritten, not after —
+  // otherwise the live row has already changed and the copy would record the
+  // new sheet under the old number.
+  const bump = existing ? voiceChanged(existing, resolved) : false;
+  if (existing && bump) snapshotVersion(existing);
+  const version = existing ? existing.version + (bump ? 1 : 0) : 1;
+
   db.prepare(
     `INSERT INTO workflow_characters
-       (workflow_id, name, persona, voice_rules, exemplars, appearance, reference_image_ids, disclosure, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (workflow_id, name, persona, voice_rules, exemplars, appearance, reference_image_ids, disclosure, version, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(workflow_id) DO UPDATE SET
        name = excluded.name,
        persona = excluded.persona,
@@ -85,20 +155,27 @@ export function saveCharacter(input: {
        appearance = excluded.appearance,
        reference_image_ids = excluded.reference_image_ids,
        disclosure = excluded.disclosure,
+       version = excluded.version,
        updated_at = excluded.updated_at`
   ).run(
     input.workflowId,
-    input.name,
-    input.persona ?? existing?.persona ?? "",
-    input.voiceRules ?? existing?.voiceRules ?? "",
-    JSON.stringify(input.exemplars ?? existing?.exemplars ?? []),
+    resolved.name,
+    resolved.persona,
+    resolved.voiceRules,
+    JSON.stringify(resolved.exemplars),
     input.appearance ?? existing?.appearance ?? "",
     JSON.stringify(input.referenceImageIds ?? existing?.referenceImageIds ?? []),
-    input.disclosure,
+    resolved.disclosure,
+    version,
     existing?.createdAt ?? now,
     now
   );
-  return getCharacter(input.workflowId)!;
+
+  const saved = getCharacter(input.workflowId)!;
+  // The current version is snapshotted too, so a workflow that never changes
+  // its voice still has v1 on record rather than an empty history.
+  snapshotVersion(saved);
+  return saved;
 }
 
 export function deleteCharacter(workflowId: string): void {

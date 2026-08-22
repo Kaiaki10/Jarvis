@@ -21,6 +21,7 @@ function item(patch: Partial<ContentItemRecord> & { id: string }): ContentItemRe
     scheduledFor: null,
     publishedAt: null,
     performanceSummary: null,
+    characterVersion: null,
     sessionId: null,
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",

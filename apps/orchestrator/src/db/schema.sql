@@ -367,6 +367,9 @@ CREATE TABLE IF NOT EXISTS content_items (
   scheduled_for TEXT,
   published_at TEXT,
   performance_summary TEXT,
+  -- Which version of the workflow's character wrote this. Null when none was
+  -- set. Stage 5 needs it to tell a voice change from a topic change.
+  character_version INTEGER,
   session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -378,6 +381,9 @@ CREATE TABLE IF NOT EXISTS workflow_generation_runs (
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'running',
   requested_count INTEGER NOT NULL,
+  -- Captured when the run starts, not when it reconciles: editing the sheet
+  -- mid-run must not relabel text the previous version produced.
+  character_version INTEGER,
   error_message TEXT,
   created_at TEXT NOT NULL,
   completed_at TEXT
@@ -719,6 +725,25 @@ CREATE TABLE IF NOT EXISTS workflow_characters (
   -- generation exists.
   reference_image_ids TEXT NOT NULL DEFAULT '[]',
   disclosure TEXT NOT NULL,
+  -- Bumped whenever the voice materially changes. Content records the version
+  -- that wrote it, so stage 5 can separate a voice change from a topic change.
+  version INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+-- Every past version of a character. The live row only holds the current
+-- sheet, so without this "v3 outperformed v4" would be observable but not
+-- answerable -- you could see the number change and never see what changed.
+CREATE TABLE IF NOT EXISTS workflow_character_versions (
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  persona TEXT NOT NULL,
+  voice_rules TEXT NOT NULL,
+  exemplars TEXT NOT NULL,
+  appearance TEXT NOT NULL,
+  disclosure TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (workflow_id, version)
 );

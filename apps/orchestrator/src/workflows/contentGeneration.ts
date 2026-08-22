@@ -121,6 +121,8 @@ export function reconcileWorkflowGeneration(input: { sessionId: string; result: 
         workflowId: campaign.id,
         ...draft,
         status: "draft",
+        // From the run, not from the current sheet — see the endpoint comment.
+        characterVersion: run.characterVersion,
         sessionId: input.sessionId,
       });
     }

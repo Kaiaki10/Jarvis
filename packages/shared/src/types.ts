@@ -692,6 +692,8 @@ export interface ContentItemRecord {
   scheduledFor: string | null;
   publishedAt: string | null;
   performanceSummary: string | null;
+  /** Which character version wrote this. Null when no character was set. */
+  characterVersion: number | null;
   sessionId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -699,6 +701,8 @@ export interface ContentItemRecord {
 
 export interface WorkflowGenerationRunRecord {
   id: string;
+  /** The character version in force when the run started. */
+  characterVersion: number | null;
   workflowId: string;
   sessionId: string;
   status: WorkflowGenerationStatus;
@@ -1320,6 +1324,11 @@ export interface WorkflowCharacterRecord {
    * presenting an AI persona as a real person is deceptive under FTC Section 5.
    */
   disclosure: string;
+  /**
+   * Bumped on each material change to the voice. Content records the version
+   * that wrote it, so stage 5 can tell a voice change from a topic change.
+   */
+  version: number;
   createdAt: string;
   updatedAt: string;
 }

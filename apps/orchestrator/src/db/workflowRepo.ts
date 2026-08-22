@@ -149,6 +149,7 @@ interface ContentItemRow {
   scheduled_for: string | null;
   published_at: string | null;
   performance_summary: string | null;
+  character_version: number | null;
   session_id: string | null;
   created_at: string;
   updated_at: string;
@@ -166,6 +167,7 @@ function mapContentItem(row: ContentItemRow): ContentItemRecord {
     scheduledFor: row.scheduled_for,
     publishedAt: row.published_at,
     performanceSummary: row.performance_summary,
+    characterVersion: row.character_version,
     sessionId: row.session_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -197,14 +199,16 @@ export function createContentItem(input: {
   format: ContentFormat;
   channel: MarketingChannel;
   status?: Extract<ContentStatus, "idea" | "draft">;
+  /** Which character version wrote this, when one did. */
+  characterVersion?: number | null;
   sessionId?: string;
 }): ContentItemRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO content_items (id, workflow_id, title, body, format, channel, status, scheduled_for, published_at, performance_summary, session_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)`
-  ).run(id, input.workflowId, input.title, input.body, input.format, input.channel, input.status ?? "draft", input.sessionId ?? null, now, now);
+    `INSERT INTO content_items (id, workflow_id, title, body, format, channel, status, scheduled_for, published_at, performance_summary, character_version, session_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?)`
+  ).run(id, input.workflowId, input.title, input.body, input.format, input.channel, input.status ?? "draft", input.characterVersion ?? null, input.sessionId ?? null, now, now);
   return getContentItem(id)!;
 }
 
@@ -247,6 +251,7 @@ export function deleteContentItem(id: string): void {
 
 interface GenerationRunRow {
   id: string;
+  character_version: number | null;
   workflow_id: string;
   session_id: string;
   status: string;
@@ -259,6 +264,7 @@ interface GenerationRunRow {
 function mapGenerationRun(row: GenerationRunRow): WorkflowGenerationRunRecord {
   return {
     id: row.id,
+    characterVersion: row.character_version,
     workflowId: row.workflow_id,
     sessionId: row.session_id,
     status: row.status as WorkflowGenerationStatus,
@@ -269,13 +275,13 @@ function mapGenerationRun(row: GenerationRunRow): WorkflowGenerationRunRecord {
   };
 }
 
-export function createWorkflowGenerationRun(input: { workflowId: string; sessionId: string; requestedCount: number }): WorkflowGenerationRunRecord {
+export function createWorkflowGenerationRun(input: { workflowId: string; sessionId: string; requestedCount: number; characterVersion?: number | null }): WorkflowGenerationRunRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO workflow_generation_runs (id, workflow_id, session_id, status, requested_count, error_message, created_at, completed_at)
-     VALUES (?, ?, ?, 'running', ?, NULL, ?, NULL)`
-  ).run(id, input.workflowId, input.sessionId, input.requestedCount, now);
+    `INSERT INTO workflow_generation_runs (id, workflow_id, session_id, status, requested_count, character_version, error_message, created_at, completed_at)
+     VALUES (?, ?, ?, 'running', ?, ?, NULL, ?, NULL)`
+  ).run(id, input.workflowId, input.sessionId, input.requestedCount, input.characterVersion ?? null, now);
   return getWorkflowGenerationRunBySession(input.sessionId)!;
 }
 

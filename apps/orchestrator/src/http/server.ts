@@ -1823,6 +1823,9 @@ app.post("/workflows/:id/generate", (req: Request, res: Response) => {
     workflowId: campaign.id,
     sessionId: session.id,
     requestedCount: body.count,
+    // Captured now rather than at reconcile time: editing the sheet while a
+    // run is in flight must not relabel text the previous version wrote.
+    characterVersion: getCharacter(campaign.id)?.version ?? null,
   });
   if (campaign.status === "draft") updateWorkflow(campaign.id, { status: "active" });
   globalBus.emit("session_updated", session.id);
