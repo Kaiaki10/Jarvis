@@ -30,7 +30,7 @@ describe("spend envelopes", () => {
     recordSpend({ rail: "wallet", amountMinor: 8_000, currency: "USDC", reason: "ads" });
     const check = checkEnvelopes({ rail: "wallet", amountMinor: 5_000, currency: "USDC" });
     expect(check.allowed).toBe(false);
-    expect(check.reason).toMatch(/exceed the dayly wallet limit/i);
+    expect(check.reason).toMatch(/exceed the daily wallet limit/i);
   });
 
   it("allows a spend that lands exactly on the limit", () => {

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { SpendEnvelopeRecord, SpendLedgerEntry, SpendRail, SpendPeriod } from "@jarvis/shared";
 import { db } from "../db/db.js";
 
+const PERIOD_LABEL: Record<SpendPeriod, string> = { day: "daily", month: "monthly" };
+
 interface EnvelopeRow {
   id: string;
   agent_id: string | null;
@@ -163,7 +165,7 @@ export function checkEnvelopes(input: {
         allowed: false,
         envelope,
         reason:
-          `This would exceed the ${envelope.period}ly ${envelope.rail} limit: ` +
+          `This would exceed the ${PERIOD_LABEL[envelope.period]} ${envelope.rail} limit: ` +
           `${spent + input.amountMinor} of ${envelope.limitMinor} ${currency} minor units.`,
       };
     }
@@ -276,7 +278,7 @@ export function checkCapacity(input: {
     return {
       allowed: false,
       reason:
-        `No ${input.period}ly limit is set for the ${input.rail} rail, so Jarvis will not ` +
+        `No ${PERIOD_LABEL[input.period]} limit is set for the ${input.rail} rail, so Jarvis will not ` +
         `authorise spending on it. Set one first.`,
     };
   }
@@ -299,7 +301,7 @@ export function checkCapacity(input: {
         envelope,
         reason:
           `This would authorise ${total} ${currency} minor units across the ${input.rail} rail, ` +
-          `over the ${envelope.period}ly limit of ${envelope.limitMinor}.`,
+          `over the ${PERIOD_LABEL[envelope.period]} limit of ${envelope.limitMinor}.`,
       };
     }
   }

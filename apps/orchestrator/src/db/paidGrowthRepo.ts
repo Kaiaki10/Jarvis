@@ -222,3 +222,25 @@ export function reviewPaidGrowthDecision(
   ).run(status, now, id);
   return result.changes ? getPaidGrowthDecision(id) : undefined;
 }
+
+/**
+ * Daily budget already committed across live campaigns, in one currency.
+ *
+ * Only campaigns that can actually spend count. A paused or completed campaign
+ * is not drawing anything, so holding its budget against the envelope would
+ * stop new campaigns launching for no reason.
+ *
+ * Scoped by currency because envelopes never convert — a USD envelope must not
+ * be reduced by a campaign budgeted in EUR.
+ */
+export function activeAdBudgetMinor(currency: string, excludeCampaignIds: string[] = []): number {
+  const placeholders = excludeCampaignIds.map(() => "?").join(", ");
+  const exclusion = excludeCampaignIds.length ? ` AND id NOT IN (${placeholders})` : "";
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(daily_budget_minor), 0) AS total FROM paid_growth_campaigns
+       WHERE status = 'active' AND currency = ?${exclusion}`
+    )
+    .get(currency.toUpperCase(), ...excludeCampaignIds) as unknown as { total: number };
+  return row.total;
+}
