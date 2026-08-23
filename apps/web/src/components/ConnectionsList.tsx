@@ -35,6 +35,16 @@ const CATEGORY_ORDER: Array<PlatformDefinition["category"]> = [
   "notifications",
 ];
 
+/**
+ * The page's sections, derived from the reading order above rather than listed
+ * again, so a category can never appear in the rail without a section behind it
+ * — or the other way round.
+ */
+export const CONNECTION_SECTIONS = CATEGORY_ORDER.map((category) => ({
+  id: `connections-${category}`,
+  label: CATEGORY_LABEL[category],
+}));
+
 const CATEGORY_BLURB: Record<PlatformDefinition["category"], string> = {
   advertising: "Live evidence for Jarvis's guarded investment decisions.",
   finance: "Cards, wallets, and the rails Jarvis can move value over.",
@@ -135,8 +145,11 @@ export function ConnectionsList() {
       {grouped.map(({ category, items }, index) => {
         const featured = category === "advertising";
         return (
-          <section key={category}>
-            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <section key={category} id={`connections-${category}`} className="scroll-mt-24">
+            {/* Held in place while you scan the group's cards, so a long grid
+                never leaves you looking at platforms with no idea which
+                category you are in. */}
+            <div className="material-glass sticky top-[3.75rem] z-10 mb-3 flex flex-wrap items-end justify-between gap-3 py-2 lg:top-0">
               <div>
                 <div className="flex items-center gap-2 text-heading text-foreground">
                   {featured && <Sparkles className="h-4 w-4 text-accent-bright" />}

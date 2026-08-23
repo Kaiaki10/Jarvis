@@ -45,15 +45,35 @@ export function CardHeader({
   description,
   action,
   icon,
+  sticky = false,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
   /** Small leading glyph. Gives a dense page something to scan by. */
   icon?: ReactNode;
+  /**
+   * Holds the header in place while you read past it, on cards long enough
+   * that its title would otherwise scroll away and leave you reading a form
+   * with no idea what it belongs to.
+   *
+   * Sticky is bounded by the card, so it releases when the card ends rather
+   * than stacking up. Below `lg` it has to clear AppShell's mobile bar, which
+   * is a real sticky sibling rather than an overlay.
+   *
+   * Opt-in: most cards are shorter than the viewport, and a header that sticks
+   * when nothing scrolls past it just looks like a rendering bug.
+   */
+  sticky?: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-4">
+    <div
+      className={`flex items-start justify-between gap-4 px-5 pt-5 pb-4 ${
+        sticky
+          ? "sticky top-[3.75rem] z-10 rounded-t-card border-b border-border/60 bg-surface/95 backdrop-blur-sm lg:top-0"
+          : ""
+      }`}
+    >
       <div className="flex min-w-0 items-start gap-2.5">
         {icon && <span className="mt-px shrink-0 text-muted">{icon}</span>}
         <div className="min-w-0">

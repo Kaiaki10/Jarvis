@@ -9,6 +9,23 @@ import { Button } from "@/components/ui/Button";
 import { BackupPanel } from "@/components/BackupPanel";
 import { StoragePanel } from "@/components/StoragePanel";
 
+/**
+ * The page's sections, in the order they appear.
+ *
+ * Exported so the rail on the Settings page reads the same list this file
+ * renders. Two hand-kept copies would drift the moment a section is added, and
+ * the failure would be quiet — a rail entry that scrolls nowhere.
+ */
+export const SETTINGS_SECTIONS = [
+  { id: "business-context", label: "Business context" },
+  { id: "safety-rails", label: "Safety rails" },
+  { id: "notifications", label: "Notifications" },
+  { id: "images", label: "Images" },
+  { id: "storage", label: "Storage" },
+  { id: "backup", label: "Backup & recovery" },
+  { id: "billing", label: "Billing" },
+] as const;
+
 export function SettingsPanel() {
   const { settings, saveSettings } = useSettings();
 
@@ -42,8 +59,10 @@ function LoadedSettingsPanel({
 
   return (
     <div className="flex flex-col gap-6">
+      <section id="business-context" className="scroll-mt-24">
       <Card>
         <CardHeader
+          sticky
           title="Business context"
           description="Added to every session's instructions, so Jarvis doesn't start from scratch each time. Brand voice, products, pricing, policies, tone."
         />
@@ -76,9 +95,12 @@ function LoadedSettingsPanel({
           </div>
         </CardBody>
       </Card>
+      </section>
 
+      <section id="safety-rails" className="scroll-mt-24">
       <Card>
         <CardHeader
+          sticky
           title="Safety rails"
           description="Guardrails for unattended operation"
         />
@@ -195,9 +217,12 @@ function LoadedSettingsPanel({
           </div>
         </CardBody>
       </Card>
+      </section>
 
+      <section id="notifications" className="scroll-mt-24">
       <Card>
         <CardHeader
+          sticky
           title="Notifications"
           description="How Jarvis reaches you when an unattended run needs a decision"
         />
@@ -272,9 +297,12 @@ function LoadedSettingsPanel({
           </div>
         </CardBody>
       </Card>
+      </section>
 
+      <section id="images" className="scroll-mt-24">
       <Card>
         <CardHeader
+          sticky
           title="Images"
           description="Drop images here and Jarvis can attach them to posts"
         />
@@ -298,10 +326,13 @@ function LoadedSettingsPanel({
         </CardBody>
       </Card>
 
-      <StoragePanel />
+      </section>
 
-      <BackupPanel />
+      <section id="storage" className="scroll-mt-24"><StoragePanel /></section>
 
+      <section id="backup" className="scroll-mt-24"><BackupPanel /></section>
+
+      <section id="billing" className="scroll-mt-24">
       <Card>
         <CardHeader title="Billing" description="How this connects to your Claude account" />
         <CardBody>
@@ -319,6 +350,7 @@ function LoadedSettingsPanel({
           </p>
         </CardBody>
       </Card>
+      </section>
     </div>
   );
 }

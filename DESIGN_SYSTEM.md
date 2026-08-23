@@ -128,6 +128,7 @@ whole justification for the dependency, and the bar for adding to this half.
 | `Meter` | A bar that springs to a new fraction | Progress and usage |
 | `Pressable` | Lifts on hover, gives under the press | Controls worth touching |
 | `SharedElement` | Carries one element across a navigation | A row and the page it opens |
+| `SectionRail` | Where you are in a long page, and a way to jump | Documents past a screen or two |
 
 A dialog has to stay mounted while it closes, or React removes it before the
 exit can run — so pass `Overlay` an `open` prop rather than rendering it behind
@@ -213,9 +214,20 @@ real places, documented in the table above, and verified by screenshot.
       the App Router, but not in the stable `react` or `@types/react` we compile
       against. `SharedElement` reads it off the namespace so the cast lives in
       one place, and renders children untouched if it is ever absent.
-- [ ] **4 — Long-page structure.** Settings and Connections are long unbroken
-      forms. Sticky section headers and a progress rail, so position in a long
-      document is always obvious. Scroll-*linked*, never scroll-hijacked.
+- [x] **4 — Long-page structure.** Settings and Connections carry a
+      `SectionRail` and sticky section headers, so where you are is always
+      visible. Scroll-*linked*, never scroll-hijacked: the rail reports position
+      and answers clicks, and never takes the scroll away from you.
+      - Driven by IntersectionObserver, not a scroll handler — it wakes on
+        boundary crossings rather than every frame of every scroll.
+      - Both pages export their section list from the component that renders the
+        sections (`SETTINGS_SECTIONS`, `CONNECTION_SECTIONS`). A hand-kept second
+        copy would drift into a rail entry that scrolls nowhere, and fail
+        silently.
+      - `CardHeader`'s `sticky` is opt-in. On a card shorter than the viewport
+        nothing ever scrolls past it, so it just looks like a rendering bug.
+      - Sticky offsets clear AppShell's mobile bar below `lg` — it is a real
+        sticky sibling, not an overlay.
 - [ ] **5 — Physicality.** Direct manipulation where it earns its place: the
       task board dragging with momentum and spring settle rather than snapping.
 - [ ] **6 — Ambient state.** The interface quietly reflects what the system is
