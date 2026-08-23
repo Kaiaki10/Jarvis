@@ -148,8 +148,13 @@ export function ConnectionsList() {
           <section key={category} id={`connections-${category}`} className="scroll-mt-24">
             {/* Held in place while you scan the group's cards, so a long grid
                 never leaves you looking at platforms with no idea which
-                category you are in. */}
-            <div className="material-glass sticky top-[3.75rem] z-10 mb-3 flex flex-wrap items-end justify-between gap-3 py-2 lg:top-0">
+                category you are in.
+
+                Page background rather than glass: this is a heading, not a
+                panel, and `material-glass` gave it a tint and an edge that read
+                as a filled bar competing with the cards below it. All it
+                actually needs is to occlude what scrolls under it. */}
+            <div className="sticky top-[3.75rem] z-10 mb-3 flex flex-wrap items-end justify-between gap-3 bg-background/95 py-2 backdrop-blur-sm lg:top-0">
               <div>
                 <div className="flex items-center gap-2 text-heading text-foreground">
                   {featured && <Sparkles className="h-4 w-4 text-accent-bright" />}

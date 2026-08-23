@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SectionRail } from "./SectionRail";
 
@@ -93,5 +93,29 @@ describe("SectionRail", () => {
   it("stays out of the way when there is nothing to navigate", () => {
     const { container } = render(<SectionRail sections={[{ id: "only", label: "Only" }]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("SectionRail, when the page fills in later", () => {
+  it("picks the sections up once they arrive", async () => {
+    // Both pages that use this render nothing until their data loads —
+    // Settings shows a loading line, Connections drops every empty category.
+    // Mounting against an empty document used to leave the rail frozen on its
+    // first entry forever, which no synchronous test could catch.
+    render(<SectionRail sections={SECTIONS} />);
+    expect(current()).toBe("One");
+
+    host = document.createElement("div");
+    for (const section of SECTIONS) {
+      const el = document.createElement("section");
+      el.id = section.id;
+      el.getBoundingClientRect = () =>
+        ({ top: section.id === "three" ? 10 : -500 }) as DOMRect;
+      host.appendChild(el);
+    }
+    document.body.appendChild(host);
+
+    // MutationObserver delivers asynchronously.
+    await waitFor(() => expect(current()).toBe("Three"));
   });
 });

@@ -180,14 +180,17 @@ Each rung is one session's work and builds on the one below. Climb; don't
 restyle sideways. A rung counts as done when it is applied in at least three
 real places, documented in the table above, and verified by screenshot.
 
-> **The screenshot half of that rule is currently unenforceable.** Every page is
-> behind the passkey gate, and `scripts/screenshot-dashboard.mjs` launches a
-> browser with no session, so it can only ever reach `/login`. It used to
-> photograph the login card once per page and report success; it now fails
-> loudly instead. Until it can hold a session — a Playwright virtual
-> authenticator with a registration path, or a persistent context carrying a
-> real login — rung completions are verified by tests and review, and should say
-> so rather than implying an image exists.
+> **Screenshots need the login switched off.** `scripts/screenshot-dashboard.mjs`
+> launches a browser with no session, so with the passkey gate on it can only
+> ever reach `/login` — it used to photograph the login card once per page and
+> report success, and now fails loudly instead. Set `JARVIS_REQUIRE_LOGIN=0` in
+> `apps/web/.env.local` and rebuild to run it (see `lib/authMode.ts`).
+>
+> Run it. The first pass it could actually see caught two bugs that every test
+> had passed over: `SectionRail` gave up permanently when the sections were not
+> in the DOM at mount — which is both pages that use it — and the sticky
+> category headings on Connections read as filled bars competing with the cards
+> beneath them. Neither is visible from source.
 
 - [x] **0 — Foundation.** Tokens, type scale, elevation, focus ring.
 - [x] **1 — Motion layer.** Springs, materials, `Stagger`/`Reveal`/`Spotlight`/`CountUp`.

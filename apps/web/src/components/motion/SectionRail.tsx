@@ -35,12 +35,37 @@ export function SectionRail({
   className?: string;
 }) {
   const [active, setActive] = useState<string>(sections[0]?.id ?? "");
+  // Bumped when the sections finally exist, to re-run the effect below.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    const elements = sections
-      .map((section) => document.getElementById(section.id))
-      .filter((el): el is HTMLElement => el !== null);
-    if (elements.length === 0) return;
+    const find = () =>
+      sections
+        .map((section) => document.getElementById(section.id))
+        .filter((el): el is HTMLElement => el !== null);
+
+    const elements = find();
+
+    if (elements.length === 0) {
+      /**
+       * Absent at mount is not absent for good.
+       *
+       * Both pages using this render their sections only once data has
+       * arrived — Settings shows a loading line, and Connections drops every
+       * empty category, so on the first render there are literally none.
+       * Giving up here left the rail stuck on its first entry no matter how
+       * far you scrolled, on every page it was used.
+       *
+       * The watcher lives only while there is nothing to observe.
+       */
+      const waiting = new MutationObserver(() => {
+        if (find().length === 0) return;
+        waiting.disconnect();
+        setAttempt((n) => n + 1);
+      });
+      waiting.observe(document.body, { childList: true, subtree: true });
+      return () => waiting.disconnect();
+    }
 
     /**
      * The active section is the last one whose top has passed the line.
@@ -71,7 +96,7 @@ export function SectionRail({
     pick();
 
     return () => observer.disconnect();
-  }, [sections]);
+  }, [sections, attempt]);
 
   if (sections.length < 2) return null;
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { loginRequired } from "@/lib/authMode";
 
 /**
  * Gates the dashboard behind a real login. Before this, "reach the dashboard"
@@ -19,6 +20,11 @@ import type { NextRequest } from "next/server";
 const BASE_URL = process.env.NEXT_PUBLIC_ORCHESTRATOR_URL ?? "http://127.0.0.1:4317";
 
 export async function proxy(request: NextRequest) {
+  // Turned off deliberately, this returns the dashboard to its earlier trust
+  // model: reaching it means sitting at this machine. `lib/authMode.ts` sets
+  // out what still holds when it is off, and what is given up.
+  if (!loginRequired()) return NextResponse.next();
+
   const cookieHeader = request.headers.get("cookie");
   const sessionCheck = await fetch(`${BASE_URL}/auth/session`, {
     headers: cookieHeader ? { cookie: cookieHeader } : {},

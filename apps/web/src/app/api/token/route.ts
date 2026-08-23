@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { loginRequired } from "@/lib/authMode";
 
 export const runtime = "nodejs";
 // The token file is read at request time, never captured into a build artifact.
@@ -39,7 +40,9 @@ async function hasValidSession(cookieHeader: string | null): Promise<boolean> {
  * orchestrator's generated token, so there is nothing to trace or include.
  */
 export async function GET(request: Request) {
-  if (!(await hasValidSession(request.headers.get("cookie")))) {
+  // Same switch the proxy reads, from the same module — the two gates have to
+  // agree or the dashboard loads and then fails every request.
+  if (loginRequired() && !(await hasValidSession(request.headers.get("cookie")))) {
     return Response.json({ error: "Not logged in" }, { status: 401 });
   }
   if (!existsSync(/*turbopackIgnore: true*/ TOKEN_PATH)) {
