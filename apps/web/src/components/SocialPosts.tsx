@@ -12,6 +12,7 @@ import { useWorkflows } from "@/lib/store";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { AnimatedItem, AnimatedList, Crossfade } from "@/components/motion";
 
 const STATUS_TONE: Record<ContentStatus, "neutral" | "accent" | "success" | "warning"> = {
   idea: "neutral",
@@ -129,12 +130,17 @@ export function SocialPosts() {
           </div>
         </Card>
       ) : (
-        <div className="space-y-2.5">
+        // Filtering is the whole point of this page, and it is where a plain
+        // re-render hurts most: the list becomes a different list with no sense
+        // that anything was filtered. Posts that survive the filter slide to
+        // their new positions, and the ones that don't leave visibly.
+        <AnimatedList className="space-y-2.5">
           {posts.map((item) => {
             const timing = when(item);
             const platform = publishedTo.get(item.id);
             return (
-              <Card key={item.id} elevation={0} className="p-4">
+              <AnimatedItem key={item.id}>
+              <Card elevation={0} className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="text-body font-medium text-foreground">{item.title}</div>
@@ -160,7 +166,11 @@ export function SocialPosts() {
                       )}
                     </div>
                   </div>
-                  <Badge tone={STATUS_TONE[item.status]}>{item.status}</Badge>
+                  {/* Drafts become scheduled and scheduled become published
+                      without a reload — the badge is the only place that shows. */}
+                  <Crossfade viewKey={item.status} className="shrink-0">
+                    <Badge tone={STATUS_TONE[item.status]}>{item.status}</Badge>
+                  </Crossfade>
                 </div>
 
                 <p className="mt-2.5 line-clamp-3 text-label leading-relaxed whitespace-pre-wrap text-foreground-secondary">
@@ -183,9 +193,10 @@ export function SocialPosts() {
                   </Link>
                 )}
               </Card>
+              </AnimatedItem>
             );
           })}
-        </div>
+        </AnimatedList>
       )}
     </div>
   );

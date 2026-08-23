@@ -102,6 +102,11 @@ Everything animated lives in `apps/web/src/components/motion/`. One place to
 judge whether the app moves coherently, and one place to fix it when it doesn't.
 Components compose these rather than hand-rolling transitions.
 
+There are two engines behind it, split by what each can actually do.
+
+**CSS — the default.** Runs on the server, costs nothing at runtime. Reach for
+these first; most motion in the app should stay here.
+
 | Primitive | What it does | Where it belongs |
 |---|---|---|
 | `Stagger` | Sections settle in sequence on load | Above-the-fold sections |
@@ -109,10 +114,35 @@ Components compose these rather than hand-rolling transitions.
 | `Spotlight` | Pointer-tracked highlight on a surface | Cards worth pointing at |
 | `CountUp` | Animates a number to its new value | Any figure that changes |
 
-Springs (`--spring-gentle`, `--spring-snappy`) are curve approximations, not a
-physics solver — deliberately, so they compose with plain CSS transitions and
-cost nothing at runtime. Pick by authority: a whole panel settles gently, a
-small control can be snappier.
+**Motion (`motion` v13) — for what CSS structurally cannot reach.** React
+unmounts an element before any CSS transition can run on it, so *leaving* is
+impossible in CSS; so is morphing between two layout positions. That is the
+whole justification for the dependency, and the bar for adding to this half.
+
+| Primitive | What it does | Where it belongs |
+|---|---|---|
+| `AnimatedList` / `AnimatedItem` | Rows animate in, out, and into each other's place | Any list that changes while on screen |
+| `AnimatedBody` / `AnimatedRow` | The same for `<table>` rows | Ledgers and tables |
+| `Crossfade` | Dissolves one view into another | Loading → content; a badge changing state |
+| `Overlay` | A dialog's backdrop and panel, with the exit | Modals |
+| `Meter` | A bar that springs to a new fraction | Progress and usage |
+| `Pressable` | Lifts on hover, gives under the press | Controls worth touching |
+
+`MotionProvider` must stay mounted at the app root: it carries
+`reducedMotion="user"`, which is what keeps the Motion half honouring the OS
+setting the way the global CSS rule does for the CSS half. Without it, adding
+Motion would silently opt the app out of an accessibility guarantee it keeps.
+
+Springs come in the same two weights on both sides. The CSS ones
+(`--spring-gentle`, `--spring-snappy`) are curve approximations rather than a
+physics solver, so they compose with plain transitions and cost nothing; the
+Motion ones (`spring.gentle`, `spring.snappy`) are the real solver, tuned to
+match. Pick by authority either way: a whole panel settles gently, a small
+control can be snappier.
+
+One consequence worth knowing before it surprises you in a test: an element
+being removed now stays in the DOM until its exit finishes. Assert with
+`waitForElementToBeRemoved`, not an immediate `not.toBeInTheDocument()`.
 
 Materials (`.material-glass`, `.material-spotlight`) are for surfaces that float
 above the page. Reserve glass for things that genuinely float — the sidebar,
@@ -139,13 +169,25 @@ Each rung is one session's work and builds on the one below. Climb; don't
 restyle sideways. A rung counts as done when it is applied in at least three
 real places, documented in the table above, and verified by screenshot.
 
+> **The screenshot half of that rule is currently unenforceable.** Every page is
+> behind the passkey gate, and `scripts/screenshot-dashboard.mjs` launches a
+> browser with no session, so it can only ever reach `/login`. It used to
+> photograph the login card once per page and report success; it now fails
+> loudly instead. Until it can hold a session — a Playwright virtual
+> authenticator with a registration path, or a persistent context carrying a
+> real login — rung completions are verified by tests and review, and should say
+> so rather than implying an image exists.
+
 - [x] **0 — Foundation.** Tokens, type scale, elevation, focus ring.
 - [x] **1 — Motion layer.** Springs, materials, `Stagger`/`Reveal`/`Spotlight`/`CountUp`.
-- [ ] **2 — State transitions.** Things morph instead of swapping. Skeletons
-      that crossfade into real content rather than being replaced; status badges
-      that transition between states; list rows that animate on add and remove
-      instead of appearing. Highest value rung — this is where the app stops
-      feeling like it redraws.
+- [x] **2 — State transitions.** Things morph instead of swapping. Loading
+      states crossfade into content, status badges dissolve between states, and
+      list rows animate on add and remove. Applied in Budgets, the workflow
+      stage rail, Accounts, Posts, Cards, the wallet and the ledger.
+      - Still owed: the dialogs in `WorkflowStudio` and `PaidGrowthCenter`
+        animate in but not out, because their parents still render them
+        conditionally. Giving them an `open` prop — as `CharacterSheetEditor`
+        now has — is what finishes this.
 - [ ] **3 — Shared elements across navigation.** The View Transitions API, so
       opening a run from the list carries its title and status across instead of
       cutting to a new page. Check browser support and degrade to a plain
@@ -168,6 +210,9 @@ Craft that costs responsiveness isn't craft. These are limits, not targets:
 - No animation on a repeating list row's mount beyond opacity — a fifty-row list
   must not stagger fifty times.
 - `will-change` only while a transition can still run, never parked permanently.
+- A new Motion primitive must be something CSS cannot express. If a plain
+  transition would do, it belongs in the CSS half — the dependency is paid for
+  by exits and layout morphing, not by convenience.
 - Pointer-driven effects write CSS custom properties; they never call `setState`
   on move, and they batch reads into one `requestAnimationFrame`.
 - Every rung must hold "no console errors" in the screenshot run at both widths.

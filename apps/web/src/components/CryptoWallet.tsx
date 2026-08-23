@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatMoney } from "@/lib/money";
+import { AnimatedBody, AnimatedRow, Crossfade } from "@/components/motion";
 
 /** Base mainnet USDC, the only token Jarvis names rather than shows as an address. */
 const TOKEN_LABEL: Record<string, string> = {
@@ -42,36 +43,45 @@ export function CryptoWallet() {
     })();
   }, []);
 
+  // One dissolve between the three states rather than three separate returns.
+  // The panel is the same panel throughout — swapping it outright made loading
+  // look like a different page had rendered.
+  const phase = !permissions ? "loading" : error ? "error" : "ready";
+
   if (!permissions) {
     return (
-      <Card>
-        <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
-          <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
-          Reading the wallet…
-        </div>
-      </Card>
+      <Crossfade viewKey={phase}>
+        <Card>
+          <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
+            <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
+            Reading the wallet…
+          </div>
+        </Card>
+      </Crossfade>
     );
   }
 
   if (error) {
     return (
-      <Card>
-        <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
-          <Wallet className="h-5 w-5 text-muted" strokeWidth={1.75} />
-          <div className="text-body text-muted">Coinbase Wallet is not connected.</div>
-          <Link
-            href="/under-the-hood/connections/coinbase"
-            className="text-label font-medium text-foreground hover:underline"
-          >
-            Connect it
-          </Link>
-        </div>
-      </Card>
+      <Crossfade viewKey={phase}>
+        <Card>
+          <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
+            <Wallet className="h-5 w-5 text-muted" strokeWidth={1.75} />
+            <div className="text-body text-muted">Coinbase Wallet is not connected.</div>
+            <Link
+              href="/under-the-hood/connections/coinbase"
+              className="text-label font-medium text-foreground hover:underline"
+            >
+              Connect it
+            </Link>
+          </div>
+        </Card>
+      </Crossfade>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <Crossfade viewKey={phase} className="space-y-3">
       <Card className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -128,7 +138,7 @@ export function CryptoWallet() {
           </div>
         )}
       </Card>
-    </div>
+    </Crossfade>
   );
 }
 
@@ -142,32 +152,39 @@ export function CryptoSpending() {
       .catch(() => setSpends([]));
   }, []);
 
+  const phase = !spends ? "loading" : spends.length === 0 ? "empty" : "spends";
+
   if (!spends) {
     return (
-      <Card>
-        <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
-          <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
-          Loading…
-        </div>
-      </Card>
+      <Crossfade viewKey={phase}>
+        <Card>
+          <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
+            <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
+            Loading…
+          </div>
+        </Card>
+      </Crossfade>
     );
   }
 
   if (spends.length === 0) {
     return (
-      <Card>
-        <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
-          <Coins className="h-5 w-5 text-muted" strokeWidth={1.75} />
-          <div className="text-body text-muted">Nothing spent on-chain yet.</div>
-          <p className="max-w-sm text-label text-muted">
-            Wallet spends appear here and in the shared ledger under Money.
-          </p>
-        </div>
-      </Card>
+      <Crossfade viewKey={phase}>
+        <Card>
+          <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
+            <Coins className="h-5 w-5 text-muted" strokeWidth={1.75} />
+            <div className="text-body text-muted">Nothing spent on-chain yet.</div>
+            <p className="max-w-sm text-label text-muted">
+              Wallet spends appear here and in the shared ledger under Money.
+            </p>
+          </div>
+        </Card>
+      </Crossfade>
     );
   }
 
   return (
+    <Crossfade viewKey={phase}>
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-left">
@@ -179,9 +196,11 @@ export function CryptoSpending() {
               <th className="px-5 py-3 text-right font-semibold">Amount</th>
             </tr>
           </thead>
-          <tbody>
+          {/* A spend arriving mid-session drops into place rather than
+              appearing — this table updates while you are looking at it. */}
+          <AnimatedBody>
             {spends.map((spend) => (
-              <tr key={spend.id} className="border-b border-border/60 last:border-0">
+              <AnimatedRow key={spend.id} className="border-b border-border/60 last:border-0">
                 <td className="whitespace-nowrap px-5 py-3 text-label text-muted">
                   {new Date(spend.createdAt).toLocaleString([], {
                     dateStyle: "medium",
@@ -207,11 +226,12 @@ export function CryptoSpending() {
                 <td className="whitespace-nowrap px-5 py-3 text-right text-label font-medium text-foreground tabular-nums">
                   {formatMoney(spend.amountMinor, spend.token === "" ? "USDC" : tokenLabel(spend.token))}
                 </td>
-              </tr>
+              </AnimatedRow>
             ))}
-          </tbody>
+          </AnimatedBody>
         </table>
       </div>
     </Card>
+    </Crossfade>
   );
 }

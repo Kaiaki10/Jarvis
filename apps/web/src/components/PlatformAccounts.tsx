@@ -10,6 +10,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
+import { AnimatedItem, AnimatedList, Crossfade } from "@/components/motion";
 
 /**
  * Every account connected for one platform.
@@ -55,28 +56,34 @@ export function PlatformAccounts({ platform }: { platform: PlatformDefinition })
         }
       />
 
-      <div className="space-y-2 px-5 pb-5">
+      {/* Removing an account is the moment this matters: the row leaves under
+          its own steam and the ones below close the gap, instead of the whole
+          list snapping to a new shape. */}
+      <AnimatedList className="space-y-2 px-5 pb-5">
         {accounts.map((account) => (
-          <AccountRow
-            key={account.id}
-            account={account}
-            agentName={agents.find((a) => a.id === account.agentId)?.name}
-            canDelete={accounts.length > 1}
-            onChanged={refresh}
-          />
+          <AnimatedItem key={account.id}>
+            <AccountRow
+              account={account}
+              agentName={agents.find((a) => a.id === account.agentId)?.name}
+              canDelete={accounts.length > 1}
+              onChanged={refresh}
+            />
+          </AnimatedItem>
         ))}
 
         {adding && (
-          <AddAccount
-            platform={platform}
-            onClose={() => setAdding(false)}
-            onAdded={async () => {
-              await refresh();
-              setAdding(false);
-            }}
-          />
+          <AnimatedItem key="add">
+            <AddAccount
+              platform={platform}
+              onClose={() => setAdding(false)}
+              onAdded={async () => {
+                await refresh();
+                setAdding(false);
+              }}
+            />
+          </AnimatedItem>
         )}
-      </div>
+      </AnimatedList>
     </Card>
   );
 }
@@ -138,9 +145,14 @@ function AccountRow({
           </div>
         </div>
 
-        <Badge tone={connected ? "success" : errored ? "danger" : "neutral"} dot={connected || errored}>
-          {connected ? "Connected" : errored ? "Needs attention" : "Not tested"}
-        </Badge>
+        {/* Testing an account is the one place a badge changes under you.
+            Dissolving between the two states shows the change happened; a hard
+            swap looks like the row was replaced by a different row. */}
+        <Crossfade viewKey={account.status} className="shrink-0">
+          <Badge tone={connected ? "success" : errored ? "danger" : "neutral"} dot={connected || errored}>
+            {connected ? "Connected" : errored ? "Needs attention" : "Not tested"}
+          </Badge>
+        </Crossfade>
 
         <Button
           type="button"

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { MotionProvider } from "@/components/motion";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -23,7 +24,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} h-full`}>
       <body className="min-h-full antialiased">
-        <AppShell>{children}</AppShell>
+        <MotionProvider>
+          <AppShell>{children}</AppShell>
+        </MotionProvider>
       </body>
     </html>
   );

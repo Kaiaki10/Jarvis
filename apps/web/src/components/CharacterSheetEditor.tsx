@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
+import { AnimatedItem, AnimatedList, Overlay } from "@/components/motion";
 
 /**
  * Rough guide only. Channel limits are enforced server-side at publish time;
@@ -15,12 +16,33 @@ import { Input, Textarea } from "@/components/ui/Input";
  */
 const EXEMPLAR_GUIDE = 280;
 
+/**
+ * Exemplars carry an id purely so the list can animate.
+ *
+ * Keying by array index would animate the wrong row out — remove the first of
+ * three and React sees two rows where there were three, so the *last* one plays
+ * the exit while the first appears to have been overwritten. An id that belongs
+ * to the row survives reordering and makes the animation report what happened.
+ */
+interface Exemplar {
+  id: string;
+  text: string;
+}
+
+let exemplarSeq = 0;
+function toExemplar(text: string): Exemplar {
+  return { id: `exemplar-${exemplarSeq++}`, text };
+}
+
 export function CharacterSheetEditor({
+  open,
   workflow,
   character,
   onClose,
   onSaved,
 }: {
+  /** Stays mounted while closing, so the panel can animate out. */
+  open: boolean;
   workflow: WorkflowRecord;
   character: WorkflowCharacterRecord | null;
   onClose: () => void;
@@ -29,7 +51,9 @@ export function CharacterSheetEditor({
   const [name, setName] = useState(character?.name ?? "");
   const [persona, setPersona] = useState(character?.persona ?? "");
   const [voiceRules, setVoiceRules] = useState(character?.voiceRules ?? "");
-  const [exemplars, setExemplars] = useState<string[]>(character?.exemplars ?? [""]);
+  const [exemplars, setExemplars] = useState<Exemplar[]>(() =>
+    (character?.exemplars ?? [""]).map(toExemplar)
+  );
   const [disclosure, setDisclosure] = useState(character?.disclosure ?? "AI-generated.");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +69,7 @@ export function CharacterSheetEditor({
         name: name.trim(),
         persona: persona.trim(),
         voiceRules: voiceRules.trim(),
-        exemplars: exemplars.map((e) => e.trim()).filter(Boolean),
+        exemplars: exemplars.map((e) => e.text.trim()).filter(Boolean),
         disclosure: disclosure.trim(),
       });
       await onSaved();
@@ -58,8 +82,8 @@ export function CharacterSheetEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-6 backdrop-blur-sm">
-      <Card className="w-full max-w-2xl">
+    <Overlay open={open} onDismiss={onClose}>
+      <Card>
         <CardHeader
           title={character ? `Character — ${character.name}` : "Create a character"}
           description="The voice this workflow writes in. Applies to every draft it generates."
@@ -105,45 +129,51 @@ export function CharacterSheetEditor({
             hint="The field that does the most work — a model matches a voice far better from a sample than from a description of one. Keep them within the channel limit; length is copied too."
           >
             <div className="space-y-2">
-              {exemplars.map((exemplar, index) => {
-                const over = exemplar.trim().length > EXEMPLAR_GUIDE;
-                return (
-                  <div key={index} className="space-y-1">
-                    <div className="flex items-start gap-2">
-                      <Textarea
-                        rows={3}
-                        value={exemplar}
-                        onChange={(e) =>
-                          setExemplars((prev) =>
-                            prev.map((v, i) => (i === index ? e.target.value : v))
-                          )
-                        }
-                        placeholder="Paste a post that already sounds right."
-                        className="w-full flex-1"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Remove example ${index + 1}`}
-                        onClick={() => setExemplars((prev) => prev.filter((_, i) => i !== index))}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-                      </Button>
-                    </div>
-                    <div className={`px-1 text-micro ${over ? "text-warning" : "text-muted"}`}>
-                      {exemplar.trim().length} characters
-                      {over && ` — over ${EXEMPLAR_GUIDE}; drafts will copy this length`}
-                    </div>
-                  </div>
-                );
-              })}
+              <AnimatedList className="space-y-2">
+                {exemplars.map((exemplar, index) => {
+                  const over = exemplar.text.trim().length > EXEMPLAR_GUIDE;
+                  return (
+                    <AnimatedItem key={exemplar.id} className="space-y-1">
+                      <div className="flex items-start gap-2">
+                        <Textarea
+                          rows={3}
+                          value={exemplar.text}
+                          onChange={(e) =>
+                            setExemplars((prev) =>
+                              prev.map((v) =>
+                                v.id === exemplar.id ? { ...v, text: e.target.value } : v
+                              )
+                            )
+                          }
+                          placeholder="Paste a post that already sounds right."
+                          className="w-full flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Remove example ${index + 1}`}
+                          onClick={() =>
+                            setExemplars((prev) => prev.filter((v) => v.id !== exemplar.id))
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        </Button>
+                      </div>
+                      <div className={`px-1 text-micro ${over ? "text-warning" : "text-muted"}`}>
+                        {exemplar.text.trim().length} characters
+                        {over && ` — over ${EXEMPLAR_GUIDE}; drafts will copy this length`}
+                      </div>
+                    </AnimatedItem>
+                  );
+                })}
+              </AnimatedList>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 className="text-muted"
-                onClick={() => setExemplars((prev) => [...prev, ""])}
+                onClick={() => setExemplars((prev) => [...prev, toExemplar("")])}
               >
                 <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
                 Add example
@@ -175,7 +205,7 @@ export function CharacterSheetEditor({
           </div>
         </div>
       </Card>
-    </div>
+    </Overlay>
   );
 }
 

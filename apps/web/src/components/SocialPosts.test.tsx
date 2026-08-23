@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitForElementToBeRemoved } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkflowOverview, ContentItemRecord } from "@jarvis/shared";
 
@@ -63,7 +63,7 @@ describe("SocialPosts", () => {
     expect(screen.getByText("Launch week")).toBeInTheDocument();
   });
 
-  it("filters by stage without losing the others from the data", () => {
+  it("filters by stage without losing the others from the data", async () => {
     setOverview([
       item({ id: "a", title: "A draft", status: "draft" }),
       item({ id: "b", title: "A published one", status: "published" }),
@@ -73,7 +73,10 @@ describe("SocialPosts", () => {
     expect(screen.getByText("A draft")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Published" }));
 
-    expect(screen.queryByText("A draft")).not.toBeInTheDocument();
+    // Awaited rather than asserted immediately: a filtered-out post animates
+    // out, so it is still in the DOM for the length of that animation. The
+    // assertion that matters is that it does leave.
+    await waitForElementToBeRemoved(() => screen.queryByText("A draft"));
     expect(screen.getByText("A published one")).toBeInTheDocument();
   });
 

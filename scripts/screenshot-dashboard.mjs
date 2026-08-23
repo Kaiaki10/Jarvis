@@ -15,17 +15,25 @@ const PAGES = [
   { path: "/", name: "overview", waitFor: "text=Jarvis" },
   { path: "/operate", name: "operate", waitFor: "text=The operating loop" },
   { path: "/missions", name: "missions", waitFor: "text=Missions" },
-  { path: "/campaigns", name: "campaigns", waitFor: "text=Campaigns" },
-  { path: "/paid-growth", name: "paid-growth", waitFor: "text=Paid growth control" },
-  { path: "/sessions", name: "sessions", waitFor: "text=Runs" },
-  { path: "/automations", name: "automations", waitFor: "text=Automations" },
+  { path: "/paid-growth", name: "paid-growth", waitFor: "text=Paid growth" },
   { path: "/customers", name: "customers", waitFor: "text=Unified queue" },
-  { path: "/memory", name: "memory", waitFor: "text=What Jarvis remembers" },
-  { path: "/evolution", name: "evolution", waitFor: "text=Evolution" },
   { path: "/tasks", name: "tasks", waitFor: "text=Tasks" },
   { path: "/notifications", name: "notifications", waitFor: "text=Notifications" },
-  { path: "/connections", name: "connections", waitFor: "text=Connections" },
-  { path: "/settings", name: "settings", waitFor: "text=Business context" },
+  { path: "/conversations", name: "conversations", waitFor: "text=Conversations" },
+  { path: "/under-the-hood", name: "hood", waitFor: "text=Under the Hood" },
+  { path: "/under-the-hood/workflows", name: "hood-workflows", waitFor: "text=Workflow" },
+  { path: "/under-the-hood/social/posts", name: "hood-posts", waitFor: "text=Posts" },
+  { path: "/under-the-hood/social/platforms", name: "hood-platforms", waitFor: "text=Platforms" },
+  { path: "/under-the-hood/money/budgets", name: "hood-budgets", waitFor: "text=Budgets" },
+  { path: "/under-the-hood/money/cards", name: "hood-cards", waitFor: "text=Cards" },
+  { path: "/under-the-hood/money/transactions", name: "hood-transactions", waitFor: "text=Transactions" },
+  { path: "/under-the-hood/crypto/wallet", name: "hood-wallet", waitFor: "text=Wallet" },
+  { path: "/under-the-hood/crypto/spending", name: "hood-spending", waitFor: "text=Spending" },
+  { path: "/under-the-hood/connections", name: "hood-connections", waitFor: "text=Connections" },
+  { path: "/under-the-hood/automations", name: "hood-automations", waitFor: "text=Automations" },
+  { path: "/under-the-hood/brain/runs", name: "hood-runs", waitFor: "text=Runs" },
+  { path: "/under-the-hood/brain/memory", name: "hood-memory", waitFor: "text=Memory" },
+  { path: "/under-the-hood/settings", name: "hood-settings", waitFor: "text=Business context" },
 ];
 
 const VIEWPORTS = [
@@ -76,6 +84,17 @@ async function main() {
       const url = `${BASE}${target.path}`;
       try {
         await page.goto(url, { waitUntil: "networkidle", timeout: 20000 });
+
+        // Every page is behind the passkey gate, and this browser has no
+        // session. Without this check the run "succeeds": it photographs the
+        // login card once per page and a reviewer reads twenty-eight identical
+        // images as the dashboard. Fail loudly instead of quietly lying.
+        if (new URL(page.url()).pathname === "/login") {
+          throw new Error(
+            "redirected to /login — this browser has no session, so nothing behind auth can be captured"
+          );
+        }
+
         await page.waitForSelector(target.waitFor, { timeout: 10000 });
         await settleReveals(page);
         const file = `${outDir}/${viewport.name}-${target.name}.png`;

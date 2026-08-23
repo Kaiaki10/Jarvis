@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { formatMoney, parseAmount, toInputValue } from "@/lib/money";
+import { AnimatedBody, AnimatedRow, Crossfade, Meter, Stagger } from "@/components/motion";
 
 const RAILS: Array<{
   rail: SpendRail;
@@ -75,19 +76,21 @@ export function SpendBudgets() {
 
   if (!envelopes) {
     return (
-      <Card>
-        <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
-          <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
-          Loading limits…
-        </div>
-      </Card>
+      <Crossfade viewKey="loading">
+        <Card>
+          <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
+            <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
+            Loading limits…
+          </div>
+        </Card>
+      </Crossfade>
     );
   }
 
   const unset = RAILS.filter((r) => !envelopes.some((e) => e.rail === r.rail)).length;
 
   return (
-    <div className="space-y-4">
+    <Crossfade viewKey="rails" className="space-y-4">
       <Card elevation={0} className="flex flex-wrap items-center gap-3 px-5 py-4">
         <ShieldCheck className="h-4 w-4 shrink-0 text-success" strokeWidth={1.75} />
         <p className="min-w-0 flex-1 text-label leading-relaxed text-foreground-secondary">
@@ -103,19 +106,20 @@ export function SpendBudgets() {
       </Card>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        {RAILS.map((rail) => (
-          <RailCard
-            key={rail.rail}
-            spec={rail}
-            envelope={envelopes.find((e) => e.rail === rail.rail) ?? null}
-            spentMinor={spentByRail.get(`${rail.rail}:${rail.currency}`) ?? 0}
-            onChanged={load}
-          />
+        {RAILS.map((rail, index) => (
+          <Stagger key={rail.rail} index={index} className="h-full">
+            <RailCard
+              spec={rail}
+              envelope={envelopes.find((e) => e.rail === rail.rail) ?? null}
+              spentMinor={spentByRail.get(`${rail.rail}:${rail.currency}`) ?? 0}
+              onChanged={load}
+            />
+          </Stagger>
         ))}
       </div>
 
       {error && <p className="text-label text-danger">{error}</p>}
-    </div>
+    </Crossfade>
   );
 }
 
@@ -192,27 +196,28 @@ function RailCard({
             </div>
           </div>
         </div>
-        {envelope ? (
-          <Badge tone={nearLimit ? "warning" : "success"} dot>
-            Open
-          </Badge>
-        ) : (
-          <Badge tone="neutral">Closed</Badge>
-        )}
+        {/* Opening or closing a rail is the consequential act on this page.
+            Dissolving the badge marks that something changed; a hard swap of
+            "Closed" for "Open" is easy to miss on a card you just typed into. */}
+        <Crossfade
+          viewKey={envelope ? (nearLimit ? "near" : "open") : "closed"}
+          className="shrink-0"
+        >
+          {envelope ? (
+            <Badge tone={nearLimit ? "warning" : "success"} dot>
+              Open
+            </Badge>
+          ) : (
+            <Badge tone="neutral">Closed</Badge>
+          )}
+        </Crossfade>
       </div>
 
       <p className="mt-3 min-h-[2.5rem] text-label leading-relaxed text-muted">{spec.blurb}</p>
 
       {showsUsage && envelope && (
         <div className="mt-3">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
-            <div
-              className={`h-full rounded-full transition-[width] duration-300 ${
-                nearLimit ? "bg-warning" : "bg-accent"
-              }`}
-              style={{ width: `${Math.round(used * 100)}%` }}
-            />
-          </div>
+          <Meter value={used} barClassName={nearLimit ? "bg-warning" : "bg-accent"} />
           <div className="mt-1.5 text-micro text-muted">
             {formatMoney(spentMinor, envelope.currency)} of{" "}
             {formatMoney(envelope.limitMinor, envelope.currency)} today
@@ -270,34 +275,41 @@ export function SpendLedgerTable() {
       .catch(() => setLedger([]));
   }, []);
 
+  const phase = !ledger ? "loading" : ledger.length === 0 ? "empty" : "entries";
+
   if (!ledger) {
     return (
-      <Card>
-        <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
-          <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
-          Loading…
-        </div>
-      </Card>
+      <Crossfade viewKey={phase}>
+        <Card>
+          <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
+            <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
+            Loading…
+          </div>
+        </Card>
+      </Crossfade>
     );
   }
 
   if (ledger.length === 0) {
     return (
-      <Card>
-        <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
-          <Wallet className="h-5 w-5 text-muted" strokeWidth={1.75} />
-          <div className="text-body text-muted">Jarvis hasn&apos;t spent anything yet.</div>
-          <p className="max-w-sm text-label text-muted">
-            Every spend lands here whatever rail it moved over, so this is the whole picture
-            rather than one provider&apos;s view.
-          </p>
-        </div>
-      </Card>
+      <Crossfade viewKey={phase}>
+        <Card>
+          <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
+            <Wallet className="h-5 w-5 text-muted" strokeWidth={1.75} />
+            <div className="text-body text-muted">Jarvis hasn&apos;t spent anything yet.</div>
+            <p className="max-w-sm text-label text-muted">
+              Every spend lands here whatever rail it moved over, so this is the whole picture
+              rather than one provider&apos;s view.
+            </p>
+          </div>
+        </Card>
+      </Crossfade>
     );
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Crossfade viewKey={phase}>
+      <Card className="overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
@@ -308,9 +320,11 @@ export function SpendLedgerTable() {
               <th className="px-5 py-3 text-right font-semibold">Amount</th>
             </tr>
           </thead>
-          <tbody>
+          {/* The ledger grows while it is on screen. A new spend that drops in
+              is legible as an event; one that is simply there next render is not. */}
+          <AnimatedBody>
             {ledger.map((entry) => (
-              <tr key={entry.id} className="border-b border-border/60 last:border-0">
+              <AnimatedRow key={entry.id} className="border-b border-border/60 last:border-0">
                 <td className="whitespace-nowrap px-5 py-3 text-label text-muted">
                   {new Date(entry.createdAt).toLocaleString([], {
                     dateStyle: "medium",
@@ -324,11 +338,12 @@ export function SpendLedgerTable() {
                 <td className="whitespace-nowrap px-5 py-3 text-right text-label font-medium text-foreground tabular-nums">
                   {formatMoney(entry.amountMinor, entry.currency)}
                 </td>
-              </tr>
+              </AnimatedRow>
             ))}
-          </tbody>
+          </AnimatedBody>
         </table>
       </div>
-    </Card>
+      </Card>
+    </Crossfade>
   );
 }

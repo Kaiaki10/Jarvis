@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
 import { CharacterSheetEditor } from "@/components/CharacterSheetEditor";
+import { AnimatedItem, AnimatedList, CountUp, Crossfade, Meter } from "@/components/motion";
 
 /** Platforms whose spend belongs to stage 4. */
 const AD_CATEGORY = "advertising";
@@ -113,14 +114,20 @@ export function WorkflowStageRail({
     }
   }
 
+  const done = stages.filter((s) => s.state === "done").length;
+
   return (
     <Card className="p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-heading text-foreground">Stages</div>
         <div className="text-micro text-muted">
-          {stages.filter((s) => s.state === "done").length} of {stages.length} complete
+          <CountUp value={done} className="tabular-nums text-foreground" /> of {stages.length}{" "}
+          complete
         </div>
       </div>
+
+      {/* Progress along the rail, which the row list alone makes you count. */}
+      <Meter value={done / stages.length} className="mb-4" />
 
       <ol className="space-y-1">
         {stages.map((stage) => (
@@ -146,38 +153,43 @@ export function WorkflowStageRail({
         ))}
       </ol>
 
-      {attaching && (
-        <AttachAccount
-          options={attachable}
-          busy={busy}
-          onCancel={() => setAttaching(false)}
-          onAttach={async (connectionId) => {
-            await act(() => api.attachWorkflowAccount(workflow.id, connectionId));
-            setAttaching(false);
-          }}
-        />
-      )}
+      <AnimatedList>
+        {attaching && (
+          <AnimatedItem key="attach">
+            <AttachAccount
+              options={attachable}
+              busy={busy}
+              onCancel={() => setAttaching(false)}
+              onAttach={async (connectionId) => {
+                await act(() => api.attachWorkflowAccount(workflow.id, connectionId));
+                setAttaching(false);
+              }}
+            />
+          </AnimatedItem>
+        )}
+      </AnimatedList>
 
       {attached.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        // Attaching and detaching is the one edit made directly on this card.
+        // The chips reflow around the change rather than the row re-wrapping.
+        <AnimatedList className="mt-3 flex flex-wrap gap-1.5">
           {attached.map((connection) => (
-            <span
-              key={connection.id}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/20 px-2.5 py-1 text-micro text-foreground-secondary"
-            >
-              {connection.label ?? connection.platformId}
-              <button
-                type="button"
-                aria-label={`Detach ${connection.label ?? connection.platformId}`}
-                className="text-muted transition-colors hover:text-danger"
-                disabled={busy}
-                onClick={() => void act(() => api.detachWorkflowAccount(workflow.id, connection.id))}
-              >
-                <X className="h-3 w-3" strokeWidth={2} />
-              </button>
-            </span>
+            <AnimatedItem key={connection.id}>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/20 px-2.5 py-1 text-micro text-foreground-secondary">
+                {connection.label ?? connection.platformId}
+                <button
+                  type="button"
+                  aria-label={`Detach ${connection.label ?? connection.platformId}`}
+                  className="text-muted transition-colors hover:text-danger"
+                  disabled={busy}
+                  onClick={() => void act(() => api.detachWorkflowAccount(workflow.id, connection.id))}
+                >
+                  <X className="h-3 w-3" strokeWidth={2} />
+                </button>
+              </span>
+            </AnimatedItem>
           ))}
-        </div>
+        </AnimatedList>
       )}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
@@ -197,14 +209,17 @@ export function WorkflowStageRail({
         </Button>
       </div>
 
-      {editingCharacter && (
-        <CharacterSheetEditor
-          workflow={workflow}
-          character={character}
-          onClose={() => setEditingCharacter(false)}
-          onSaved={onChanged}
-        />
-      )}
+      {/* Keyed by the saved version so the form re-initialises after a save,
+          but mounted either way — unmounting on close is what would deny it an
+          exit animation. */}
+      <CharacterSheetEditor
+        key={character ? `${character.workflowId}:${character.version}` : "new"}
+        open={editingCharacter}
+        workflow={workflow}
+        character={character}
+        onClose={() => setEditingCharacter(false)}
+        onSaved={onChanged}
+      />
 
       <div className="mt-4 border-t border-border pt-4">
         <AutopilotControl workflow={workflow} busy={busy} onChange={(patch) => act(() => api.updateWorkflow(workflow.id, patch))} />
@@ -284,12 +299,17 @@ function StageRow({ stage, action }: { stage: WorkflowStageStatus; action?: Reac
   const Icon = STATE_ICON[stage.state];
   return (
     <li className="flex items-center gap-3 rounded-lg px-1 py-2">
-      <span
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-micro font-semibold ring-1 ring-inset ${STATE_STYLE[stage.state]}`}
-        aria-hidden="true"
-      >
-        <Icon className="h-3 w-3" strokeWidth={2} />
-      </span>
+      {/* A stage clearing is the event this whole page exists to report, and it
+          happens while you watch. Dissolving the marker between states is what
+          makes it read as progress rather than as a re-render. */}
+      <Crossfade viewKey={stage.state} className="shrink-0">
+        <span
+          className={`flex h-6 w-6 items-center justify-center rounded-full text-micro font-semibold ring-1 ring-inset ${STATE_STYLE[stage.state]}`}
+          aria-hidden="true"
+        >
+          <Icon className="h-3 w-3" strokeWidth={2} />
+        </span>
+      </Crossfade>
       <span className="w-4 shrink-0 text-micro tabular-nums text-muted">{stage.number}</span>
       <span className="w-24 shrink-0 text-label font-medium text-foreground">{stage.label}</span>
       <span
