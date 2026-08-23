@@ -39,4 +39,5 @@ export { AnimatedList, AnimatedItem, AnimatedRow, AnimatedBody } from "./Animate
 export { Crossfade } from "./Crossfade";
 export { Meter } from "./Meter";
 export { Overlay } from "./Overlay";
+export { SharedElement } from "./SharedElement";
 export { Pressable } from "./Pressable";

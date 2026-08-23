@@ -427,6 +427,46 @@ textarea::placeholder {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  /* View transitions animate on pseudo-elements outside the document tree, so
+     the universal rule above never reaches them. Without this they would keep
+     animating for the one reader who asked the whole app not to. */
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+  }
+}
+
+/* --- View transitions --------------------------------------------------- */
+
+/* The transition overlay sits above the live page and swallows pointer events
+   for as long as it runs, so a click landing mid-animation is simply lost.
+   Nothing here is worth making the app briefly unclickable for. */
+::view-transition {
+  pointer-events: none;
+}
+
+/* Shared elements — see `SharedElement` in the motion layer. `share="morph"`
+   is what puts the `morph` class on the transition; targeting the class rather
+   than each name keeps this from growing a rule per paired element. */
+::view-transition-group(.morph) {
+  animation-duration: var(--duration-base);
+  animation-timing-function: var(--ease-out);
+}
+
+/* Softens the mid-flight frames. Interpolating between two snapshots of
+   different sizes leaves visible artifacts on text; a touch of blur at the
+   midpoint hides them without reading as an effect of its own. */
+::view-transition-image-pair(.morph) {
+  animation-name: morph-blur;
+}
+
+@keyframes morph-blur {
+  30% {
+    filter: blur(2px);
+  }
 }
 
 /* --- Simple Jarvis experience ------------------------------------------ */

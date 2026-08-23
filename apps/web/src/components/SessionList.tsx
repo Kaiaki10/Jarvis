@@ -6,29 +6,9 @@ import { ChevronRight, History, Trash2 } from "lucide-react";
 import { useSessionsList } from "@/lib/hooks";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import type { SessionStatus } from "@jarvis/shared";
+import { SharedElement } from "@/components/motion";
+import { STATUS_LABEL, STATUS_TONE } from "@/lib/sessionStatus";
 
-const STATUS_TONE: Record<SessionStatus, "neutral" | "accent" | "success" | "warning" | "danger"> = {
-  starting: "warning",
-  running: "accent",
-  waiting_permission: "warning",
-  idle: "success",
-  completed: "neutral",
-  error: "danger",
-  stopped: "neutral",
-  interrupted: "danger",
-};
-
-const STATUS_LABEL: Record<SessionStatus, string> = {
-  starting: "Starting",
-  running: "Running",
-  waiting_permission: "Needs approval",
-  idle: "Idle",
-  completed: "Completed",
-  error: "Error",
-  stopped: "Stopped",
-  interrupted: "Interrupted",
-};
 
 /**
  * Automation run history. The ongoing conversation with Jarvis is deliberately
@@ -94,7 +74,11 @@ export function SessionList({
           >
             <Link href={`/under-the-hood/brain/runs/${session.id}`} className="flex min-w-0 flex-1 items-center gap-3">
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-foreground">{session.title}</span>
+                {/* Paired with the same name in SessionDetail's header, so the
+                    run you clicked visibly becomes the run you are reading. */}
+                <SharedElement name={`run-title-${session.id}`}>
+                  <span className="block truncate text-foreground">{session.title}</span>
+                </SharedElement>
                 {session.currentActivity ? (
                   <span className="mt-0.5 flex items-center gap-1.5 text-micro text-accent-foreground">
                     <span className="h-1.5 w-1.5 shrink-0 animate-pulse-soft rounded-full bg-accent" />
@@ -106,9 +90,13 @@ export function SessionList({
                   </span>
                 ) : null}
               </span>
-              <Badge tone={STATUS_TONE[session.status]} dot>
-                {STATUS_LABEL[session.status]}
-              </Badge>
+              <SharedElement name={`run-status-${session.id}`}>
+                <span className="shrink-0">
+                  <Badge tone={STATUS_TONE[session.status]} dot>
+                    {STATUS_LABEL[session.status]}
+                  </Badge>
+                </span>
+              </SharedElement>
               <ChevronRight className="h-4 w-4 shrink-0 text-muted opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100" />
             </Link>
             {confirming === session.id ? (

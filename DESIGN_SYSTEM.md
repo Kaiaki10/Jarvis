@@ -127,6 +127,7 @@ whole justification for the dependency, and the bar for adding to this half.
 | `Overlay` | A dialog's backdrop and panel, with the exit | Modals |
 | `Meter` | A bar that springs to a new fraction | Progress and usage |
 | `Pressable` | Lifts on hover, gives under the press | Controls worth touching |
+| `SharedElement` | Carries one element across a navigation | A row and the page it opens |
 
 A dialog has to stay mounted while it closes, or React removes it before the
 exit can run — so pass `Overlay` an `open` prop rather than rendering it behind
@@ -194,10 +195,24 @@ real places, documented in the table above, and verified by screenshot.
       list rows animate on add and remove. Applied in Budgets, the workflow
       stage rail, Accounts, Posts, Cards, the wallet and the ledger. All seven
       dialogs enter and leave.
-- [ ] **3 — Shared elements across navigation.** The View Transitions API, so
-      opening a run from the list carries its title and status across instead of
-      cutting to a new page. Check browser support and degrade to a plain
-      navigation.
+- [x] **3 — Shared elements across navigation.** Opening a run from the list
+      carries its title and status across rather than cutting to a new page,
+      via `SharedElement`. Three conditions have to hold, and it degrades to a
+      plain navigation whenever they don't:
+      - **The destination must render the element in the same commit as the
+        navigation.** If it waits on a fetch, no pair forms and the element just
+        appears. `SessionDetail` reads the run from the store, which is what
+        makes the pair possible — a refetch here would silently kill the morph
+        while everything still looked fine.
+      - **Both sides must render the same content.** They animate into each
+        other, so a wording difference is a visible change mid-flight. The run
+        status maps live in `@/lib/sessionStatus` for exactly this reason.
+      - **`name` must be unique on screen.** Ids, never labels.
+
+      React's `<ViewTransition>` is in the canary React that Next bundles for
+      the App Router, but not in the stable `react` or `@types/react` we compile
+      against. `SharedElement` reads it off the namespace so the cast lives in
+      one place, and renders children untouched if it is ever absent.
 - [ ] **4 — Long-page structure.** Settings and Connections are long unbroken
       forms. Sticky section headers and a progress rail, so position in a long
       document is always obvious. Scroll-*linked*, never scroll-hijacked.

@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { SessionTranscript } from "@/components/SessionTranscript";
+import { SharedElement } from "@/components/motion";
+import { STATUS_LABEL, STATUS_TONE } from "@/lib/sessionStatus";
 
 /**
  * One run, read back in full. This is where automation runs are inspected; the
@@ -51,16 +53,34 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       <div className="flex items-center gap-3 border-b border-border px-4 py-4 sm:px-8">
         <Link
           href="/under-the-hood/brain/runs"
-          className="flex items-center gap-1.5 text-body text-muted hover:text-foreground"
+          className="flex shrink-0 items-center gap-1.5 text-body text-muted hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           Runs
         </Link>
+
+        {/* The header never said which run this was — you had to read the
+            transcript to find out. It does now, and naming it is also what
+            gives the title from the list something to morph into. */}
         {session && (
-          <div className="ml-auto flex items-center gap-3 text-label text-muted">
-            {session.turns != null && <span>{session.turns} turn(s)</span>}
-            <Badge tone="neutral">{session.status}</Badge>
-          </div>
+          <>
+            <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+            <SharedElement name={`run-title-${sessionId}`}>
+              <h1 className="min-w-0 flex-1 truncate text-body text-foreground">
+                {session.title}
+              </h1>
+            </SharedElement>
+            <div className="flex shrink-0 items-center gap-3 text-label text-muted">
+              {session.turns != null && <span>{session.turns} turn(s)</span>}
+              <SharedElement name={`run-status-${sessionId}`}>
+                <span className="shrink-0">
+                  <Badge tone={STATUS_TONE[session.status]} dot>
+                    {STATUS_LABEL[session.status]}
+                  </Badge>
+                </span>
+              </SharedElement>
+            </div>
+          </>
         )}
       </div>
 
