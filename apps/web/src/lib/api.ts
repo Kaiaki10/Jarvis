@@ -355,6 +355,14 @@ getSpend: () =>
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  /** Test one specific account. The platform-keyed route refuses once several exist. */
+  testAccount: (connectionId: string) =>
+    request<{ result: TestConnectionResult; connection: ConnectionRecord }>(
+      `/accounts/${connectionId}/test`,
+      { method: "POST" }
+    ),
+  deleteAccount: (connectionId: string) =>
+    request<void>(`/accounts/${connectionId}`, { method: "DELETE" }),
   /** Null clears the override so the global default applies again. */
   setConnectionCap: (connectionId: string, dailyActionCap: number | null) =>
     request<ConnectionRecord>(`/connections/${connectionId}/cap`, {
@@ -456,10 +464,15 @@ getSpend: () =>
 
   listPlatforms: () => request<PlatformDefinition[]>("/platforms"),
   listConnections: () => request<ConnectionRecord[]>("/connections"),
-  saveConnection: (platformId: string, values: Record<string, string>) =>
+  saveConnection: (
+    platformId: string,
+    values: Record<string, string>,
+    /** `createNew` adds an account alongside the existing ones rather than editing one. */
+    options: { connectionId?: string; createNew?: boolean; label?: string | null } = {}
+  ) =>
     request<ConnectionRecord>(`/connections/${platformId}`, {
       method: "PUT",
-      body: JSON.stringify({ values }),
+      body: JSON.stringify({ values, ...options }),
     }),
   testConnection: (platformId: string) =>
     request<{ result: TestConnectionResult; connection: ConnectionRecord }>(

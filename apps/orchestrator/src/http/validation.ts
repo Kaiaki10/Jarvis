@@ -381,7 +381,15 @@ export const updateScheduledTaskSchema = createScheduledTaskSchema.partial().ext
 });
 
 export const saveConnectionSchema = z
-  .object({ values: z.record(z.string(), z.string().max(20_000)) })
+  .object({
+    values: z.record(z.string(), z.string().max(20_000)),
+    /** Edit one specific account rather than the platform's default. */
+    connectionId: z.string().trim().min(1).max(200).optional(),
+    /** Add another account alongside the existing ones. */
+    createNew: z.boolean().optional(),
+    /** What to call this account, e.g. @acme. */
+    label: z.string().trim().min(1).max(120).nullable().optional(),
+  })
   .strict();
 
 export const startPlatformSignupSchema = z

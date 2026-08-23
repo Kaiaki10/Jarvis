@@ -740,6 +740,8 @@ export interface WorkflowOverview {
   metricCounts: Record<string, number>;
   /** Stage 5 output per workflow. */
   insightCounts: Record<string, number>;
+  /** Stage 4: ad campaigns linked to each workflow. */
+  adCampaignCounts: Record<string, number>;
 }
 
 export interface CreateWorkflowRequest {

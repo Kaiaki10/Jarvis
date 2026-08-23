@@ -25,6 +25,7 @@ import { usePlatformSignup } from "@/lib/store";
 import { api } from "@/lib/api";
 import dynamic from "next/dynamic";
 import { StripeFundingPanel } from "@/components/StripeFundingPanel";
+import { PlatformAccounts } from "@/components/PlatformAccounts";
 
 // @base-org/account's Node-side export pulls in an unrelated, broken Solana/X402
 // dependency chain through @coinbase/cdp-sdk (a package this panel never actually
@@ -319,6 +320,11 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
             )}
           </CardBody>
         </Card>
+
+        {/* The wizard above sets up "the" account for this platform. Once one
+            exists, this is where additional ones live — a second business needs
+            its own account, not a second copy of the first. */}
+        <PlatformAccounts platform={platform} />
       </div>
     </div>
   );

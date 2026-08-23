@@ -43,7 +43,7 @@ function setOverview(content: ContentItemRecord[], publicationRuns: WorkflowOver
     accounts: [],
     characters: [],
     metricCounts: {},
-    insightCounts: {},
+    insightCounts: {}, adCampaignCounts: {},
   };
 }
 

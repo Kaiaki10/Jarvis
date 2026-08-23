@@ -66,6 +66,7 @@ import { characterBrief, getCharacter, listCharacters, saveCharacter } from "../
 import {
   attachWorkflowAccount,
   detachWorkflowAccount,
+  adCampaignCountsByWorkflow,
   insightCountsByWorkflow,
   listWorkflowAccounts,
   metricCountsByWorkflow,
@@ -75,6 +76,7 @@ import {
   getConnection,
   getConnectionCredentials,
   getConnectionById,
+  getConnectionCredentialsById,
   setConnectionCap,
   resolveConnectionId,
   saveConnection,
@@ -1605,6 +1607,7 @@ app.get("/workflows", (req: Request, res: Response) => {
     publicationRuns: listContentPublicationRuns(undefined, agentId),
     accounts: listWorkflowAccounts(agentId),
     characters: listCharacters(agentId),
+    adCampaignCounts: adCampaignCountsByWorkflow(agentId),
     metricCounts: metricCountsByWorkflow(agentId),
     insightCounts: insightCountsByWorkflow(agentId),
   });
@@ -2303,11 +2306,24 @@ app.put("/connections/:platformId", (req: Request, res: Response) => {
   const body = validatedBody(saveConnectionSchema, req, res);
   if (!body) return;
   const submitted = body.values;
+
+  if (body.connectionId && !getConnectionById(body.connectionId)) {
+    res.status(404).json({ error: "Account not found" });
+    return;
+  }
+
   // Blank fields mean "leave as-is" so re-editing doesn't wipe secrets the user
   // no longer has a copy of (most platforms show them exactly once).
-  const merged: Record<string, string> = {
-    ...(getConnectionCredentials(platform.definition.id) ?? {}),
-  };
+  //
+  // A brand-new account merges nothing: inheriting the first account's
+  // credentials would silently create a duplicate of it under a new name,
+  // which is the opposite of adding a second business.
+  const existingCredentials = body.createNew
+    ? {}
+    : body.connectionId
+      ? (getConnectionCredentialsById(body.connectionId) ?? {})
+      : (getConnectionCredentials(platform.definition.id) ?? {});
+  const merged: Record<string, string> = { ...existingCredentials };
   for (const [key, value] of Object.entries(submitted)) {
     // Store the trimmed value, not the raw one. Credentials are pasted, and a
     // trailing newline or space from the clipboard is invisible in a password
@@ -2336,7 +2352,16 @@ app.put("/connections/:platformId", (req: Request, res: Response) => {
       return;
     }
   }
-  const connection = saveConnection(platform.definition.id, merged);
+  const agentId = owningAgentId(req, res);
+  if (agentId === null) return;
+  const connection = saveConnection(platform.definition.id, merged, {
+    id: body.connectionId,
+    label: body.label,
+    forceNew: body.createNew,
+    // A second account belongs to the agent that created it. The first stays
+    // shared, so existing installs keep reaching every platform they did.
+    agentId: body.createNew ? agentId : undefined,
+  });
   if (platform.definition.id === "slack") refreshSlackAgentBridge();
   // Saving real credentials means any guided signup for this platform is
   // over — nothing left for the wizard to track.
@@ -2432,6 +2457,49 @@ app.post("/connections/:platformId/test", async (req: Request, res: Response) =>
  * Edit one account's daily action cap. Null clears the override so the global
  * default applies again — clearing is not the same as removing the limit.
  */
+/**
+ * Test or remove one specific account.
+ *
+ * Keyed by connection id rather than platform, because the platform-keyed
+ * routes refuse once several accounts exist — there is no single answer to
+ * "test X" when there are two X accounts, and guessing would test the wrong
+ * business's credentials.
+ */
+app.post("/accounts/:connectionId/test", async (req: Request, res: Response) => {
+  const connection = getConnectionById(req.params.connectionId);
+  if (!connection) { res.status(404).json({ error: "Account not found" }); return; }
+  const platform = getPlatform(connection.platformId);
+  if (!platform) { res.status(404).json({ error: "unknown platform" }); return; }
+
+  const creds = getConnectionCredentialsById(connection.id);
+  if (!creds) { res.status(400).json({ error: "This account has no stored credentials." }); return; }
+
+  let result;
+  try {
+    result = await platform.test(creds);
+  } catch (err) {
+    result = { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+  const updated = recordTestResult(
+    connection.id,
+    result.ok,
+    result.detail ?? null,
+    result.ok ? null : (result.message ?? "Connection test failed")
+  );
+  if (connection.platformId === "slack") refreshSlackAgentBridge();
+  globalBus.emit("connections_changed");
+  res.json({ result, connection: updated });
+});
+
+app.delete("/accounts/:connectionId", (req: Request, res: Response) => {
+  const connection = getConnectionById(req.params.connectionId);
+  if (!connection) { res.status(404).json({ error: "Account not found" }); return; }
+  deleteConnection(connection.id);
+  if (connection.platformId === "slack") stopSlackAgentBridge();
+  globalBus.emit("connections_changed");
+  res.status(204).send();
+});
+
 app.patch("/connections/:connectionId/cap", (req: Request, res: Response) => {
   const body = validatedBody(setConnectionCapSchema, req, res);
   if (!body) return;

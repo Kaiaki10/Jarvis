@@ -70,13 +70,14 @@ export const UNDER_THE_HOOD_MODULES: UnderTheHoodModule[] = [
     slug: "crypto",
     label: "Crypto",
     icon: Coins,
-    description: "Jarvis's wallet, holdings, and launches",
-    enabled: false,
+    description: "What Jarvis may spend on-chain, and what it has",
+    enabled: true,
+    // Investments and Launch stay dark: there is no holdings data and no
+    // launch tooling, and a tab that can only render an empty state is worse
+    // than no tab. See UNDER_THE_HOOD_PLAN.md.
     features: [
       { slug: "wallet", label: "Wallet", icon: Wallet },
       { slug: "spending", label: "Spending", icon: Coins },
-      { slug: "investments", label: "Investments", icon: Coins },
-      { slug: "launch", label: "Launch", icon: Coins },
     ],
   },
   {

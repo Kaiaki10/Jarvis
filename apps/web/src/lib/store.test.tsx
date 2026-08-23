@@ -48,7 +48,7 @@ function mockInitialRequests() {
       automaticRollbackReady: false,
     },
   });
-  vi.spyOn(api, "getWorkflows").mockResolvedValue({ workflows: [], content: [], generationRuns: [], publicationRuns: [], accounts: [], characters: [], metricCounts: {}, insightCounts: {} });
+  vi.spyOn(api, "getWorkflows").mockResolvedValue({ workflows: [], content: [], generationRuns: [], publicationRuns: [], accounts: [], characters: [], metricCounts: {}, insightCounts: {}, adCampaignCounts: {} });
   vi.spyOn(api, "getCustomerOperations").mockResolvedValue({
     customers: [], conversations: [], messages: [], drafts: [], deliveries: [],
     policy: {

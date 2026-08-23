@@ -82,9 +82,7 @@ export function WorkflowStageRail({
         contentIds.has(run.contentItemId)
       ),
       metricCount: overview?.metricCounts?.[workflow.id] ?? 0,
-      // Stage 4's link exists in the schema but nothing writes it yet, so this
-      // is honestly zero rather than guessed from unrelated ad campaigns.
-      adCampaigns: 0,
+      adCampaigns: overview?.adCampaignCounts?.[workflow.id] ?? 0,
       adPlatformConnected: connections.some(
         (c) => adPlatformIds.includes(c.platformId) && c.status === "connected"
       ),

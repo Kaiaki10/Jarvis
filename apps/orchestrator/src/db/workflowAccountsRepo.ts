@@ -86,3 +86,32 @@ export function insightCountsByWorkflow(agentId?: string): Record<string, number
   ) as unknown as Array<{ id: string; n: number }>;
   return Object.fromEntries(rows.map((row) => [row.id, row.n]));
 }
+
+/**
+ * Ad campaigns linked to each workflow (stage 4).
+ *
+ * Counts every linked campaign rather than only active ones: the stage asks
+ * whether advertising is connected to this workflow at all, which a paused
+ * campaign still answers yes to. Spend is bounded separately by the ad budget
+ * envelope, so nothing here needs to double as a limit.
+ */
+export function adCampaignCountsByWorkflow(agentId?: string): Record<string, number> {
+  const rows = (
+    agentId
+      ? db
+          .prepare(
+            `SELECT p.workflow_id AS id, COUNT(*) AS n FROM paid_growth_campaigns p
+             JOIN workflows w ON w.id = p.workflow_id
+             WHERE p.workflow_id IS NOT NULL AND w.agent_id = ?
+             GROUP BY p.workflow_id`
+          )
+          .all(agentId)
+      : db
+          .prepare(
+            `SELECT workflow_id AS id, COUNT(*) AS n FROM paid_growth_campaigns
+             WHERE workflow_id IS NOT NULL GROUP BY workflow_id`
+          )
+          .all()
+  ) as unknown as Array<{ id: string; n: number }>;
+  return Object.fromEntries(rows.map((row) => [row.id, row.n]));
+}

@@ -143,14 +143,18 @@ export function getConnectionCredentialsById(
 export function saveConnection(
   platformId: string,
   values: Record<string, string>,
-  options: { id?: string; agentId?: string | null; label?: string | null } = {}
+  options: { id?: string; agentId?: string | null; label?: string | null; forceNew?: boolean } = {}
 ): ConnectionRecord {
   const now = new Date().toISOString();
-  const existing = options.id
-    ? (db.prepare(`SELECT * FROM connections WHERE id = ?`).get(options.id) as
-        | ConnectionRow
-        | undefined)
-    : resolveByPlatform(platformId);
+  // forceNew skips resolution entirely: without it a second account would
+  // update the first rather than being added alongside it.
+  const existing = options.forceNew
+    ? undefined
+    : options.id
+      ? (db.prepare(`SELECT * FROM connections WHERE id = ?`).get(options.id) as
+          | ConnectionRow
+          | undefined)
+      : resolveByPlatform(platformId);
 
   if (existing) {
     db.prepare(
