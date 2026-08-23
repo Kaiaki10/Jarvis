@@ -11,6 +11,7 @@ import { SessionTranscript } from "@/components/SessionTranscript";
 import { ExperienceModeToggle } from "@/components/ExperienceModeToggle";
 import { Select } from "@/components/ui/Input";
 import { ClaudeUsageBadge } from "@/components/ClaudeUsageBadge";
+import { SimpleConnectChips } from "@/components/SimpleConnectChips";
 import { CLAUDE_MODELS, type ChatModel, type ClaudeModel } from "@jarvis/shared";
 
 interface BrowserSpeechRecognition {
@@ -240,6 +241,11 @@ export function SimpleJarvisHome() {
               <span className="flex items-center gap-1.5"><Brain className="h-3.5 w-3.5" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} memories</span>
               <span className="h-1 w-1 rounded-full bg-border-strong" />
               <span>One continuous conversation</span>
+            </div>
+            {/* Simple mode has no navigation, so this is the only place these
+                two capabilities are discoverable from the front door. */}
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+              <SimpleConnectChips />
             </div>
           </div>
         </section>
