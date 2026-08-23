@@ -42,6 +42,7 @@ import { WorkflowStageRail } from "@/components/WorkflowStageRail";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Overlay as MotionOverlay, Pressable } from "@/components/motion";
+import { useDialog } from "@/lib/useDialog";
 
 const CHANNELS: Array<{ id: MarketingChannel; label: string }> = [
   { id: "x", label: "X" },
@@ -81,9 +82,13 @@ export function WorkflowStudio() {
   const { missions } = useMissionsList();
   const { connections } = useConnections();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [addingContent, setAddingContent] = useState(false);
+  const createDialog = useDialog();
+  const generateDialog = useDialog();
+  const addDialog = useDialog();
+  const editDialog = useDialog();
+  // Held past the close rather than cleared with it: clearing this is what used
+  // to close the editor, and rendering nothing at that moment would make the
+  // panel vanish instead of leave. `editDialog.open` decides visibility now.
   const [editing, setEditing] = useState<ContentItemRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,7 +132,7 @@ export function WorkflowStudio() {
               <div className="text-heading text-foreground">Workflow portfolio</div>
               <div className="mt-0.5 text-micro text-muted">{overview.workflows.length} total</div>
             </div>
-            <Button size="icon" variant="ghost" aria-label="New workflow" onClick={() => setCreating(true)}>
+            <Button size="icon" variant="ghost" aria-label="New workflow" onClick={createDialog.show}>
               <Plus className="h-4 w-4" strokeWidth={1.75} />
             </Button>
           </div>
@@ -136,7 +141,7 @@ export function WorkflowStudio() {
               <Megaphone className="h-6 w-6 text-muted" strokeWidth={1.5} />
               <div className="mt-3 text-body text-foreground">No workflows yet</div>
               <p className="mt-1 text-label text-muted">Give Jarvis an objective and an audience to begin.</p>
-              <Button className="mt-4" size="sm" onClick={() => setCreating(true)}><Plus className="h-3.5 w-3.5" /> Create workflow</Button>
+              <Button className="mt-4" size="sm" onClick={createDialog.show}><Plus className="h-3.5 w-3.5" /> Create workflow</Button>
             </div>
           ) : (
             <div className="flex flex-col gap-1 p-2">
@@ -174,8 +179,8 @@ export function WorkflowStudio() {
               workflow={workflow}
               contentCount={content.length}
               onStatus={(status) => mutate(() => api.updateWorkflow(workflow.id, { status }))}
-              onGenerate={() => setGenerating(true)}
-              onAdd={() => setAddingContent(true)}
+              onGenerate={generateDialog.show}
+              onAdd={addDialog.show}
             />
 
             <WorkflowStageRail workflow={workflow} overview={overview} onChanged={refresh} />
@@ -198,7 +203,7 @@ export function WorkflowStudio() {
               </div>
             )}
 
-            <ContentPipeline content={content} publicationRuns={overview.publicationRuns} xConnected={connections.some((connection) => connection.platformId === "x" && connection.status === "connected")} onEdit={setEditing} onPublish={async (item) => {
+            <ContentPipeline content={content} publicationRuns={overview.publicationRuns} xConnected={connections.some((connection) => connection.platformId === "x" && connection.status === "connected")} onEdit={(item) => { setEditing(item); editDialog.show(); }} onPublish={async (item) => {
               await mutate(() => api.publishContentItem(item.id));
             }} onAdvance={async (item) => {
               const index = PIPELINE.findIndex((stage) => stage.status === item.status);
@@ -206,6 +211,7 @@ export function WorkflowStudio() {
               if (!next) return;
               if (next === "scheduled" && !item.scheduledFor) {
                 setEditing(item);
+                editDialog.show();
                 return;
               }
               await mutate(() => api.updateContentItem(item.id, { status: next }));
@@ -216,15 +222,19 @@ export function WorkflowStudio() {
             <CircleDashed className="h-8 w-8 text-muted" strokeWidth={1.5} />
             <h2 className="mt-4 text-title text-foreground">Build a workflow operating plan</h2>
             <p className="mt-2 max-w-md text-body text-muted">Jarvis will use the objective, audience, offer, channels, and success metric as guardrails for every generated asset.</p>
-            <Button className="mt-5" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> Create workflow</Button>
+            <Button className="mt-5" onClick={createDialog.show}><Plus className="h-4 w-4" /> Create workflow</Button>
           </Card>
         )}
       </div>
 
-      {creating && <WorkflowForm missions={missions} onClose={() => setCreating(false)} onCreated={async (created) => { await refresh(); setSelectedId(created.id); setCreating(false); }} />}
-      {generating && workflow && <GenerationForm workflow={workflow} onClose={() => setGenerating(false)} onGenerate={async (body) => { await mutate(() => api.generateWorkflowContent(workflow.id, body)); setGenerating(false); }} />}
-      {addingContent && workflow && <ContentForm workflow={workflow} onClose={() => setAddingContent(false)} onSave={async (body) => { await mutate(() => api.createContentItem(workflow.id, body)); setAddingContent(false); }} />}
-      {editing && workflow && <ContentEditor item={editing} workflow={workflow} onClose={() => setEditing(null)} onSave={async (patch) => { await mutate(() => api.updateContentItem(editing.id, patch)); setEditing(null); }} onDelete={async () => { await mutate(() => api.deleteContentItem(editing.id)); setEditing(null); }} />}
+      {/* Mounted whether or not they are showing, so closing is something you
+          can see. `key` remounts each form on open, which conditional rendering
+          used to do for free — without it a cancelled draft would still be
+          sitting there next time. */}
+      <WorkflowForm key={createDialog.key} open={createDialog.open} missions={missions} onClose={createDialog.hide} onCreated={async (created) => { await refresh(); setSelectedId(created.id); createDialog.hide(); }} />
+      {workflow && <GenerationForm key={generateDialog.key} open={generateDialog.open} workflow={workflow} onClose={generateDialog.hide} onGenerate={async (body) => { await mutate(() => api.generateWorkflowContent(workflow.id, body)); generateDialog.hide(); }} />}
+      {workflow && <ContentForm key={addDialog.key} open={addDialog.open} workflow={workflow} onClose={addDialog.hide} onSave={async (body) => { await mutate(() => api.createContentItem(workflow.id, body)); addDialog.hide(); }} />}
+      {editing && workflow && <ContentEditor key={editDialog.key} open={editDialog.open} item={editing} workflow={workflow} onClose={editDialog.hide} onSave={async (patch) => { await mutate(() => api.updateContentItem(editing.id, patch)); editDialog.hide(); }} onDelete={async () => { await mutate(() => api.deleteContentItem(editing.id)); editDialog.hide(); }} />}
     </div>
   );
 }
@@ -349,19 +359,19 @@ function ContentCard({ item, publicationRun, xConnected, onEdit, onAdvance, onPu
  * their parent, which unmounts them before an exit could play. The ladder in
  * DESIGN_SYSTEM.md records what that would take.
  */
-function Overlay({ children, onDismiss }: { children: React.ReactNode; onDismiss: () => void }) {
+function Overlay({ open, children, onDismiss }: { open: boolean; children: React.ReactNode; onDismiss: () => void }) {
   return (
-    <MotionOverlay open onDismiss={onDismiss}>
+    <MotionOverlay open={open} onDismiss={onDismiss}>
       <div className="max-h-[90vh] overflow-y-auto">{children}</div>
     </MotionOverlay>
   );
 }
 
-function WorkflowForm({ missions, onClose, onCreated }: { missions: ReturnType<typeof useMissionsList>["missions"]; onClose: () => void; onCreated: (workflow: WorkflowRecord) => Promise<void> }) {
+function WorkflowForm({ open, missions, onClose, onCreated }: { open: boolean; missions: ReturnType<typeof useMissionsList>["missions"]; onClose: () => void; onCreated: (workflow: WorkflowRecord) => Promise<void> }) {
   const [name, setName] = useState(""); const [objective, setObjective] = useState(""); const [audience, setAudience] = useState(""); const [offer, setOffer] = useState(""); const [metric, setMetric] = useState("");
   const [channels, setChannels] = useState<MarketingChannel[]>(["linkedin"]); const [policy, setPolicy] = useState<WorkflowApprovalPolicy>("each_item"); const [missionId, setMissionId] = useState(""); const [saving, setSaving] = useState(false);
   const valid = name.trim() && objective.trim() && audience.trim() && offer.trim() && metric.trim() && channels.length;
-  return <Overlay onDismiss={onClose}><Card elevation={2}><CardHeader title="Create a workflow" description="Define the strategy Jarvis must preserve across every asset" icon={<Target className="h-4 w-4" />} /><CardBody className="space-y-3">
+  return <Overlay open={open} onDismiss={onClose}><Card elevation={2}><CardHeader title="Create a workflow" description="Define the strategy Jarvis must preserve across every asset" icon={<Target className="h-4 w-4" />} /><CardBody className="space-y-3">
     <Input autoFocus placeholder="Workflow name" value={name} onChange={(event) => setName(event.target.value)} className="w-full" />
     <Textarea rows={3} placeholder="Objective — what business result should this produce?" value={objective} onChange={(event) => setObjective(event.target.value)} className="w-full" />
     <div className="grid gap-3 sm:grid-cols-2"><Textarea rows={3} placeholder="Audience — who are we speaking to?" value={audience} onChange={(event) => setAudience(event.target.value)} /><Textarea rows={3} placeholder="Offer — what should they act on?" value={offer} onChange={(event) => setOffer(event.target.value)} /></div>
@@ -372,10 +382,10 @@ function WorkflowForm({ missions, onClose, onCreated }: { missions: ReturnType<t
   </CardBody></Card></Overlay>;
 }
 
-function GenerationForm({ workflow, onClose, onGenerate }: { workflow: WorkflowRecord; onClose: () => void; onGenerate: (body: { count: number; formats: ContentFormat[]; channels: MarketingChannel[]; direction?: string }) => Promise<void> }) {
+function GenerationForm({ open, workflow, onClose, onGenerate }: { open: boolean; workflow: WorkflowRecord; onClose: () => void; onGenerate: (body: { count: number; formats: ContentFormat[]; channels: MarketingChannel[]; direction?: string }) => Promise<void> }) {
   const defaults = useMemo<ContentFormat[]>(() => workflow.channels.includes("email") ? ["social_post", "email"] : workflow.channels.includes("blog") ? ["social_post", "article"] : ["social_post"], [workflow.channels]);
   const [count, setCount] = useState(4); const [formats, setFormats] = useState<ContentFormat[]>(defaults); const [channels, setChannels] = useState<MarketingChannel[]>(workflow.channels); const [direction, setDirection] = useState(""); const [saving, setSaving] = useState(false);
-  return <Overlay onDismiss={onClose}><Card elevation={2}><CardHeader title="Generate with Jarvis" description="Create a coordinated batch without publishing anything" icon={<Sparkles className="h-4 w-4" />} /><CardBody className="space-y-4">
+  return <Overlay open={open} onDismiss={onClose}><Card elevation={2}><CardHeader title="Generate with Jarvis" description="Create a coordinated batch without publishing anything" icon={<Sparkles className="h-4 w-4" />} /><CardBody className="space-y-4">
     <div className="rounded-lg border border-accent/20 bg-accent/5 px-3 py-2.5 text-label text-foreground-secondary"><ShieldCheck className="mr-1.5 inline h-3.5 w-3.5 text-accent-bright" />Draft generation is non-publishing. Every asset enters the pipeline for review.</div>
     <label className="block"><span className="mb-1.5 block text-label text-muted">Number of assets</span><Input type="number" min={1} max={12} value={count} onChange={(event) => setCount(Number(event.target.value))} className="w-full" /></label>
     <ToggleSet label="Formats" options={(Object.entries(FORMAT_LABELS) as Array<[ContentFormat, string]>)} selected={formats} onChange={setFormats} />
@@ -389,15 +399,15 @@ function ToggleSet<T extends string>({ label, options, selected, onChange }: { l
   return <div><div className="mb-2 text-label text-muted">{label}</div><div className="flex flex-wrap gap-2">{options.map(([id, name]) => { const active = selected.includes(id); return <button key={id} onClick={() => onChange(active ? selected.filter((item) => item !== id) : [...selected, id])} className={`rounded-lg border px-3 py-2 text-label ${active ? "border-accent/40 bg-accent/15 text-accent-foreground" : "border-border text-muted hover:border-border-strong"}`}>{active && <Check className="mr-1 inline h-3 w-3" />}{name}</button>; })}</div></div>;
 }
 
-function ContentForm({ workflow, onClose, onSave }: { workflow: WorkflowRecord; onClose: () => void; onSave: (body: { title: string; body: string; format: ContentFormat; channel: MarketingChannel }) => Promise<void> }) {
+function ContentForm({ open, workflow, onClose, onSave }: { open: boolean; workflow: WorkflowRecord; onClose: () => void; onSave: (body: { title: string; body: string; format: ContentFormat; channel: MarketingChannel }) => Promise<void> }) {
   const [title, setTitle] = useState(""); const [body, setBody] = useState(""); const [channel, setChannel] = useState(workflow.channels[0]); const [format, setFormat] = useState<ContentFormat>(workflow.channels[0] === "email" ? "email" : workflow.channels[0] === "blog" ? "article" : "social_post"); const [saving, setSaving] = useState(false);
-  return <Overlay onDismiss={onClose}><Card elevation={2}><CardHeader title="Add content" description="Capture an idea or write a draft directly" icon={<PenLine className="h-4 w-4" />} /><CardBody className="space-y-3"><Input autoFocus className="w-full" placeholder="Internal title" value={title} onChange={(event) => setTitle(event.target.value)} /><div className="grid gap-3 sm:grid-cols-2"><Select value={channel} onChange={(event) => setChannel(event.target.value as MarketingChannel)}>{workflow.channels.map((id) => <option key={id} value={id}>{CHANNELS.find((item) => item.id === id)?.label}</option>)}</Select><Select value={format} onChange={(event) => setFormat(event.target.value as ContentFormat)}>{Object.entries(FORMAT_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select></div><Textarea rows={9} className="w-full" placeholder="Write the full content draft" value={body} onChange={(event) => setBody(event.target.value)} /><div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving || !title.trim() || !body.trim()} onClick={async () => { setSaving(true); try { await onSave({ title: title.trim(), body: body.trim(), format, channel }); } finally { setSaving(false); } }}>{saving ? "Saving…" : "Add draft"}</Button></div></CardBody></Card></Overlay>;
+  return <Overlay open={open} onDismiss={onClose}><Card elevation={2}><CardHeader title="Add content" description="Capture an idea or write a draft directly" icon={<PenLine className="h-4 w-4" />} /><CardBody className="space-y-3"><Input autoFocus className="w-full" placeholder="Internal title" value={title} onChange={(event) => setTitle(event.target.value)} /><div className="grid gap-3 sm:grid-cols-2"><Select value={channel} onChange={(event) => setChannel(event.target.value as MarketingChannel)}>{workflow.channels.map((id) => <option key={id} value={id}>{CHANNELS.find((item) => item.id === id)?.label}</option>)}</Select><Select value={format} onChange={(event) => setFormat(event.target.value as ContentFormat)}>{Object.entries(FORMAT_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select></div><Textarea rows={9} className="w-full" placeholder="Write the full content draft" value={body} onChange={(event) => setBody(event.target.value)} /><div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving || !title.trim() || !body.trim()} onClick={async () => { setSaving(true); try { await onSave({ title: title.trim(), body: body.trim(), format, channel }); } finally { setSaving(false); } }}>{saving ? "Saving…" : "Add draft"}</Button></div></CardBody></Card></Overlay>;
 }
 
-function ContentEditor({ item, workflow, onClose, onSave, onDelete }: { item: ContentItemRecord; workflow: WorkflowRecord; onClose: () => void; onSave: (patch: { title: string; body: string; format: ContentFormat; channel: MarketingChannel; status: ContentStatus; scheduledFor?: string | null; performanceSummary?: string | null }) => Promise<void>; onDelete: () => Promise<void> }) {
+function ContentEditor({ open, item, workflow, onClose, onSave, onDelete }: { open: boolean; item: ContentItemRecord; workflow: WorkflowRecord; onClose: () => void; onSave: (patch: { title: string; body: string; format: ContentFormat; channel: MarketingChannel; status: ContentStatus; scheduledFor?: string | null; performanceSummary?: string | null }) => Promise<void>; onDelete: () => Promise<void> }) {
   const [title, setTitle] = useState(item.title); const [body, setBody] = useState(item.body); const [channel, setChannel] = useState(item.channel); const [format, setFormat] = useState(item.format); const [status, setStatus] = useState(item.status); const [scheduledFor, setScheduledFor] = useState(item.scheduledFor ? new Date(item.scheduledFor).toISOString().slice(0, 16) : ""); const [performance, setPerformance] = useState(item.performanceSummary ?? ""); const [saving, setSaving] = useState(false);
   const needsTime = status === "scheduled" && !scheduledFor;
-  return <Overlay onDismiss={onClose}><Card elevation={2}><CardHeader title="Edit content" description="Refine the copy, approval state, schedule, and learning" icon={<MessageSquareText className="h-4 w-4" />} /><CardBody className="space-y-3"><Input className="w-full" value={title} onChange={(event) => setTitle(event.target.value)} /><div className="grid gap-3 sm:grid-cols-3"><Select value={channel} onChange={(event) => setChannel(event.target.value as MarketingChannel)}>{workflow.channels.map((id) => <option key={id} value={id}>{CHANNELS.find((entry) => entry.id === id)?.label}</option>)}</Select><Select value={format} onChange={(event) => setFormat(event.target.value as ContentFormat)}>{Object.entries(FORMAT_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select><Select value={status} onChange={(event) => setStatus(event.target.value as ContentStatus)}>{PIPELINE.map((stage) => <option key={stage.status} value={stage.status} disabled={(stage.status === "published" && channel === "x" && !["published", "measured"].includes(item.status)) || (stage.status === "measured" && !["published", "measured"].includes(item.status))}>{stage.status === "published" && channel === "x" ? "Published via Jarvis" : stage.label}</option>)}</Select></div><Textarea rows={10} className="w-full" value={body} onChange={(event) => setBody(event.target.value)} />
+  return <Overlay open={open} onDismiss={onClose}><Card elevation={2}><CardHeader title="Edit content" description="Refine the copy, approval state, schedule, and learning" icon={<MessageSquareText className="h-4 w-4" />} /><CardBody className="space-y-3"><Input className="w-full" value={title} onChange={(event) => setTitle(event.target.value)} /><div className="grid gap-3 sm:grid-cols-3"><Select value={channel} onChange={(event) => setChannel(event.target.value as MarketingChannel)}>{workflow.channels.map((id) => <option key={id} value={id}>{CHANNELS.find((entry) => entry.id === id)?.label}</option>)}</Select><Select value={format} onChange={(event) => setFormat(event.target.value as ContentFormat)}>{Object.entries(FORMAT_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select><Select value={status} onChange={(event) => setStatus(event.target.value as ContentStatus)}>{PIPELINE.map((stage) => <option key={stage.status} value={stage.status} disabled={(stage.status === "published" && channel === "x" && !["published", "measured"].includes(item.status)) || (stage.status === "measured" && !["published", "measured"].includes(item.status))}>{stage.status === "published" && channel === "x" ? "Published via Jarvis" : stage.label}</option>)}</Select></div><Textarea rows={10} className="w-full" value={body} onChange={(event) => setBody(event.target.value)} />
     {(status === "scheduled" || scheduledFor) && <label className="block"><span className="mb-1.5 block text-label text-muted">Publishing time</span><Input type="datetime-local" className="w-full" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} />{needsTime && <span className="mt-1 block text-micro text-warning">A scheduled asset needs a publishing time.</span>}</label>}
     {(status === "published" || status === "measured" || performance) && <Textarea rows={3} className="w-full" placeholder="Performance summary — result, signal, and what Jarvis should learn" value={performance} onChange={(event) => setPerformance(event.target.value)} />}
     <div className="flex items-center justify-between pt-2"><Button variant="destructive" size="sm" onClick={() => void onDelete()}><Trash2 className="h-3.5 w-3.5" /> Delete</Button><div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving || needsTime || !title.trim() || !body.trim()} onClick={async () => { setSaving(true); try { await onSave({ title: title.trim(), body: body.trim(), format, channel, status, scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : null, performanceSummary: performance.trim() || null }); } finally { setSaving(false); } }}>{saving ? "Saving…" : "Save changes"}</Button></div></div>

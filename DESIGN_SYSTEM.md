@@ -128,6 +128,15 @@ whole justification for the dependency, and the bar for adding to this half.
 | `Meter` | A bar that springs to a new fraction | Progress and usage |
 | `Pressable` | Lifts on hover, gives under the press | Controls worth touching |
 
+A dialog has to stay mounted while it closes, or React removes it before the
+exit can run — so pass `Overlay` an `open` prop rather than rendering it behind
+a `&&`. That costs something conditional rendering gave for free: a form that
+never unmounts keeps its state, so a cancelled draft would reappear next time.
+`useDialog` (`@/lib/useDialog`) is the answer — an open flag plus a key that
+changes on each open and holds steady through the close. Where the dialog is
+opened *with* a record, keep that record in state past the close too; clearing
+it is what would make the panel vanish rather than leave.
+
 `MotionProvider` must stay mounted at the app root: it carries
 `reducedMotion="user"`, which is what keeps the Motion half honouring the OS
 setting the way the global CSS rule does for the CSS half. Without it, adding
@@ -183,11 +192,8 @@ real places, documented in the table above, and verified by screenshot.
 - [x] **2 — State transitions.** Things morph instead of swapping. Loading
       states crossfade into content, status badges dissolve between states, and
       list rows animate on add and remove. Applied in Budgets, the workflow
-      stage rail, Accounts, Posts, Cards, the wallet and the ledger.
-      - Still owed: the dialogs in `WorkflowStudio` and `PaidGrowthCenter`
-        animate in but not out, because their parents still render them
-        conditionally. Giving them an `open` prop — as `CharacterSheetEditor`
-        now has — is what finishes this.
+      stage rail, Accounts, Posts, Cards, the wallet and the ledger. All seven
+      dialogs enter and leave.
 - [ ] **3 — Shared elements across navigation.** The View Transitions API, so
       opening a run from the list carries its title and status across instead of
       cutting to a new page. Check browser support and degrade to a plain
