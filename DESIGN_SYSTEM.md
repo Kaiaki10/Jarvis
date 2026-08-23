@@ -228,8 +228,21 @@ real places, documented in the table above, and verified by screenshot.
         nothing ever scrolls past it, so it just looks like a rendering bug.
       - Sticky offsets clear AppShell's mobile bar below `lg` — it is a real
         sticky sibling, not an overlay.
-- [ ] **5 — Physicality.** Direct manipulation where it earns its place: the
-      task board dragging with momentum and spring settle rather than snapping.
+- [x] **5 — Physicality.** Task cards drag between columns and settle with
+      overshoot rather than stopping dead. The rules that made it safe:
+      - **Drag is an addition, never the only way through.** The move buttons
+        stay, and were fixed on the way — revealed on hover alone, they were
+        unreachable by keyboard and invisible on touch.
+      - **It does not arm on a coarse pointer.** A 2D drag needs
+        `touch-action: none`, which would take vertical scrolling away from
+        anyone whose thumb lands on a card. `(pointer: fine)` only, defaulting
+        off so server and first client render agree.
+      - **The card lands where you put it.** A drop that waits on the round trip
+        springs back, pauses, then jumps — the redraw feeling the whole ladder
+        exists to remove. The move is optimistic, and reverts visibly if the
+        write fails.
+      - **Drop targets light up for the whole drag, not per pointer position.**
+        Tracking the pointer would mean state on every frame.
 - [ ] **6 — Ambient state.** The interface quietly reflects what the system is
       doing — a background that shifts while a run is active, so you can tell at
       a glance without reading a badge. Subtle enough to ignore.
