@@ -35,12 +35,12 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 
-const ACTIVE_STAGES: Array<{ stage: EvolutionStage; label: string; description: string; icon: typeof Lightbulb }> = [
-  { stage: "observed", label: "Observed", description: "A gap or opportunity Jarvis noticed", icon: Lightbulb },
-  { stage: "planned", label: "Planned", description: "Scoped with value and rollback defined", icon: TestTube2 },
-  { stage: "building", label: "Building in Lab", description: "An isolated agent is implementing it", icon: FlaskConical },
-  { stage: "review", label: "Awaiting review", description: "Verified evidence is ready to inspect", icon: ShieldCheck },
-  { stage: "promoting", label: "Promoting", description: "Merging, rebuilding, and restarting — the dashboard will drop and reconnect", icon: Rocket },
+const ACTIVE_STAGES: Array<{ stage: EvolutionStage; label: string; description: string; empty: string; icon: typeof Lightbulb }> = [
+  { stage: "observed", label: "Observed", description: "A gap or opportunity Jarvis noticed", empty: "No ideas yet — start one with New proposal above.", icon: Lightbulb },
+  { stage: "planned", label: "Planned", description: "Scoped with value and rollback defined", empty: "Nothing planned yet — an observed idea moves here once it's scoped.", icon: TestTube2 },
+  { stage: "building", label: "Building in Lab", description: "An isolated agent is implementing it", empty: "Nothing building — a planned idea starts here once work begins in the lab.", icon: FlaskConical },
+  { stage: "review", label: "Awaiting review", description: "Verified evidence is ready to inspect", empty: "Nothing to review — finished work lands here with its evidence.", icon: ShieldCheck },
+  { stage: "promoting", label: "Promoting", description: "Merging, rebuilding, and restarting — the dashboard will drop and reconnect", empty: "Nothing promoting — approved work merges and restarts here.", icon: Rocket },
 ];
 
 const RISK_TONE: Record<EvolutionRisk, "neutral" | "accent" | "warning" | "danger"> = {
@@ -141,7 +141,7 @@ export function EvolutionCenter() {
       {error && <div className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-label text-danger">{error}</div>}
 
       <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
-        {ACTIVE_STAGES.map(({ stage, label, description, icon: Icon }, index) => {
+        {ACTIVE_STAGES.map(({ stage, label, description, empty, icon: Icon }, index) => {
           const proposals = evolution.proposals.filter((proposal) => proposal.stage === stage);
           return (
             <section key={stage} className="min-w-0">
@@ -172,7 +172,7 @@ export function EvolutionCenter() {
                   />
                 ))}
                 {proposals.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-micro text-muted">Nothing here</div>
+                  <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-micro text-muted">{empty}</div>
                 )}
               </div>
             </section>

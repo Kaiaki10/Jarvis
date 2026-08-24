@@ -60,13 +60,13 @@ const FORMAT_LABELS: Record<ContentFormat, string> = {
   ad: "Ad",
 };
 
-const PIPELINE: Array<{ status: ContentStatus; label: string; detail: string }> = [
-  { status: "idea", label: "Ideas", detail: "Angles worth exploring" },
-  { status: "draft", label: "Drafts", detail: "Copy taking shape" },
-  { status: "review", label: "Review", detail: "Waiting for judgment" },
-  { status: "scheduled", label: "Scheduled", detail: "Ready on the calendar" },
-  { status: "published", label: "Published", detail: "Live in market" },
-  { status: "measured", label: "Measured", detail: "Learning captured" },
+const PIPELINE: Array<{ status: ContentStatus; label: string; detail: string; empty: string }> = [
+  { status: "idea", label: "Ideas", detail: "Angles worth exploring", empty: "No angles yet — add content or generate with Jarvis above." },
+  { status: "draft", label: "Drafts", detail: "Copy taking shape", empty: "Nothing drafting — an idea moves here once copy starts." },
+  { status: "review", label: "Review", detail: "Waiting for judgment", empty: "Nothing to review — drafts land here when ready for judgment." },
+  { status: "scheduled", label: "Scheduled", detail: "Ready on the calendar", empty: "Nothing scheduled — approved content lands here with a publish date." },
+  { status: "published", label: "Published", detail: "Live in market", empty: "Nothing published yet — scheduled content goes live here." },
+  { status: "measured", label: "Measured", detail: "Learning captured", empty: "Nothing measured yet — results land here once published content has data." },
 ];
 
 const STATUS_TONE: Record<WorkflowStatus, "neutral" | "accent" | "success" | "warning"> = {
@@ -321,7 +321,7 @@ function ContentPipeline({ content, publicationRuns, xConnected, onEdit, onAdvan
                 </div>
                 <div className="flex min-h-[260px] flex-col gap-2 rounded-xl border border-border bg-black/10 p-2">
                   {items.map((item) => <ContentCard key={item.id} item={item} publicationRun={publicationRuns.find((run) => run.contentItemId === item.id)} xConnected={xConnected} onEdit={() => onEdit(item)} onAdvance={() => void onAdvance(item).catch(() => {})} onPublish={() => void onPublish(item).catch(() => {})} />)}
-                  {items.length === 0 && <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border/70 px-3 text-center text-micro text-muted">Nothing here</div>}
+                  {items.length === 0 && <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border/70 px-3 text-center text-micro text-muted">{stage.empty}</div>}
                 </div>
               </section>
             );

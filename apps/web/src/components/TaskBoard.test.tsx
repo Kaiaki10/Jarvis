@@ -60,6 +60,14 @@ describe("TaskBoard", () => {
     expect(screen.getByRole("button", { name: /Done/ })).toBeInTheDocument();
   });
 
+  it("says what will fill each empty column instead of just 'Empty'", () => {
+    render(<TaskBoard />);
+    // "To do" holds the one seeded task, so only the other two are empty here.
+    expect(screen.getByText("Nothing in progress — drag a task here to start it.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing done yet — finished tasks land here.")).toBeInTheDocument();
+    expect(screen.queryByText("Empty")).not.toBeInTheDocument();
+  });
+
   it("moves the card before the server confirms", async () => {
     // Never resolves, so the card is only where it is because of the
     // optimistic overlay — not because the round trip finished.

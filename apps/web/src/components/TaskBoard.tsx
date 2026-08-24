@@ -12,10 +12,10 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { spring } from "@/components/motion";
 
-const COLUMNS: { status: TaskStatus; label: string }[] = [
-  { status: "todo", label: "To do" },
-  { status: "in_progress", label: "In progress" },
-  { status: "done", label: "Done" },
+const COLUMNS: { status: TaskStatus; label: string; empty: string }[] = [
+  { status: "todo", label: "To do", empty: "No tasks yet — add one above." },
+  { status: "in_progress", label: "In progress", empty: "Nothing in progress — drag a task here to start it." },
+  { status: "done", label: "Done", empty: "Nothing done yet — finished tasks land here." },
 ];
 
 /**
@@ -231,7 +231,7 @@ export function TaskBoard() {
                 ))}
                 {items.length === 0 && (
                   <div className="rounded-lg border border-dashed border-border px-2.5 py-4 text-center text-label text-muted">
-                    {dragging ? "Drop here" : "Empty"}
+                    {dragging ? "Drop here" : col.empty}
                   </div>
                 )}
               </div>
