@@ -9,7 +9,11 @@ You are modifying the software that runs you. Nobody is watching while you work.
 
 1. `git fetch` then `git rebase master`. If it conflicts: `git rebase --abort`, note it
    in `AUTOMATION_BACKLOG.md`, and stop for today.
-2. Run `npm test` in `apps/orchestrator`. If tests fail on a clean tree that is a real
+2. If `node_modules` is missing, or `package-lock.json` is newer than
+   `node_modules/.package-lock.json`, run `npm install` at the repo root before anything
+   else. The rebase can bring in a dependency change; skipping this makes every later
+   step fail on a stale install instead of the real regression it's there to catch.
+3. Run `npm test` in `apps/orchestrator`. If tests fail on a clean tree that is a real
    regression — fix it and commit that instead of your planned work. A broken suite
    blinds every future run.
 
