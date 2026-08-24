@@ -250,7 +250,18 @@ export function SimpleJarvisHome() {
           </div>
         </section>
 
-        <section className="simple-chat-panel flex min-h-[560px] max-h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-[1.5rem] border border-border-strong shadow-elev-3">
+        <section
+          className="simple-chat-panel flex min-h-[560px] max-h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-[1.5rem] border border-border-strong shadow-elev-3"
+          // Bound on the whole panel, not just the textarea, so the shortcut
+          // still submits after tabbing to a model picker or the voice
+          // button — "send" from anywhere in the form, not just the one field.
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              void send();
+            }
+          }}
+        >
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
             <div>
               <div className="text-heading text-foreground">Conversation</div>
@@ -316,6 +327,9 @@ export function SimpleJarvisHome() {
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
+                    // Also stops the panel-level Cmd/Ctrl+Enter handler below
+                    // from firing a second send for the same keystroke.
+                    event.stopPropagation();
                     void send();
                   }
                 }}
