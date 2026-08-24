@@ -40,15 +40,22 @@ cannot choose.
 Remote access remains out of scope: both services bind to `127.0.0.1` and the token is a
 same-machine trust boundary, not user authentication.
 
-### low — Dashboard is desktop-only
-The sidebar is a fixed 240px with no responsive collapse, so the UI is unusable on a
-phone. Relevant if approvals should be actionable away from the desk.
-
 ### low — Credentials are entered by hand
 Every platform requires manually copying tokens. Proper OAuth flows would be friendlier
 but need a public redirect URL.
 
 ## Closed
+
+- **2026-08-24** "Dashboard is desktop-only" was already stale when reviewed: `AppShell.tsx`
+  has had a full off-canvas mobile sidebar since `2c1c18b` ("v3.0 Flagship 1: reach Jarvis
+  anywhere") — below `lg` the rail becomes a hamburger-triggered drawer with a click-away
+  backdrop and auto-close on navigation, not the fixed 240px column this gap described.
+  Verified live rather than trusting the diff: an isolated preview (jarvis-lab worktree, so
+  as not to touch the live checkout's `.next/`) at a real 390px phone width (not the 900px
+  already swept for a different item) showed the sidebar fully off-canvas by default (zero
+  horizontal overflow across / , /operate, /missions, /tasks, /conversations,
+  /notifications, /under-the-hood), the hamburger opening it correctly, and a nav click both
+  navigating and closing the drawer. No code change needed.
 
 - **2026-08-24** `post_to_slack` and `post_to_discord` could only send text; X was the
   only platform that could attach an image from the watched folder. Both now accept an
