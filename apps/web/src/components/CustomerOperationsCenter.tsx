@@ -38,6 +38,7 @@ import { useCustomerOperations } from "@/lib/store";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 
 const EMPTY_FORM: CreateCustomerConversationRequest = {
@@ -241,10 +242,30 @@ export function CustomerOperationsCenter() {
 
   if (!overview) {
     return (
-      <Card elevation={1} className="py-16 text-center">
-        <Inbox className="mx-auto h-6 w-6 text-muted" strokeWidth={1.75} />
-        <p className="mt-3 text-body text-muted">Loading the customer queue…</p>
-      </Card>
+      <div className="space-y-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Card key={i} elevation={0} className="px-4 py-3.5">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
+                <div className="flex-1">
+                  <Skeleton className="h-5 w-10" />
+                  <Skeleton className="mt-1.5 h-3 w-20" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+        <Card elevation={1} className="px-5 py-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+            <div className="flex-1">
+              <Skeleton className="h-4 w-56" />
+              <Skeleton className="mt-1.5 h-3 w-72" />
+            </div>
+          </div>
+        </Card>
+      </div>
     );
   }
 

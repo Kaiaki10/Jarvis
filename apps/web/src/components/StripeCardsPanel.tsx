@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, Loader2 } from "lucide-react";
+import { CreditCard } from "lucide-react";
 import type { StripeCardRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatMoney } from "@/lib/money";
 import { AnimatedItem, AnimatedList, Crossfade } from "@/components/motion";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /** Only a card that can still be charged consumes the card envelope. */
 function isLive(status: string): boolean {
@@ -30,13 +31,14 @@ export function StripeCardsPanel() {
 
   if (!cards) {
     return (
-      <Crossfade viewKey="loading">
-        <Card>
-          <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
-            <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
-            Loading cards…
-          </div>
+      <Crossfade viewKey="loading" className="space-y-3">
+        <Card elevation={0} className="px-5 py-4">
+          <Skeleton className="h-4 w-64" />
         </Card>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
       </Crossfade>
     );
   }

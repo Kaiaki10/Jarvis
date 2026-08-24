@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { SessionTranscript } from "@/components/SessionTranscript";
 import { Badge } from "@/components/ui/Badge";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { Crossfade } from "@/components/motion";
 import { useConnectionStatus, useMemories } from "@/lib/store";
 
@@ -117,7 +118,11 @@ export function JarvisChat() {
         <div ref={transcriptRef}>
         <Crossfade viewKey={loading ? "loading" : sessionId ? "chat" : "empty"}>
           {loading ? (
-            <div className="text-body text-muted">Loading…</div>
+            <div className="flex flex-col gap-3">
+              <Skeleton className="h-11 w-3/4 self-start rounded-2xl rounded-tl-md" />
+              <Skeleton className="h-8 w-1/2 self-end rounded-2xl rounded-br-md" />
+              <Skeleton className="h-14 w-4/5 self-start rounded-2xl rounded-tl-md" />
+            </div>
           ) : sessionId ? (
             <ChatBody sessionId={sessionId} activityKey={activityKey} />
           ) : (

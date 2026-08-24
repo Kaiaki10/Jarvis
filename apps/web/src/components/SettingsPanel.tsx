@@ -6,6 +6,7 @@ import { useSettings } from "@/lib/hooks";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Textarea, Select, Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { Crossfade } from "@/components/motion";
 import { BackupPanel } from "@/components/BackupPanel";
 import { StoragePanel } from "@/components/StoragePanel";
@@ -33,7 +34,15 @@ export function SettingsPanel() {
   if (!settings) {
     return (
       <Crossfade viewKey="loading">
-        <div className="text-body text-muted">Loading settings…</div>
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardHeader title="Business context" description="Loading…" />
+            <CardBody>
+              <Skeleton className="h-[220px] w-full" />
+              <Skeleton className="mt-3 h-8 w-32" />
+            </CardBody>
+          </Card>
+        </div>
       </Crossfade>
     );
   }

@@ -25,14 +25,28 @@ Each run picks **one** item, completes it properly, and records the outcome here
 Judged against DESIGN_SYSTEM.md. Seeded 2026-08-18 from the design system rebuild —
 these are things noticed while doing it that were out of scope for that pass.
 
-- [ ] `ScheduledTasksPanel` rows use a `<details>` element whose summary marker is
-      hidden. Verify the disclosure state is announced to screen readers and that the
-      row is operable by keyboard.
-- [ ] Loading states render as the plain word "Loading…" in six components. Skeleton
-      rows matching the real row height would stop the layout jumping when data lands.
-      (Also listed under Up next; whichever job gets there first should tick both.)
-
 ## Done
+
+- [x] **2026-08-24** Loading states: replaced the plain "Loading…" text in nine spots
+      across eight components (SessionList, JarvisChat, SimpleJarvisHome,
+      SettingsPanel, StripeCardsPanel, SpendBudgets x2, ConnectionWizard,
+      CustomerOperationsCenter, CryptoWallet x2 — more than the six originally
+      counted) with skeleton placeholders shaped like each surface's real content —
+      list rows, chat bubbles, table rows, card grids. New shared `Skeleton`
+      primitive in `components/ui/`. Caught and fixed a real bug live rather than
+      shipping it blind: the two chat-bubble skeletons used `max-w-*` with no `w-*`,
+      which collapses an empty div to zero width — invisible despite "correct"-looking
+      markup. Verified against an isolated preview with all API calls delayed 8s to
+      hold the loading state long enough to screenshot every site before and after
+      the fix.
+- [x] **2026-08-24** `ScheduledTasksPanel` disclosure a11y: confirmed with axe-core
+      against a live render — hiding the `<details>` marker is cosmetic and doesn't
+      affect disclosure semantics, but the row's `<summary>` also nested a Link and
+      two buttons, which axe flags as "nested-interactive" (serious). Replaced with a
+      plain row plus a dedicated `<button aria-expanded aria-controls>`; violations
+      went from 1 to 0. See `9f3c75c`.
+- [x] **2026-08-24** `SettingsPanel`/`ConnectionWizard` redesign — already done, not
+      newly built: `c5d31b9` ("Give Settings and Connections a shape you can navigate",
 
 - [x] **2026-08-24** `SettingsPanel`/`ConnectionWizard` redesign — already done, not
       newly built: `c5d31b9` ("Give Settings and Connections a shape you can navigate",

@@ -39,6 +39,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 export function ConnectionWizard({ platformId }: { platformId: string }) {
   const { platforms, connections, refresh } = useConnections();
@@ -59,11 +60,21 @@ export function ConnectionWizard({ platformId }: { platformId: string }) {
 
   if (!platform) {
     return (
-      <div className="px-8 py-8 text-body text-muted">
-        Loading platform…{" "}
-        <Link href="/under-the-hood/connections" className="underline">
-          Back to connections
-        </Link>
+      <div className="px-8 py-8">
+        <Card className="p-6">
+          <div className="flex items-start gap-4">
+            <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+            <div className="flex-1">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="mt-2 h-3.5 w-72" />
+            </div>
+          </div>
+        </Card>
+        <p className="mt-4 text-body text-muted">
+          <Link href="/under-the-hood/connections" className="underline">
+            Back to connections
+          </Link>
+        </p>
       </div>
     );
   }

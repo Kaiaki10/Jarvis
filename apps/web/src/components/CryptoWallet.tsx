@@ -11,6 +11,7 @@ import { formatMoney } from "@/lib/money";
 import { AnimatedBody, AnimatedItem, AnimatedList, AnimatedRow, Crossfade } from "@/components/motion";
 import { Button } from "@/components/ui/Button";
 import { GrantSpendPermission } from "@/components/GrantSpendPermission";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /** Base mainnet USDC, the only token Jarvis names rather than shows as an address. */
 const TOKEN_LABEL: Record<string, string> = {
@@ -55,11 +56,27 @@ export function CryptoWallet() {
 
   if (!permissions) {
     return (
-      <Crossfade viewKey={phase}>
+      <Crossfade viewKey={phase} className="space-y-3">
+        <Card className="p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="mt-2 h-4 w-56" />
+            </div>
+            <div className="text-right">
+              <Skeleton className="ml-auto h-3 w-28" />
+              <Skeleton className="ml-auto mt-2 h-4 w-24" />
+            </div>
+          </div>
+        </Card>
         <Card>
-          <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
-            <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
-            Reading the wallet…
+          <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+            <ShieldCheck className="h-4 w-4 text-success" strokeWidth={1.75} />
+            <div className="text-label font-medium text-foreground">Granted permissions</div>
+          </div>
+          <div className="flex flex-col gap-1.5 p-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
           </div>
         </Card>
       </Crossfade>
@@ -156,10 +173,28 @@ export function CryptoSpending() {
   if (!spends) {
     return (
       <Crossfade viewKey={phase}>
-        <Card>
-          <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
-            <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
-            Loading…
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-border text-micro uppercase tracking-[0.14em] text-muted">
+                  <th className="px-5 py-3 font-semibold">When</th>
+                  <th className="px-5 py-3 font-semibold">What for</th>
+                  <th className="px-5 py-3 font-semibold">Transaction</th>
+                  <th className="px-5 py-3 text-right font-semibold">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[0, 1, 2].map((row) => (
+                  <tr key={row} className="border-b border-border/60 last:border-0">
+                    <td className="px-5 py-3"><Skeleton className="h-3 w-28" /></td>
+                    <td className="px-5 py-3"><Skeleton className="h-3 w-32" /></td>
+                    <td className="px-5 py-3"><Skeleton className="h-3 w-20" /></td>
+                    <td className="px-5 py-3"><Skeleton className="ml-auto h-3 w-16" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
       </Crossfade>

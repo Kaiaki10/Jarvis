@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CreditCard, Loader2, Lock, Megaphone, ShieldCheck, Trash2, Wallet } from "lucide-react";
+import { CreditCard, Lock, Megaphone, ShieldCheck, Trash2, Wallet } from "lucide-react";
 import type { SpendEnvelopeRecord, SpendLedgerEntry, SpendPeriod, SpendRail } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
@@ -10,6 +10,7 @@ import { Input, Select } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { formatMoney, parseAmount, toInputValue } from "@/lib/money";
 import { AnimatedBody, AnimatedRow, Crossfade, Meter, Stagger } from "@/components/motion";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 const RAILS: Array<{
   rail: SpendRail;
@@ -76,13 +77,15 @@ export function SpendBudgets() {
 
   if (!envelopes) {
     return (
-      <Crossfade viewKey="loading">
-        <Card>
-          <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
-            <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
-            Loading limits…
-          </div>
+      <Crossfade viewKey="loading" className="space-y-4">
+        <Card elevation={0} className="px-5 py-4">
+          <Skeleton className="h-4 w-3/4" />
         </Card>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
       </Crossfade>
     );
   }
@@ -280,10 +283,28 @@ export function SpendLedgerTable() {
   if (!ledger) {
     return (
       <Crossfade viewKey={phase}>
-        <Card>
-          <div className="flex items-center gap-2 px-5 py-12 text-body text-muted">
-            <Loader2 className="h-4 w-4 animate-spin text-accent-bright" strokeWidth={1.75} />
-            Loading…
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-border text-micro uppercase tracking-[0.14em] text-muted">
+                  <th className="px-5 py-3 font-semibold">When</th>
+                  <th className="px-5 py-3 font-semibold">Rail</th>
+                  <th className="px-5 py-3 font-semibold">What for</th>
+                  <th className="px-5 py-3 text-right font-semibold">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[0, 1, 2].map((row) => (
+                  <tr key={row} className="border-b border-border/60 last:border-0">
+                    <td className="px-5 py-3"><Skeleton className="h-3 w-28" /></td>
+                    <td className="px-5 py-3"><Skeleton className="h-3 w-16" /></td>
+                    <td className="px-5 py-3"><Skeleton className="h-3 w-32" /></td>
+                    <td className="px-5 py-3"><Skeleton className="ml-auto h-3 w-16" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
       </Crossfade>

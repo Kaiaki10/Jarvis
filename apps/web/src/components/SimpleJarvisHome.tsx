@@ -7,6 +7,7 @@ import { useSessionStream } from "@/lib/hooks";
 import { useAgents, useConnectionStatus, useMemories, useStore } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { SessionTranscript } from "@/components/SessionTranscript";
 import { ExperienceModeToggle } from "@/components/ExperienceModeToggle";
 import { Select } from "@/components/ui/Input";
@@ -293,8 +294,10 @@ export function SimpleJarvisHome() {
           >
             <div ref={transcriptRef}>
               {loadingConversation ? (
-                <div className="flex min-h-[360px] items-center justify-center text-label text-muted">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin text-accent-bright" /> Loading conversation…
+                <div className="flex min-h-[360px] flex-col gap-3">
+                  <Skeleton className="h-11 w-3/4 self-start rounded-2xl rounded-tl-md" />
+                  <Skeleton className="h-8 w-1/2 self-end rounded-2xl rounded-br-md" />
+                  <Skeleton className="h-14 w-4/5 self-start rounded-2xl rounded-tl-md" />
                 </div>
               ) : sessionId ? (
                 <SimpleTranscript sessionId={sessionId} activityKey={activityKey} onActivity={onActivity} />
