@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import {
   CalendarPlus,
@@ -119,6 +119,215 @@ function LastRunLine({
   );
 }
 
+/**
+ * One automation's row, expandable to its full detail.
+ *
+ * Not a native `<details>`/`<summary>` — the row carries a link (last run) and
+ * two buttons (pause, delete) that need their own independent focus stop and
+ * accessible name, and a `<summary>` cannot contain other interactive
+ * controls without them becoming unreachable or misannounced to a screen
+ * reader (axe's `nested-interactive`, confirmed against this exact markup).
+ * A plain row with a dedicated toggle `<button aria-expanded>` gets the same
+ * "click anywhere on the row" convenience and correct disclosure semantics
+ * without that nesting.
+ */
+function TaskRow({
+  task,
+  lastRun,
+  running,
+  rehearsing,
+  rehearsal,
+  toggleEnabled,
+  remove,
+  rehearse,
+}: {
+  task: ScheduledTaskRecord;
+  lastRun: SessionRecord | undefined;
+  running: boolean;
+  rehearsing: boolean;
+  rehearsal: AutomationRehearsal | undefined;
+  toggleEnabled: (id: string, enabled: boolean) => void;
+  remove: (id: string) => void;
+  rehearse: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const kind = automationKind(task.prompt);
+  const Icon = kind.icon;
+
+  return (
+    <div className="surface-raised relative overflow-hidden rounded-xl border border-border transition-colors hover:border-border-strong">
+      <span className={`accent-spine ${kind.spine} ${task.enabled ? "" : "opacity-20"}`} />
+
+      {/* Toggles on any click for mouse convenience, same as the old
+          <summary>, but carries no interactive role itself — the chevron
+          button below is what makes this operable by keyboard and announced
+          to a screen reader. */}
+      <div
+        onClick={() => setOpen((o) => !o)}
+        className="flex cursor-pointer items-center gap-3 py-3 pl-4 pr-3"
+      >
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label={open ? "Collapse details" : "Expand details"}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((o) => !o);
+          }}
+          className="shrink-0 rounded p-0.5 text-muted hover:text-foreground"
+        >
+          <ChevronRight
+            className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`}
+            strokeWidth={2}
+          />
+        </button>
+
+        <span
+          className={`chip-glow flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] ${kind.color} ${
+            task.enabled ? "" : "opacity-40 grayscale"
+          }`}
+        >
+          <Icon className="h-4 w-4" strokeWidth={1.75} />
+        </span>
+
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span
+              className={`text-micro font-semibold uppercase tracking-[0.14em] ${kind.color}`}
+            >
+              {kind.label}
+            </span>
+            {running && (
+              <span className="relative flex h-1.5 w-1.5 text-accent">
+                <span className="ping-ring absolute inset-0 rounded-full" />
+                <span className="relative h-1.5 w-1.5 rounded-full bg-accent" />
+              </span>
+            )}
+          </span>
+          <span
+            className={`mt-0.5 block truncate text-body ${
+              task.enabled ? "text-foreground" : "text-muted line-through"
+            }`}
+          >
+            {summarize(task.prompt)}
+          </span>
+          {/* What it is doing now, or what it did last time — and the way
+              through to the full run. Linked only when the session is
+              actually there; a link to a pruned run is worse than none. */}
+          <LastRunLine task={task} lastRun={lastRun} running={running} />
+        </span>
+
+        <span className="hidden shrink-0 flex-col items-end gap-0.5 md:flex">
+          <span className="font-mono text-label tabular-nums text-foreground/80">
+            {task.timeOfDay}
+          </span>
+          <span className="text-micro uppercase tracking-wider text-muted">
+            {daysLabel(task.daysOfWeek)}
+          </span>
+        </span>
+
+        <span className="hidden w-28 shrink-0 text-right text-micro text-muted lg:block">
+          {task.enabled ? formatNextRun(task.nextRunAt) : "Paused"}
+        </span>
+
+        <span className="flex shrink-0 items-center gap-0.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleEnabled(task.id, task.enabled);
+            }}
+            className="rounded p-1 text-muted hover:text-foreground"
+            title={task.enabled ? "Pause" : "Resume"}
+          >
+            {task.enabled ? (
+              <Pause className="h-3.5 w-3.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              remove(task.id);
+            }}
+            className="rounded p-1 text-muted hover:text-danger"
+            title="Delete"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      </div>
+
+      <div id={panelId} hidden={!open} className="border-t border-border px-3 py-3">
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-micro text-muted">
+          <span>
+            Runs {task.timeOfDay} · {daysLabel(task.daysOfWeek)}
+          </span>
+          <span>Next: {task.enabled ? formatNextRun(task.nextRunAt) : "Paused"}</span>
+          <span className="font-mono">{task.permissionMode}</span>
+          {task.lastSessionId && (
+            <Link
+              href={`/under-the-hood/brain/runs/${task.lastSessionId}`}
+              className="hover:text-foreground"
+            >
+              Last run →
+            </Link>
+          )}
+        </div>
+        {lastRun?.summary && (
+          <div className="mb-2 rounded-md border border-border bg-black/20 p-2.5 text-label text-foreground">
+            <div className="mb-1 text-micro uppercase tracking-wide text-muted">
+              Last run
+            </div>
+            {lastRun.summary}
+          </div>
+        )}
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-black/15 px-3 py-2.5">
+          <div>
+            <div className="flex items-center gap-1.5 text-label font-medium text-foreground">
+              <FlaskConical className="h-3.5 w-3.5 text-accent-bright" strokeWidth={1.75} />
+              Rehearsal
+            </div>
+            <p className="mt-0.5 text-micro text-muted">Check timing, prerequisites, and approval behavior without running it.</p>
+          </div>
+          <Button size="sm" variant="secondary" disabled={rehearsing} onClick={() => rehearse(task.id)}>
+            {rehearsing ? "Checking…" : "Simulate"}
+          </Button>
+        </div>
+        {rehearsal && (
+          <div className="mb-2 grid gap-2 rounded-lg border border-accent/20 bg-accent/5 p-3 sm:grid-cols-2">
+            <div>
+              <div className="text-micro font-medium uppercase tracking-wide text-muted">Preflight</div>
+              <div className="mt-2 flex flex-col gap-1.5">
+                {rehearsal.checks.map((check) => (
+                  <div key={check.label} className="flex items-start gap-2 text-label">
+                    {check.ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />}
+                    <span><span className="text-foreground">{check.label}:</span> <span className="text-muted">{check.detail}</span></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-micro font-medium uppercase tracking-wide text-muted">Next three runs</div>
+              <div className="mt-2 flex flex-col gap-1 text-label text-foreground">
+                {rehearsal.nextRuns.map((run) => <span key={run}>{new Date(run).toLocaleString()}</span>)}
+              </div>
+              <div className="mt-2 text-micro text-muted">
+                {rehearsal.approvalRequired ? "External actions will stop for your approval." : "No external-action approval is predicted."}
+              </div>
+            </div>
+          </div>
+        )}
+        <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2.5 font-mono text-micro leading-relaxed text-muted">
+          {task.prompt}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 export function ScheduledTasksPanel() {
   const { tasks, refresh } = useScheduledTasksList();
   const { settings } = useSettings();
@@ -227,163 +436,22 @@ export function ScheduledTasksPanel() {
           const lastRun = task.lastSessionId
             ? sessionById.get(task.lastSessionId)
             : undefined;
-          const running =
-            lastRun && ["running", "starting", "waiting_permission"].includes(lastRun.status);
-
-          const kind = automationKind(task.prompt);
-          const Icon = kind.icon;
+          const running = !!(
+            lastRun && ["running", "starting", "waiting_permission"].includes(lastRun.status)
+          );
 
           return (
-          <details
-            key={task.id}
-            className="group surface-raised relative overflow-hidden rounded-xl border border-border transition-colors hover:border-border-strong"
-          >
-            <span className={`accent-spine ${kind.spine} ${task.enabled ? "" : "opacity-20"}`} />
-
-            <summary className="flex cursor-pointer list-none items-center gap-3 py-3 pl-4 pr-3 [&::-webkit-details-marker]:hidden">
-              <ChevronRight className={CHEVRON} strokeWidth={2} />
-
-              <span
-                className={`chip-glow flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] ${kind.color} ${
-                  task.enabled ? "" : "opacity-40 grayscale"
-                }`}
-              >
-                <Icon className="h-4 w-4" strokeWidth={1.75} />
-              </span>
-
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span
-                    className={`text-micro font-semibold uppercase tracking-[0.14em] ${kind.color}`}
-                  >
-                    {kind.label}
-                  </span>
-                  {running && (
-                    <span className="relative flex h-1.5 w-1.5 text-accent">
-                      <span className="ping-ring absolute inset-0 rounded-full" />
-                      <span className="relative h-1.5 w-1.5 rounded-full bg-accent" />
-                    </span>
-                  )}
-                </span>
-                <span
-                  className={`mt-0.5 block truncate text-body ${
-                    task.enabled ? "text-foreground" : "text-muted line-through"
-                  }`}
-                >
-                  {summarize(task.prompt)}
-                </span>
-                {/* What it is doing now, or what it did last time — and the way
-                    through to the full run. Linked only when the session is
-                    actually there; a link to a pruned run is worse than none. */}
-                <LastRunLine task={task} lastRun={lastRun} running={!!running} />
-              </span>
-
-              <span className="hidden shrink-0 flex-col items-end gap-0.5 md:flex">
-                <span className="font-mono text-label tabular-nums text-foreground/80">
-                  {task.timeOfDay}
-                </span>
-                <span className="text-micro uppercase tracking-wider text-muted">
-                  {daysLabel(task.daysOfWeek)}
-                </span>
-              </span>
-
-              <span className="hidden w-28 shrink-0 text-right text-micro text-muted lg:block">
-                {task.enabled ? formatNextRun(task.nextRunAt) : "Paused"}
-              </span>
-
-              <span className="flex shrink-0 items-center gap-0.5">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    toggleEnabled(task.id, task.enabled);
-                  }}
-                  className="rounded p-1 text-muted hover:text-foreground"
-                  title={task.enabled ? "Pause" : "Resume"}
-                >
-                  {task.enabled ? (
-                    <Pause className="h-3.5 w-3.5" />
-                  ) : (
-                    <Play className="h-3.5 w-3.5" />
-                  )}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    remove(task.id);
-                  }}
-                  className="rounded p-1 text-muted hover:text-danger"
-                  title="Delete"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </span>
-            </summary>
-
-            <div className="border-t border-border px-3 py-3">
-              <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-micro text-muted">
-                <span>
-                  Runs {task.timeOfDay} · {daysLabel(task.daysOfWeek)}
-                </span>
-                <span>Next: {task.enabled ? formatNextRun(task.nextRunAt) : "Paused"}</span>
-                <span className="font-mono">{task.permissionMode}</span>
-                {task.lastSessionId && (
-                  <Link
-                    href={`/under-the-hood/brain/runs/${task.lastSessionId}`}
-                    className="hover:text-foreground"
-                  >
-                    Last run →
-                  </Link>
-                )}
-              </div>
-              {lastRun?.summary && (
-                <div className="mb-2 rounded-md border border-border bg-black/20 p-2.5 text-label text-foreground">
-                  <div className="mb-1 text-micro uppercase tracking-wide text-muted">
-                    Last run
-                  </div>
-                  {lastRun.summary}
-                </div>
-              )}
-              <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-black/15 px-3 py-2.5">
-                <div>
-                  <div className="flex items-center gap-1.5 text-label font-medium text-foreground">
-                    <FlaskConical className="h-3.5 w-3.5 text-accent-bright" strokeWidth={1.75} />
-                    Rehearsal
-                  </div>
-                  <p className="mt-0.5 text-micro text-muted">Check timing, prerequisites, and approval behavior without running it.</p>
-                </div>
-                <Button size="sm" variant="secondary" disabled={rehearsing === task.id} onClick={() => void rehearse(task.id)}>
-                  {rehearsing === task.id ? "Checking…" : "Simulate"}
-                </Button>
-              </div>
-              {rehearsals[task.id] && (
-                <div className="mb-2 grid gap-2 rounded-lg border border-accent/20 bg-accent/5 p-3 sm:grid-cols-2">
-                  <div>
-                    <div className="text-micro font-medium uppercase tracking-wide text-muted">Preflight</div>
-                    <div className="mt-2 flex flex-col gap-1.5">
-                      {rehearsals[task.id].checks.map((check) => (
-                        <div key={check.label} className="flex items-start gap-2 text-label">
-                          {check.ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />}
-                          <span><span className="text-foreground">{check.label}:</span> <span className="text-muted">{check.detail}</span></span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-micro font-medium uppercase tracking-wide text-muted">Next three runs</div>
-                    <div className="mt-2 flex flex-col gap-1 text-label text-foreground">
-                      {rehearsals[task.id].nextRuns.map((run) => <span key={run}>{new Date(run).toLocaleString()}</span>)}
-                    </div>
-                    <div className="mt-2 text-micro text-muted">
-                      {rehearsals[task.id].approvalRequired ? "External actions will stop for your approval." : "No external-action approval is predicted."}
-                    </div>
-                  </div>
-                </div>
-              )}
-              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2.5 font-mono text-micro leading-relaxed text-muted">
-                {task.prompt}
-              </pre>
-            </div>
-          </details>
+            <TaskRow
+              key={task.id}
+              task={task}
+              lastRun={lastRun}
+              running={running}
+              rehearsing={rehearsing === task.id}
+              rehearsal={rehearsals[task.id]}
+              toggleEnabled={toggleEnabled}
+              remove={remove}
+              rehearse={rehearse}
+            />
           );
         })}
 
