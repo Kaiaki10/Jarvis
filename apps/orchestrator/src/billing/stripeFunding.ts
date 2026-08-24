@@ -3,6 +3,7 @@ import { checkCapacity } from "./envelopes.js";
 import type { IssuingBalanceLine, StripeCardRecord } from "@jarvis/shared";
 import { db } from "../db/db.js";
 import { getConnectionCredentials } from "../db/connectionsRepo.js";
+import { notify } from "../notifications/notifier.js";
 
 /**
  * Jarvis never moves money and never sees a PAN or CVC — it only reads
@@ -97,10 +98,23 @@ export async function issueStripeCard(input: {
     },
   });
   const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO stripe_cards (card_id, purpose_label, monthly_limit_minor, brand, last4, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(card.id, input.purposeLabel, input.monthlyLimitMinor, card.brand, card.last4, card.status, now);
+  try {
+    db.prepare(
+      `INSERT INTO stripe_cards (card_id, purpose_label, monthly_limit_minor, brand, last4, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(card.id, input.purposeLabel, input.monthlyLimitMinor, card.brand, card.last4, card.status, now);
+  } catch (err) {
+    // The card already exists on Stripe — that spend authority is real and
+    // active regardless of what happens next. Losing this insert silently
+    // would mean Jarvis granted spending power it has no record of.
+    notify({
+      type: "automation_failed",
+      severity: "error",
+      title: "Card issued but not recorded locally",
+      body: `Stripe issued card ${card.id} (…${card.last4}, $${(input.monthlyLimitMinor / 100).toFixed(2)}/mo, "${input.purposeLabel}") but saving it here failed: ${err instanceof Error ? err.message : String(err)}. It exists on Stripe and will not appear in Jarvis until reconciled by hand.`,
+    });
+    throw err;
+  }
   return { cardId: card.id, purposeLabel: input.purposeLabel, monthlyLimitMinor: input.monthlyLimitMinor, brand: card.brand, last4: card.last4, status: card.status, createdAt: now };
 }
 

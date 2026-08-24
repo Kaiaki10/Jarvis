@@ -88,6 +88,30 @@ describe("stripeFunding", () => {
     );
   });
 
+  it("notifies and rethrows when Stripe issues a card but the local write fails", async () => {
+    await connectStripe();
+    // Forces the insert to fail without mocking sqlite: a card_id collision
+    // trips the PRIMARY KEY constraint exactly like any other local write
+    // failure would, after Stripe has already issued the real card.
+    const { db } = await import("../db/db.js");
+    db.prepare(
+      `INSERT INTO stripe_cards (card_id, purpose_label, monthly_limit_minor, brand, last4, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run("ic_collide", "Pre-existing", 5000, "Visa", "0000", "active", new Date().toISOString());
+    stripeMocks.cardsCreate.mockResolvedValue({ id: "ic_collide", brand: "Visa", last4: "9999", status: "active" });
+
+    const { issueStripeCard } = await import("./stripeFunding.js");
+    await expect(
+      issueStripeCard({ purposeLabel: "Duplicate-ID Ads", monthlyLimitMinor: 8000 })
+    ).rejects.toThrow();
+
+    const { listNotifications } = await import("../notifications/notifier.js");
+    const alert = listNotifications().find((n) => n.title === "Card issued but not recorded locally");
+    expect(alert).toBeDefined();
+    expect(alert?.severity).toBe("error");
+    expect(alert?.body).toContain("ic_collide");
+  });
+
   it("cancelling a card marks it inactive both at Stripe and locally", async () => {
     await connectStripe();
     stripeMocks.cardsCreate.mockResolvedValue({ id: "ic_test_2", brand: "Visa", last4: "1111", status: "active" });

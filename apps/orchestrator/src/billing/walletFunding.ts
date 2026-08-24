@@ -4,6 +4,7 @@ import { CdpClient } from "@coinbase/cdp-sdk";
 import type { WalletPermission, WalletSpendRecord } from "@jarvis/shared";
 import { db } from "../db/db.js";
 import { getConnectionCredentials } from "../db/connectionsRepo.js";
+import { notify } from "../notifications/notifier.js";
 
 /**
  * Jarvis never holds a wallet private key — Coinbase's infrastructure does,
@@ -148,20 +149,33 @@ export async function spendFromPermission(input: {
 
   const id = randomUUID();
   const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO wallet_spends (id, purpose_label, amount_minor, token, tx_hash, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, input.purposeLabel, input.amountMinor, match.permission.token, transactionHash, now);
+  try {
+    db.prepare(
+      `INSERT INTO wallet_spends (id, purpose_label, amount_minor, token, tx_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, input.purposeLabel, input.amountMinor, match.permission.token, transactionHash, now);
 
-  // Also to the shared ledger, so "what has Jarvis spent this month" is one
-  // query rather than a union across every provider that moves money.
-  recordSpend({
-    rail: "wallet",
-    amountMinor: input.amountMinor,
-    currency: tokenCurrency(match.permission.token),
-    reason: input.purposeLabel,
-    externalRef: transactionHash,
-  });
+    // Also to the shared ledger, so "what has Jarvis spent this month" is one
+    // query rather than a union across every provider that moves money.
+    recordSpend({
+      rail: "wallet",
+      amountMinor: input.amountMinor,
+      currency: tokenCurrency(match.permission.token),
+      reason: input.purposeLabel,
+      externalRef: transactionHash,
+    });
+  } catch (err) {
+    // The on-chain spend already happened — the contract enforced it and it
+    // cannot be undone. Losing either write silently would mean real USDC
+    // left the wallet with no local trace of where or why.
+    notify({
+      type: "automation_failed",
+      severity: "error",
+      title: "Wallet spend completed but not recorded locally",
+      body: `Tx ${transactionHash} spent ${input.amountMinor} minor units of ${match.permission.token} for "${input.purposeLabel}", but saving it here failed: ${err instanceof Error ? err.message : String(err)}. The spend is final on-chain and will not appear in Jarvis until reconciled by hand.`,
+    });
+    throw err;
+  }
 
   return {
     id,

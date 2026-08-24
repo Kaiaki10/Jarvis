@@ -171,6 +171,38 @@ describe("walletFunding", () => {
     const recorded = listWalletSpends().find((s) => s.txHash === "0xtxhash123");
     expect(recorded).toBeDefined();
   });
+
+  it("notifies and rethrows when the chain spend succeeds but the local write fails", async () => {
+    await connectWallet();
+    mockSpender();
+    const { setEnvelope } = await import("./envelopes.js");
+    setEnvelope({ rail: "wallet", period: "day", limitMinor: 10_000_000, currency: "USDC" });
+    cdpMocks.listSpendPermissions.mockResolvedValue({ spendPermissions: [fakePermission({ permissionHash: "0xgood" })] });
+    cdpMocks.useSpendPermission.mockResolvedValue({ transactionHash: "0xtxfails" });
+
+    // The on-chain spend cannot be simulated away — this forces just the
+    // local record-keeping to fail after it, the exact case being guarded.
+    const { db } = await import("../db/db.js");
+    const originalPrepare = db.prepare.bind(db);
+    const prepareSpy = vi.spyOn(db, "prepare").mockImplementation((sql: string) => {
+      if (sql.includes("INSERT INTO wallet_spends")) {
+        throw new Error("disk full");
+      }
+      return originalPrepare(sql);
+    });
+
+    const { spendFromPermission } = await import("./walletFunding.js");
+    await expect(
+      spendFromPermission({ purposeLabel: "Anthropic Console", amountMinor: 1_000_000, permissionHash: "0xgood" })
+    ).rejects.toThrow(/disk full/);
+
+    prepareSpy.mockRestore();
+    const { listNotifications } = await import("../notifications/notifier.js");
+    const alert = listNotifications().find((n) => n.title === "Wallet spend completed but not recorded locally");
+    expect(alert).toBeDefined();
+    expect(alert?.severity).toBe("error");
+    expect(alert?.body).toContain("0xtxfails");
+  });
 });
 
 describe("granting and revoking", () => {
