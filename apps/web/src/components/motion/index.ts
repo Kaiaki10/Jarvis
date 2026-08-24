@@ -41,4 +41,5 @@ export { Meter } from "./Meter";
 export { Overlay } from "./Overlay";
 export { SharedElement } from "./SharedElement";
 export { SectionRail, type RailSection } from "./SectionRail";
+export { AmbientState } from "./AmbientState";
 export { Pressable } from "./Pressable";

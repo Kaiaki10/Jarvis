@@ -420,6 +420,16 @@ textarea::placeholder {
     animation: none;
   }
 
+  /* Ambient state keeps reporting; it just stops moving. Held at a fixed level
+     rather than switched off, because the setting asks for less motion, not
+     less information — and left to the universal rule below it would freeze at
+     whichever keyframe it happened to reach, which could be the invisible one. */
+  .ambient-state[data-state="working"],
+  .ambient-state[data-state="attention"] {
+    animation: none;
+    opacity: 0.8;
+  }
+
   *,
   *::before,
   *::after {
@@ -436,6 +446,60 @@ textarea::placeholder {
   ::view-transition-new(*) {
     animation-duration: 0.01ms !important;
     animation-delay: 0s !important;
+  }
+}
+
+/* --- Ambient state ------------------------------------------------------ */
+
+/* The room's lighting, not a new element on top of it.
+   Deliberately positioned to match `body`'s own ambient wash above, so an
+   active run reads as the existing depth warming rather than as a panel
+   appearing over the page. `z-index: -1` puts it above the body background and
+   behind every panel, which is what keeps it peripheral. */
+.ambient-state {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-reveal) var(--ease-out);
+}
+
+/* Light from above, spanning the content column. The first attempt reused
+   `body`'s own gradient positions (offset to the corners) and was invisible —
+   it satisfied "subtle enough to ignore" by failing "tell at a glance". These
+   values were picked by looking at the rendered page, not by reasoning about
+   alpha. */
+.ambient-state[data-state="working"] {
+  opacity: 1;
+  background-image: radial-gradient(
+    1400px 460px at 50% -4%,
+    rgba(99, 102, 241, 0.17),
+    transparent 70%
+  );
+  animation: ambient-breathe 6s ease-in-out infinite;
+}
+
+/* Warmer, and breathing faster — this one is asking for you rather than
+   reporting, and the difference has to be legible without looking directly at
+   it. Still well under the badge that carries the actual meaning. */
+.ambient-state[data-state="attention"] {
+  opacity: 1;
+  background-image: radial-gradient(
+    1400px 460px at 50% -4%,
+    rgba(245, 158, 11, 0.24),
+    transparent 70%
+  );
+  animation: ambient-breathe 3.4s ease-in-out infinite;
+}
+
+@keyframes ambient-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
   }
 }
 

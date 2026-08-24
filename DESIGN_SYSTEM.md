@@ -113,6 +113,7 @@ these first; most motion in the app should stay here.
 | `Reveal` | Reveals on scroll approach, once | Below-the-fold sections |
 | `Spotlight` | Pointer-tracked highlight on a surface | Cards worth pointing at |
 | `CountUp` | Animates a number to its new value | Any figure that changes |
+| `AmbientState` | The background reflects what the system is doing | Mounted once, at the shell |
 
 **Motion (`motion` v13) — for what CSS structurally cannot reach.** React
 unmounts an element before any CSS transition can run on it, so *leaving* is
@@ -246,9 +247,19 @@ real places, documented in the table above, and verified by screenshot.
         write fails.
       - **Drop targets light up for the whole drag, not per pointer position.**
         Tracking the pointer would mean state on every frame.
-- [ ] **6 — Ambient state.** The interface quietly reflects what the system is
-      doing — a background that shifts while a run is active, so you can tell at
-      a glance without reading a badge. Subtle enough to ignore.
+- [x] **6 — Ambient state.** The background warms while a run is active and
+      shifts amber when one is waiting on a decision, so the state of the system
+      is readable from any page without looking anywhere in particular.
+      - Attention outranks work. A busy system must not bury the one run that is
+        blocked on you.
+      - `aria-hidden`, and never the only signal — the sidebar badge, the
+        notification count and the run list all still say it in words.
+      - Not in Simple mode, where the presence orb already reports the same
+        thing more directly.
+      - **Tuned by looking.** The first version reused `body`'s own gradient
+        positions and was invisible on the page: it satisfied "subtle enough to
+        ignore" by failing "tell at a glance". Judge this one on a screenshot,
+        not on the alpha values.
 
 ### Budget
 

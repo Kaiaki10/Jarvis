@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { StoreProvider, useAgents, useConnectionStatus, useNotifications } from "@/lib/store";
 import { ExperienceModeProvider, useExperienceMode } from "@/lib/experienceMode";
+import { AmbientState } from "@/components/motion";
 import {
   UNDER_THE_HOOD_ROOT,
   moduleHref,
@@ -329,6 +330,10 @@ function ShellFrame({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
+      {/* Not in Simple mode: the agent presence orb there already reports the
+          same thing, far more directly, and two ambient signals for one state
+          is one too many. */}
+      {!simpleHome && <AmbientState />}
       {!simpleHome && <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />}
       <div className="flex min-w-0 flex-1 flex-col">
         {!simpleHome && <MobileTopBar unread={unread} onOpenNav={() => setNavOpen(true)} />}
