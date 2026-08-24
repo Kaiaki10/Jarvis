@@ -842,8 +842,8 @@ const coinbase: Platform = {
       {
         title: "Grant a Spend Permission",
         body: [
-          "Using the panel below, connect your own Coinbase Smart Wallet and set an allowance (e.g. $50/week) authorizing Jarvis's spender address specifically — not a blank check, a bounded one you can revoke or tighten anytime from your wallet.",
-          "This step happens entirely in your browser, signed by your own wallet. Jarvis never sees your wallet's private key at any point.",
+          "On the Crypto → Wallet page, set an allowance (e.g. $50 a week) authorizing Jarvis's spender address specifically — not a blank cheque, a bounded permission you can revoke or replace at any time.",
+          "If your Smart Wallet lives in this same CDP project, Jarvis can submit the grant for you from that page. A wallet created elsewhere — the Coinbase app, another project — has to grant it from its own interface, because only the holder of a wallet's keys can authorise spending from it. The page tells you which case you are in.",
         ],
         warning: "Only grant what you're comfortable Jarvis spending autonomously within — the on-chain contract enforces the limit, not Jarvis's own judgment.",
       },

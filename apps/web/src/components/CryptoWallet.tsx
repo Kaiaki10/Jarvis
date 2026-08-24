@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Coins, ExternalLink, Loader2, ShieldCheck, Wallet } from "lucide-react";
 import type { SpendEnvelopeRecord, WalletPermission, WalletSpendRecord } from "@jarvis/shared";
@@ -8,7 +8,9 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatMoney } from "@/lib/money";
-import { AnimatedBody, AnimatedRow, Crossfade } from "@/components/motion";
+import { AnimatedBody, AnimatedItem, AnimatedList, AnimatedRow, Crossfade } from "@/components/motion";
+import { Button } from "@/components/ui/Button";
+import { GrantSpendPermission } from "@/components/GrantSpendPermission";
 
 /** Base mainnet USDC, the only token Jarvis names rather than shows as an address. */
 const TOKEN_LABEL: Record<string, string> = {
@@ -25,23 +27,26 @@ export function CryptoWallet() {
   const [envelope, setEnvelope] = useState<SpendEnvelopeRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [spender, granted, spend] = await Promise.all([
-          api.getWalletSpenderAddress(),
-          api.listWalletPermissions(),
-          api.getSpend(),
-        ]);
-        setAddress(spender.address);
-        setPermissions(granted);
-        setEnvelope(spend.envelopes.find((e) => e.rail === "wallet") ?? null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        setPermissions([]);
-      }
-    })();
+  const reload = useCallback(async () => {
+    try {
+      const [spender, granted, spend] = await Promise.all([
+        api.getWalletSpenderAddress(),
+        api.listWalletPermissions(),
+        api.getSpend(),
+      ]);
+      setAddress(spender.address);
+      setPermissions(granted);
+      setEnvelope(spend.envelopes.find((e) => e.rail === "wallet") ?? null);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPermissions([]);
+    }
   }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   // One dissolve between the three states rather than three separate returns.
   // The panel is the same panel throughout — swapping it outright made loading
@@ -119,25 +124,19 @@ export function CryptoWallet() {
             No permissions granted to Jarvis yet. Nothing can be spent.
           </div>
         ) : (
-          <div className="divide-y divide-border/60">
+          <AnimatedList className="divide-y divide-border/60">
             {permissions.map((permission) => (
-              <div key={permission.permissionHash} className="flex flex-wrap items-center gap-3 px-5 py-3">
-                <Coins className="h-4 w-4 shrink-0 text-accent-bright" strokeWidth={1.75} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-label font-medium text-foreground">
-                    {permission.tokenLabel ?? tokenLabel(permission.token)}
-                  </div>
-                  <div className="text-micro text-muted">
-                    allowance {permission.allowanceMinor} minor units · resets every{" "}
-                    {Math.round(permission.periodSeconds / 3600)}h
-                  </div>
-                </div>
-                <Badge tone="neutral">on-chain</Badge>
-              </div>
+              <AnimatedItem key={permission.permissionHash}>
+                <PermissionRow permission={permission} onRevoked={reload} />
+              </AnimatedItem>
             ))}
-          </div>
+          </AnimatedList>
         )}
       </Card>
+
+      {/* The step that arms the rail. Everything above is inert without it —
+          a spender address and a limit with nothing authorised to spend. */}
+      <GrantSpendPermission onGranted={reload} />
     </Crossfade>
   );
 }
@@ -233,5 +232,86 @@ export function CryptoSpending() {
       </div>
     </Card>
     </Crossfade>
+  );
+}
+
+/**
+ * One granted permission, with the way to take it back.
+ *
+ * Revoking asks first. It is a chain transaction and it disarms Jarvis's
+ * ability to spend — recoverable only by granting again, which costs another
+ * transaction. A misclick should not be able to do that silently.
+ */
+function PermissionRow({
+  permission,
+  onRevoked,
+}: {
+  permission: WalletPermission;
+  onRevoked: () => Promise<void>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const label = permission.tokenLabel ?? tokenLabel(permission.token);
+  const decimals = label === "USDC" ? 6 : 0;
+  const amount = decimals
+    ? (Number(permission.allowanceMinor) / 10 ** decimals).toLocaleString(undefined, {
+        maximumFractionDigits: 2,
+      })
+    : permission.allowanceMinor;
+  const days = Math.round(permission.periodSeconds / 86_400);
+
+  async function revoke() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.revokeWalletPermission(permission.permissionHash);
+      await onRevoked();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <div className="px-5 py-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Coins className="h-4 w-4 shrink-0 text-accent-bright" strokeWidth={1.75} />
+        <div className="min-w-0 flex-1">
+          <div className="text-label font-medium text-foreground">
+            {amount} {label} every {days === 1 ? "day" : `${days} days`}
+          </div>
+          <div className="text-micro text-muted">
+            Refills each period · expires {new Date(permission.end * 1000).toLocaleDateString()}
+          </div>
+        </div>
+        <Badge tone="neutral">on-chain</Badge>
+
+        {confirming ? (
+          <span className="flex shrink-0 items-center gap-1.5">
+            <span className="text-micro text-muted">Revoke?</span>
+            <Button type="button" size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => void revoke()}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} /> : "Yes"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" className="text-muted" disabled={busy} onClick={() => setConfirming(false)}>
+              No
+            </Button>
+          </span>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="shrink-0 text-muted hover:text-danger"
+            onClick={() => setConfirming(true)}
+          >
+            Revoke
+          </Button>
+        )}
+      </div>
+      {error && <p className="mt-2 text-micro text-danger">{error}</p>}
+    </div>
   );
 }

@@ -123,6 +123,7 @@ import {
   stripeRevealSessionSchema,
   updateScheduledTaskSchema,
   walletSpendSchema,
+  grantSpendPermissionSchema,
   updateSettingsSchema,
   updateTaskSchema,
   createMissionSchema,
@@ -274,8 +275,11 @@ import {
 } from "../billing/stripeFunding.js";
 import {
   getSpenderAddress,
+  grantSpendPermission,
   listGrantedPermissions,
   listWalletSpends,
+  operatorWalletIsManaged,
+  revokeSpendPermission,
   spendFromPermission,
 } from "../billing/walletFunding.js";
 import { sendAgentChat } from "../agents/agentChat.js";
@@ -2581,8 +2585,9 @@ app.post("/billing/stripe/cards/:cardId/reveal-session", async (req: Request, re
 // ---- Coinbase Spend Permission spend ----
 //
 // Jarvis never holds a wallet private key — see billing/walletFunding.ts.
-// These routes only ever read the spender address, read permissions the
-// operator has already granted from their own wallet, and spend within one.
+// These routes read the spender address, grant and revoke permissions on the
+// operator's own wallet, and spend within one. Granting is the only one that
+// widens what Jarvis can do, and it is bounded on-chain the moment it lands.
 
 app.get("/billing/wallet/spender-address", async (_req: Request, res: Response) => {
   try {
@@ -2597,6 +2602,40 @@ app.get("/billing/wallet/permissions", async (_req: Request, res: Response) => {
     res.json(await listGrantedPermissions());
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Could not read granted permissions" });
+  }
+});
+
+/**
+ * Whether a permission can be granted from here at all.
+ *
+ * The dashboard asks before offering the form, because the alternative is
+ * letting someone fill it in and then handing them a CDP error about an
+ * unowned account that tells them nothing about what to do instead.
+ */
+app.get("/billing/wallet/grant-capability", async (_req: Request, res: Response) => {
+  try {
+    res.json({ canGrant: await operatorWalletIsManaged() });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not check the wallet" });
+  }
+});
+
+app.post("/billing/wallet/permissions", async (req: Request, res: Response) => {
+  const body = validatedBody(grantSpendPermissionSchema, req, res);
+  if (!body) return;
+  try {
+    res.status(201).json(await grantSpendPermission(body));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not grant the permission" });
+  }
+});
+
+app.delete("/billing/wallet/permissions/:hash", async (req: Request, res: Response) => {
+  try {
+    await revokeSpendPermission(req.params.hash);
+    res.status(204).end();
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not revoke the permission" });
   }
 });
 

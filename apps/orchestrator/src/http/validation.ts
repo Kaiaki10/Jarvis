@@ -410,6 +410,23 @@ export const walletSpendSchema = z
   })
   .strict();
 
+/**
+ * Granting Jarvis an allowance. Bounded here as well as on-chain, because a
+ * typo in a number field should be refused before it becomes a signed
+ * permission — revoking one costs a transaction, declining one costs nothing.
+ *
+ * The ceiling is 100,000 USDC and the horizon two years. Both are far above any
+ * plausible use and far below "unbounded", which is the point: a slipped
+ * decimal place is caught, a deliberate large grant is still possible.
+ */
+export const grantSpendPermissionSchema = z
+  .object({
+    allowanceMinor: z.number().int().positive().max(100_000_000_000),
+    periodInDays: z.number().int().positive().max(365),
+    expiresInDays: z.number().int().positive().max(730),
+  })
+  .strict();
+
 export const updateSettingsSchema = z
   .object({
     businessContext: z.string().max(200_000).optional(),

@@ -184,3 +184,108 @@ export async function spendFromPermission(input: {
 function tokenCurrency(token: string): string {
   return KNOWN_TOKENS[token.toLowerCase()] ?? token.toLowerCase();
 }
+
+/**
+ * Whether the operator's wallet is one CDP can act for.
+ *
+ * Granting a permission is a transaction *from* the operator's wallet, so
+ * something has to sign it. CDP can, but only for smart accounts inside this
+ * project. A wallet created anywhere else — the Coinbase app, a different CDP
+ * project — has to grant from its own interface, and nothing on this server can
+ * do it on their behalf.
+ *
+ * Asked before the grant form is offered rather than after it fails: the error
+ * CDP returns for a wallet it does not own is not one anybody could act on.
+ */
+export async function operatorWalletIsManaged(): Promise<boolean> {
+  const creds = walletCreds();
+  try {
+    const { accounts } = await client(creds).evm.listSmartAccounts({});
+    return accounts.some(
+      (account) => account.address.toLowerCase() === creds.operatorAddress.toLowerCase()
+    );
+  } catch {
+    // Unreachable or unauthorised is not the same as "not managed", but the
+    // caller can do nothing differently either way, and claiming it is managed
+    // would offer a grant form that cannot work.
+    return false;
+  }
+}
+
+/**
+ * Grants Jarvis's spender address a bounded allowance on the operator's wallet.
+ *
+ * This is the whole safety model in one call: the on-chain contract enforces
+ * the allowance and the period regardless of anything this server does later,
+ * so even a fully compromised orchestrator cannot spend past what was signed
+ * here.
+ *
+ * Deliberately narrow. The caller picks an amount, a period and an expiry;
+ * everything else is fixed — USDC on Base, granted to Jarvis's own spender and
+ * nothing else. A general "grant any permission" endpoint would let a bug or a
+ * forged request authorise a different spender entirely, which is the single
+ * mistake this design exists to prevent.
+ */
+export async function grantSpendPermission(input: {
+  allowanceMinor: number;
+  periodInDays: number;
+  /** Days from now. The permission stops working after this regardless of allowance. */
+  expiresInDays: number;
+}): Promise<{ userOpHash: string }> {
+  if (!Number.isSafeInteger(input.allowanceMinor) || input.allowanceMinor <= 0) {
+    throw new Error("Allowance must be a positive whole number of minor units.");
+  }
+  if (!Number.isSafeInteger(input.periodInDays) || input.periodInDays <= 0) {
+    throw new Error("The period must be a positive number of days.");
+  }
+  if (!Number.isSafeInteger(input.expiresInDays) || input.expiresInDays < input.periodInDays) {
+    // An expiry inside the first period would mean the allowance never fully
+    // resets — a limit that reads as "$50 a week" but is really "$50, once".
+    throw new Error("The expiry must be at least one full period away.");
+  }
+
+  const creds = walletCreds();
+  const cdp = client(creds);
+  const spender = await cdp.evm.getOrCreateAccount({ name: SPENDER_ACCOUNT_NAME });
+
+  const result = await cdp.evm.createSpendPermission({
+    spendPermission: {
+      account: creds.operatorAddress,
+      spender: spender.address,
+      token: "usdc",
+      allowance: BigInt(input.allowanceMinor),
+      periodInDays: input.periodInDays,
+      end: new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000),
+    },
+    network: "base",
+  });
+
+  return { userOpHash: result.userOpHash };
+}
+
+/**
+ * Revokes a permission — the operator taking authority back.
+ *
+ * Checked against Jarvis's own spender first. Revoking is destructive and the
+ * hash comes from the caller, so without this a stale or wrong hash could
+ * revoke an unrelated permission on the operator's wallet, one Jarvis has no
+ * business touching.
+ */
+export async function revokeSpendPermission(permissionHash: string): Promise<void> {
+  const creds = walletCreds();
+  const cdp = client(creds);
+  const spender = await cdp.evm.getOrCreateAccount({ name: SPENDER_ACCOUNT_NAME });
+
+  const { spendPermissions } = await cdp.evm.listSpendPermissions({ address: creds.operatorAddress });
+  const match = spendPermissions.find((p) => p.permissionHash === permissionHash);
+  if (!match) throw new Error("No such spend permission — it may already have been revoked.");
+  if (match.permission.spender.toLowerCase() !== spender.address.toLowerCase()) {
+    throw new Error("That permission was not granted to Jarvis, so Jarvis will not revoke it.");
+  }
+
+  await cdp.evm.revokeSpendPermission({
+    address: creds.operatorAddress,
+    permissionHash: permissionHash as `0x${string}`,
+    network: "base",
+  });
+}

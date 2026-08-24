@@ -4,6 +4,9 @@ const cdpMocks = vi.hoisted(() => ({
   getOrCreateAccount: vi.fn(),
   listSpendPermissions: vi.fn(),
   useSpendPermission: vi.fn(),
+  listSmartAccounts: vi.fn(),
+  createSpendPermission: vi.fn(),
+  revokeSpendPermission: vi.fn(),
 }));
 
 vi.mock("@coinbase/cdp-sdk", () => {
@@ -11,6 +14,9 @@ vi.mock("@coinbase/cdp-sdk", () => {
     evm = {
       getOrCreateAccount: cdpMocks.getOrCreateAccount,
       listSpendPermissions: cdpMocks.listSpendPermissions,
+      listSmartAccounts: cdpMocks.listSmartAccounts,
+      createSpendPermission: cdpMocks.createSpendPermission,
+      revokeSpendPermission: cdpMocks.revokeSpendPermission,
     };
   }
   return { CdpClient: MockCdpClient };
@@ -164,5 +170,114 @@ describe("walletFunding", () => {
 
     const recorded = listWalletSpends().find((s) => s.txHash === "0xtxhash123");
     expect(recorded).toBeDefined();
+  });
+});
+
+describe("granting and revoking", () => {
+  beforeEach(() => {
+    Object.values(cdpMocks).forEach((mock) => mock.mockReset());
+  });
+
+  it("says a wallet from another project cannot be granted from here", async () => {
+    await connectWallet();
+    cdpMocks.listSmartAccounts.mockResolvedValue({
+      accounts: [{ address: "0x9999999999999999999999999999999999999999" }],
+    });
+    const { operatorWalletIsManaged } = await import("./walletFunding.js");
+    expect(await operatorWalletIsManaged()).toBe(false);
+  });
+
+  it("recognises the operator's wallet regardless of address casing", async () => {
+    await connectWallet();
+    cdpMocks.listSmartAccounts.mockResolvedValue({
+      accounts: [{ address: OPERATOR_ADDRESS.toUpperCase() }],
+    });
+    const { operatorWalletIsManaged } = await import("./walletFunding.js");
+    expect(await operatorWalletIsManaged()).toBe(true);
+  });
+
+  it("does not claim a wallet is grantable when CDP could not be reached", async () => {
+    await connectWallet();
+    cdpMocks.listSmartAccounts.mockRejectedValue(new Error("network down"));
+    const { operatorWalletIsManaged } = await import("./walletFunding.js");
+    // Offering a grant form that cannot work is worse than saying it cannot.
+    expect(await operatorWalletIsManaged()).toBe(false);
+  });
+
+  it("grants to Jarvis's own spender and nothing else", async () => {
+    await connectWallet();
+    mockSpender();
+    cdpMocks.createSpendPermission.mockResolvedValue({ userOpHash: "0xuserop" });
+    const { grantSpendPermission } = await import("./walletFunding.js");
+
+    const result = await grantSpendPermission({
+      allowanceMinor: 50_000_000,
+      periodInDays: 7,
+      expiresInDays: 365,
+    });
+
+    expect(result.userOpHash).toBe("0xuserop");
+    const sent = cdpMocks.createSpendPermission.mock.calls[0][0];
+    expect(sent.spendPermission.spender).toBe(SPENDER_ADDRESS);
+    expect(sent.spendPermission.account).toBe(OPERATOR_ADDRESS);
+    expect(sent.spendPermission.allowance).toBe(50_000_000n);
+    expect(sent.spendPermission.token).toBe("usdc");
+    expect(sent.network).toBe("base");
+  });
+
+  it("refuses an allowance that is not a positive whole number", async () => {
+    await connectWallet();
+    mockSpender();
+    const { grantSpendPermission } = await import("./walletFunding.js");
+    for (const allowanceMinor of [0, -1, 1.5]) {
+      await expect(
+        grantSpendPermission({ allowanceMinor, periodInDays: 7, expiresInDays: 365 })
+      ).rejects.toThrow(/positive whole number/i);
+    }
+    expect(cdpMocks.createSpendPermission).not.toHaveBeenCalled();
+  });
+
+  it("refuses an expiry inside the first period", async () => {
+    await connectWallet();
+    mockSpender();
+    const { grantSpendPermission } = await import("./walletFunding.js");
+    // Expiring before the allowance can reset makes "$50 a week" really mean
+    // "$50, once" — a limit that reads as recurring but is not.
+    await expect(
+      grantSpendPermission({ allowanceMinor: 1_000_000, periodInDays: 30, expiresInDays: 7 })
+    ).rejects.toThrow(/at least one full period/i);
+    expect(cdpMocks.createSpendPermission).not.toHaveBeenCalled();
+  });
+
+  it("will not revoke a permission granted to someone else", async () => {
+    await connectWallet();
+    mockSpender();
+    cdpMocks.listSpendPermissions.mockResolvedValue({
+      spendPermissions: [fakePermission({ spender: "0x8888888888888888888888888888888888888888" })],
+    });
+    const { revokeSpendPermission } = await import("./walletFunding.js");
+    await expect(revokeSpendPermission("0xhash1")).rejects.toThrow(/not granted to Jarvis/i);
+    expect(cdpMocks.revokeSpendPermission).not.toHaveBeenCalled();
+  });
+
+  it("revokes one of Jarvis's own permissions", async () => {
+    await connectWallet();
+    mockSpender();
+    cdpMocks.listSpendPermissions.mockResolvedValue({ spendPermissions: [fakePermission()] });
+    cdpMocks.revokeSpendPermission.mockResolvedValue({ userOpHash: "0xrevoke" });
+    const { revokeSpendPermission } = await import("./walletFunding.js");
+
+    await revokeSpendPermission("0xhash1");
+    expect(cdpMocks.revokeSpendPermission).toHaveBeenCalledWith(
+      expect.objectContaining({ address: OPERATOR_ADDRESS, permissionHash: "0xhash1", network: "base" })
+    );
+  });
+
+  it("reports a hash it cannot find rather than revoking blindly", async () => {
+    await connectWallet();
+    mockSpender();
+    cdpMocks.listSpendPermissions.mockResolvedValue({ spendPermissions: [] });
+    const { revokeSpendPermission } = await import("./walletFunding.js");
+    await expect(revokeSpendPermission("0xmissing")).rejects.toThrow(/No such spend permission/i);
   });
 });

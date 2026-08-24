@@ -509,6 +509,21 @@ getSpend: () =>
   getWalletSpenderAddress: () => request<{ address: string }>("/billing/wallet/spender-address"),
   listWalletPermissions: () => request<WalletPermission[]>("/billing/wallet/permissions"),
   listWalletSpends: () => request<WalletSpendRecord[]>("/billing/wallet/spends"),
+  getWalletGrantCapability: () =>
+    request<{ canGrant: boolean }>("/billing/wallet/grant-capability"),
+  grantWalletPermission: (body: {
+    allowanceMinor: number;
+    periodInDays: number;
+    expiresInDays: number;
+  }) =>
+    request<{ userOpHash: string }>("/billing/wallet/permissions", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  revokeWalletPermission: (permissionHash: string) =>
+    request<void>(`/billing/wallet/permissions/${encodeURIComponent(permissionHash)}`, {
+      method: "DELETE",
+    }),
 
   getStorage: () => request<StorageStats>("/storage"),
   compactStorage: () =>
