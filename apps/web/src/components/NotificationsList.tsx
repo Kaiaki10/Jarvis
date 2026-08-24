@@ -5,6 +5,7 @@ import { AlertTriangle, BellOff, CheckCheck, ShieldQuestion, XCircle } from "luc
 import type { NotificationRecord } from "@jarvis/shared";
 import { useNotifications } from "@/lib/hooks";
 import { api } from "@/lib/api";
+import { relativeTime } from "@/lib/relativeTime";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 
@@ -18,16 +19,6 @@ function toneClass(n: NotificationRecord) {
   if (n.severity === "error") return "text-danger";
   if (n.severity === "warning") return "text-warning";
   return "text-muted";
-}
-
-function relative(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 export function NotificationsList() {
@@ -80,7 +71,7 @@ export function NotificationsList() {
                 </div>
                 <p className="mt-0.5 text-label leading-relaxed text-muted">{n.body}</p>
               </div>
-              <span className="shrink-0 text-micro text-muted">{relative(n.createdAt)}</span>
+              <span className="shrink-0 text-micro text-muted">{relativeTime(n.createdAt)}</span>
             </div>
           );
 

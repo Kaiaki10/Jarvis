@@ -8,6 +8,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Crossfade, SharedElement } from "@/components/motion";
 import { STATUS_LABEL, STATUS_TONE } from "@/lib/sessionStatus";
+import { relativeTime } from "@/lib/relativeTime";
 
 
 /**
@@ -98,6 +99,9 @@ export function SessionList({
                   </Badge>
                 </span>
               </SharedElement>
+              <span className="hidden shrink-0 text-micro text-muted sm:inline">
+                {relativeTime(session.createdAt)}
+              </span>
               <ChevronRight className="h-4 w-4 shrink-0 text-muted opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100" />
             </Link>
             {confirming === session.id ? (
