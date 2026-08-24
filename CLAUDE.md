@@ -72,6 +72,20 @@ from an API route** — responses carry masked hints only.
 - PowerShell is the shell here. `&&` and `||` are unavailable; backticks are escape
   characters, so pass multi-line git messages via `git commit -F <file>`.
 - Ports 3000 and 4317 are owned by the live service. Don't bind them from a worktree.
+- **Never run `next build` (or `npm run build` in `apps/web`) against this checkout
+  while the live dashboard is running.** It's not about binding a port — `next start`
+  reads chunk files from `.next/` live, and a build overwrites `.next/` in place with
+  new content hashes while it does. Confirmed live on 2026-08-24: verifying UI changes
+  this way threw `ChunkLoadError: Cannot find module '...\.next\server\chunks\...'` and
+  crash-looped the dashboard task (`scripts/logs/dashboard.log`), which cascaded into
+  the orchestrator task stopping too. `npx tsc --noEmit` alone is safe (see the
+  `.next/types` gotcha above — it reads, doesn't write `.next/server`). To verify a
+  change against real rendering, build and run in a separate checkout or worktree on
+  scratch ports (`PORT`, `JARVIS_DB_PATH`, `JARVIS_TOKEN_PATH`, `PREVIEW_ORIGIN` env
+  vars all support this — see `apps/orchestrator/src/http/server.ts`), never here. If
+  this checkout's `.next` or `dist` ever needs rebuilding, use
+  `scripts/restart-service.ps1` — it stops the service first, rebuilds, then restarts,
+  which is what avoids this exact failure mode.
 
 ## Scheduled automations
 
