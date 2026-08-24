@@ -92,6 +92,22 @@ export function atConcurrencyLimit(): boolean {
   return activeSessionCount() >= getSettings().maxConcurrentSessions;
 }
 
+/**
+ * Whether some other in-flight session already has a turn running in `cwd`.
+ * The concurrency limit alone doesn't prevent this: two scheduled tasks that
+ * both target the same git worktree (e.g. the shared jarvis-lab automation
+ * directory) can each be under the global cap individually while their turns
+ * still overlap in the same working directory — one agent committing while
+ * another is mid-edit, racing the git index. This is the narrower, per-
+ * directory guard the scheduler needs on top of that cap.
+ */
+export function isCwdBusy(cwd: string): boolean {
+  for (const [id, handle] of sessions) {
+    if (handle.working && getSession(id)?.cwd === cwd) return true;
+  }
+  return false;
+}
+
 export function startIdleReaper(): void {
   setInterval(() => {
     const now = Date.now();

@@ -1,5 +1,85 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { computeNextRun } from "./scheduleTime.js";
+
+const sessionManagerMocks = vi.hoisted(() => ({
+  atConcurrencyLimit: vi.fn(() => false),
+  isCwdBusy: vi.fn(() => false),
+  startSession: vi.fn(async () => {}),
+}));
+
+vi.mock("../sessions/sessionManager.js", () => sessionManagerMocks);
+
+describe("tick", () => {
+  beforeEach(async () => {
+    sessionManagerMocks.atConcurrencyLimit.mockReturnValue(false);
+    sessionManagerMocks.isCwdBusy.mockReturnValue(false);
+    sessionManagerMocks.startSession.mockClear();
+    const { db } = await import("../db/db.js");
+    db.exec("DELETE FROM scheduled_tasks");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const past = () => new Date(Date.now() - 60_000).toISOString();
+
+  it("skips a due task whose cwd already has a run in flight, and fires the next due task instead", async () => {
+    const { createScheduledTask, listEnabledScheduledTasks } = await import("../db/repo.js");
+    const { tick } = await import("./scheduler.js");
+
+    const busy = createScheduledTask({
+      prompt: "Follow AUTOMATION_RULES.md",
+      cwd: "C:/jarvis-lab",
+      permissionMode: "default",
+      timeOfDay: "09:00",
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      nextRunAt: past(),
+    });
+    const free = createScheduledTask({
+      prompt: "Some other automation",
+      cwd: "C:/jarvis-other",
+      permissionMode: "default",
+      timeOfDay: "09:00",
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      nextRunAt: past(),
+    });
+
+    sessionManagerMocks.isCwdBusy.mockImplementation((cwd: string) => cwd === "C:/jarvis-lab");
+
+    tick();
+
+    expect(sessionManagerMocks.startSession).toHaveBeenCalledTimes(1);
+    expect(sessionManagerMocks.startSession.mock.calls[0][0]).toMatchObject({ prompt: "Some other automation" });
+
+    const after = listEnabledScheduledTasks();
+    // The busy one was left untouched — still due, to be retried next tick.
+    expect(after.find((t) => t.id === busy.id)?.lastRunAt).toBeNull();
+    // The free one actually fired.
+    const firedFree = after.find((t) => t.id === free.id);
+    expect(firedFree?.lastRunAt).not.toBeNull();
+    expect(firedFree?.nextRunAt).not.toBe(free.nextRunAt);
+  });
+
+  it("fires a due task normally when nothing else is using its cwd", async () => {
+    const { createScheduledTask, listEnabledScheduledTasks } = await import("../db/repo.js");
+    const { tick } = await import("./scheduler.js");
+
+    const task = createScheduledTask({
+      prompt: "Follow AUTOMATION_RULES.md",
+      cwd: "C:/jarvis-lab-2",
+      permissionMode: "default",
+      timeOfDay: "09:00",
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      nextRunAt: past(),
+    });
+
+    tick();
+
+    expect(sessionManagerMocks.startSession).toHaveBeenCalledTimes(1);
+    const after = listEnabledScheduledTasks().find((t) => t.id === task.id);
+    expect(after?.lastRunAt).not.toBeNull();
+  });
+});
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const WEEKDAYS = [1, 2, 3, 4, 5];

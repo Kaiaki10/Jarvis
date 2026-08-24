@@ -5,7 +5,7 @@ import {
   listEnabledScheduledTasks,
   updateScheduledTask,
 } from "../db/repo.js";
-import { atConcurrencyLimit, startSession } from "../sessions/sessionManager.js";
+import { atConcurrencyLimit, isCwdBusy, startSession } from "../sessions/sessionManager.js";
 import { globalBus } from "../events/globalBus.js";
 import { computeNextRun } from "./scheduleTime.js";
 
@@ -65,7 +65,8 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
   globalBus.emit("automations_changed");
 }
 
-function tick(): void {
+/** Exported for tests; `startScheduler` is the real entry point. */
+export function tick(): void {
   if (!getSettings().automationsEnabled) return;
 
   const now = new Date();
@@ -78,6 +79,18 @@ function tick(): void {
         `[scheduler] at concurrency limit, deferring "${task.prompt.slice(0, 60)}"`
       );
       return;
+    }
+    // Being under the global cap doesn't mean this specific task can run: a
+    // different scheduled task can already have a turn in flight in the same
+    // cwd (multiple automations targeting the shared jarvis-lab worktree, for
+    // instance), and firing another into it risks two agents editing and
+    // committing in the same git working directory at once. That only rules
+    // out *this* task, so try the next due one rather than stopping the tick.
+    if (isCwdBusy(task.cwd)) {
+      console.warn(
+        `[scheduler] "${task.cwd}" already has a run in flight, deferring "${task.prompt.slice(0, 60)}"`
+      );
+      continue;
     }
     fireScheduledTask(task);
     // Pace catch-up after downtime so overdue work cannot stampede the service.
