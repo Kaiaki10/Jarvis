@@ -575,7 +575,19 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         globalBus.emit("session_updated", params.id);
       }
 
-      if (message.type === "result") {
+      if (message.type === "result" && message.is_error && !handle.working) {
+        // The SDK can crash during its own teardown *after* a turn already
+        // completed successfully — observed as a second `result` here, subtype
+        // `error_during_execution`, num_turns 0, cost $0. `handle.working` was
+        // set false by that real result and nothing has since started a new
+        // turn (`sendFollowUp` is what flips it back to true), so this is a
+        // stray artifact of the same turn, not a new outcome. Recording it
+        // would stomp a completed, committed run back to "error, 0 turns, $0".
+        console.error(
+          `[sessionManager] ignoring a result for session ${params.id} that arrived after it already finished:`,
+          "errors" in message ? message.errors.join("; ") : message
+        );
+      } else if (message.type === "result") {
         reportInitialTurn(!message.is_error);
         // Streaming-input sessions stay alive after a result, ready for a follow-up —
         // "idle" reflects that; "completed" is reserved for an explicitly closed session.
@@ -665,48 +677,60 @@ export async function startSession(params: StartSessionParams): Promise<void> {
       globalBus.emit("session_updated", params.id);
     }
   } catch (err) {
-    reportInitialTurn(false);
     const detail = err instanceof Error ? err.message : String(err);
-    updateSession(params.id, { status: "error", errorMessage: detail });
-    notify({
-      type: "session_failed",
-      severity: "error",
-      title: "Session failed to run",
-      body: `${params.title ?? "A session"} could not start or crashed: ${detail}`,
-      sessionId: params.id,
-    });
-    globalBus.emit("session_updated", params.id);
-    try {
-      recordMemoryReflection({
+    if (!handle.working) {
+      // Same teardown-crash case as the stray `result` above, just surfacing
+      // as a thrown error instead: a turn already finished successfully
+      // (nothing has since flipped `working` back to true for a follow-up),
+      // so this crash is process cleanup, not a failed run. Leave the
+      // recorded success alone rather than overwriting it with "error".
+      console.error(
+        `[sessionManager] session ${params.id} crashed after it already finished successfully — leaving its recorded outcome alone:`,
+        detail
+      );
+    } else {
+      reportInitialTurn(false);
+      updateSession(params.id, { status: "error", errorMessage: detail });
+      notify({
+        type: "session_failed",
+        severity: "error",
+        title: "Session failed to run",
+        body: `${params.title ?? "A session"} could not start or crashed: ${detail}`,
         sessionId: params.id,
-        status: params.isolated ? "skipped" : "failed",
-        memoriesAdded: memoriesAddedThisTurn,
-        memoriesConfirmed: memoriesConfirmedThisTurn,
       });
-      globalBus.emit("memories_changed");
-    } catch (reflectionError) {
-      console.error("[memory] could not record failed reflection:", reflectionError);
-    }
-    try {
-      if (reconcileWorkflowGeneration({ sessionId: params.id, result: null, ok: false })) {
-        globalBus.emit("workflows_changed");
+      globalBus.emit("session_updated", params.id);
+      try {
+        recordMemoryReflection({
+          sessionId: params.id,
+          status: params.isolated ? "skipped" : "failed",
+          memoriesAdded: memoriesAddedThisTurn,
+          memoriesConfirmed: memoriesConfirmedThisTurn,
+        });
+        globalBus.emit("memories_changed");
+      } catch (reflectionError) {
+        console.error("[memory] could not record failed reflection:", reflectionError);
       }
-    } catch (reconcileError) {
-      console.error("[workflows] could not record failed generation:", reconcileError);
-    }
-    try {
-      if (reconcileContentPublication({ sessionId: params.id, ok: false })) {
-        globalBus.emit("workflows_changed");
+      try {
+        if (reconcileWorkflowGeneration({ sessionId: params.id, result: null, ok: false })) {
+          globalBus.emit("workflows_changed");
+        }
+      } catch (reconcileError) {
+        console.error("[workflows] could not record failed generation:", reconcileError);
       }
-    } catch (reconcileError) {
-      console.error("[workflows] could not record failed publication:", reconcileError);
-    }
-    try {
-      if (await reconcileCustomerReplyDraft({ sessionId: params.id, result: null, ok: false })) {
-        globalBus.emit("customers_changed");
+      try {
+        if (reconcileContentPublication({ sessionId: params.id, ok: false })) {
+          globalBus.emit("workflows_changed");
+        }
+      } catch (reconcileError) {
+        console.error("[workflows] could not record failed publication:", reconcileError);
       }
-    } catch (reconcileError) {
-      console.error("[customers] could not record failed reply draft:", reconcileError);
+      try {
+        if (await reconcileCustomerReplyDraft({ sessionId: params.id, result: null, ok: false })) {
+          globalBus.emit("customers_changed");
+        }
+      } catch (reconcileError) {
+        console.error("[customers] could not record failed reply draft:", reconcileError);
+      }
     }
     emitter.emit(
       "event",
