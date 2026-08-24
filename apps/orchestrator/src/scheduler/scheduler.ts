@@ -50,6 +50,12 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
     // The run belongs to whichever agent owns the automation, so its persona
     // and its history stay with that agent rather than landing in a shared pile.
     agentId: task.agentId,
+    // Nobody is watching a cron firing at 5am — a local-work approval prompt
+    // (e.g. PowerShell, which fell through this gap on 2026-08-24 and stalled
+    // two runs for hours) would just sit until the timeout auto-denies it.
+    // Structurally can never reach Jarvis's own outbound platform tools; see
+    // LOCAL_WORK_TOOLS in sessionManager.ts.
+    autoApproveLocalTools: true,
   });
   globalBus.emit("session_updated", session.id);
 
@@ -61,6 +67,7 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
     allowedTools: task.allowedTools ?? undefined,
     title: `Automation "${task.prompt.split("\n")[0].slice(0, 60)}"`,
     agentId: task.agentId,
+    autoApproveLocalTools: true,
     onTurnFinished: (ok) => {
       if (ok) {
         if (task.retryCount) {

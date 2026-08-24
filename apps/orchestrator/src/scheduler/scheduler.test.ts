@@ -79,6 +79,31 @@ describe("tick", () => {
     const after = listEnabledScheduledTasks().find((t) => t.id === task.id);
     expect(after?.lastRunAt).not.toBeNull();
   });
+
+  it("auto-approves local-work tools, since nobody is watching a cron fire to click approve", async () => {
+    const { createScheduledTask, listEnabledScheduledTasks, getSession } = await import("../db/repo.js");
+    const { tick } = await import("./scheduler.js");
+
+    const task = createScheduledTask({
+      prompt: "Follow AUTOMATION_RULES.md",
+      cwd: "C:/jarvis-lab-3",
+      permissionMode: "acceptEdits",
+      timeOfDay: "09:00",
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      nextRunAt: past(),
+    });
+
+    tick();
+
+    // The mocked startSession call — what sessionManager actually receives.
+    expect(sessionManagerMocks.startSession.mock.calls[0][0]).toMatchObject({
+      autoApproveLocalTools: true,
+    });
+
+    // The session record createSession wrote — what the dashboard reads back.
+    const sessionId = listEnabledScheduledTasks().find((t) => t.id === task.id)?.lastSessionId;
+    expect(getSession(sessionId!)?.autoApproveLocalTools).toBe(true);
+  });
 });
 
 describe("nextRetryAt", () => {

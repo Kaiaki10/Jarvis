@@ -336,6 +336,7 @@ const LOCAL_WORK_TOOLS = [
   "Bash",
   "BashOutput",
   "KillShell",
+  "PowerShell",
   "Read",
   "Write",
   "Edit",
