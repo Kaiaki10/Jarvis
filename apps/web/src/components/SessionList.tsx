@@ -6,7 +6,7 @@ import { ChevronRight, History, Trash2 } from "lucide-react";
 import { useSessionsList } from "@/lib/hooks";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { SharedElement } from "@/components/motion";
+import { Crossfade, SharedElement } from "@/components/motion";
 import { STATUS_LABEL, STATUS_TONE } from "@/lib/sessionStatus";
 
 
@@ -60,6 +60,7 @@ export function SessionList({
       />
       {error && <div className="px-5 pb-2 text-label text-danger">{error}</div>}
       <div className="flex flex-col px-2 pb-2">
+        <Crossfade viewKey={loading ? "loading" : visible.length === 0 ? "empty" : "list"}>
         {loading && <div className="px-3 py-4 text-body text-muted">Loading…</div>}
         {!loading && visible.length === 0 && (
           <div className="flex items-center gap-2.5 px-3 py-4 text-body text-muted">
@@ -133,6 +134,7 @@ export function SessionList({
             )}
           </div>
         ))}
+        </Crossfade>
       </div>
     </Card>
   );

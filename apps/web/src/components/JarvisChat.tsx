@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { SessionTranscript } from "@/components/SessionTranscript";
 import { Badge } from "@/components/ui/Badge";
+import { Crossfade } from "@/components/motion";
 import { useConnectionStatus, useMemories } from "@/lib/store";
 
 /**
@@ -114,13 +115,15 @@ export function JarvisChat() {
         className="max-h-[calc(100vh-24rem)] min-h-[19rem] overflow-y-auto px-6 py-6"
       >
         <div ref={transcriptRef}>
-        {loading ? (
-          <div className="text-body text-muted">Loading…</div>
-        ) : sessionId ? (
-          <ChatBody sessionId={sessionId} activityKey={activityKey} />
-        ) : (
-          <EmptyState />
-        )}
+        <Crossfade viewKey={loading ? "loading" : sessionId ? "chat" : "empty"}>
+          {loading ? (
+            <div className="text-body text-muted">Loading…</div>
+          ) : sessionId ? (
+            <ChatBody sessionId={sessionId} activityKey={activityKey} />
+          ) : (
+            <EmptyState />
+          )}
+        </Crossfade>
         </div>
       </div>
 

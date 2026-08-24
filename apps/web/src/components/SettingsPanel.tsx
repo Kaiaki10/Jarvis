@@ -6,6 +6,7 @@ import { useSettings } from "@/lib/hooks";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Textarea, Select, Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { Crossfade } from "@/components/motion";
 import { BackupPanel } from "@/components/BackupPanel";
 import { StoragePanel } from "@/components/StoragePanel";
 
@@ -30,10 +31,18 @@ export function SettingsPanel() {
   const { settings, saveSettings } = useSettings();
 
   if (!settings) {
-    return <div className="text-body text-muted">Loading settings…</div>;
+    return (
+      <Crossfade viewKey="loading">
+        <div className="text-body text-muted">Loading settings…</div>
+      </Crossfade>
+    );
   }
 
-  return <LoadedSettingsPanel key={settings.businessContext} settings={settings} saveSettings={saveSettings} />;
+  return (
+    <Crossfade viewKey="settings">
+      <LoadedSettingsPanel key={settings.businessContext} settings={settings} saveSettings={saveSettings} />
+    </Crossfade>
+  );
 }
 
 function LoadedSettingsPanel({
