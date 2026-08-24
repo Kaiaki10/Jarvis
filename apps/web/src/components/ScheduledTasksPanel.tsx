@@ -240,6 +240,7 @@ function TaskRow({
             }}
             className="rounded p-1 text-muted hover:text-foreground"
             title={task.enabled ? "Pause" : "Resume"}
+            aria-label={task.enabled ? "Pause" : "Resume"}
           >
             {task.enabled ? (
               <Pause className="h-3.5 w-3.5" />
@@ -254,6 +255,7 @@ function TaskRow({
             }}
             className="rounded p-1 text-muted hover:text-danger"
             title="Delete"
+            aria-label="Delete"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
