@@ -81,6 +81,64 @@ describe("tick", () => {
   });
 });
 
+describe("nextRetryAt", () => {
+  it("retries on the short cadence when the account isn't rate-limited", async () => {
+    const { resetUsageForTests } = await import("../sessions/claudeUsage.js");
+    const { nextRetryAt } = await import("./scheduler.js");
+    resetUsageForTests();
+
+    const before = Date.now();
+    const at = nextRetryAt().getTime();
+    // ~5 minutes out, not hours or days.
+    expect(at - before).toBeGreaterThan(4 * 60_000);
+    expect(at - before).toBeLessThan(6 * 60_000);
+  });
+
+  it("waits for the reported reset instant when the turn was rejected for hitting a usage limit", async () => {
+    const { recordRateLimit, resetUsageForTests } = await import("../sessions/claudeUsage.js");
+    const { nextRetryAt } = await import("./scheduler.js");
+    resetUsageForTests();
+
+    // Four real retries burned in under an hour this way on 2026-08-19, every
+    // one reporting a reset time none of them could have beaten. A window
+    // that resets hours from now must push the retry out that far, not 5min.
+    const resetsAtSeconds = Math.floor(Date.now() / 1000) + 3 * 60 * 60;
+    recordRateLimit({ rateLimitType: "five_hour", status: "rejected", resetsAt: resetsAtSeconds });
+
+    const at = nextRetryAt().getTime();
+    expect(at).toBeGreaterThanOrEqual(resetsAtSeconds * 1000);
+    // Some slack past the exact instant, not hours of it.
+    expect(at - resetsAtSeconds * 1000).toBeLessThan(5 * 60_000);
+  });
+
+  it("also accepts resetsAt reported in milliseconds", async () => {
+    const { recordRateLimit, resetUsageForTests } = await import("../sessions/claudeUsage.js");
+    const { nextRetryAt } = await import("./scheduler.js");
+    resetUsageForTests();
+
+    const resetsAtMs = Date.now() + 2 * 60 * 60 * 1000;
+    recordRateLimit({ rateLimitType: "five_hour", status: "rejected", resetsAt: resetsAtMs });
+
+    const at = nextRetryAt().getTime();
+    expect(at).toBeGreaterThanOrEqual(resetsAtMs);
+    expect(at - resetsAtMs).toBeLessThan(5 * 60_000);
+  });
+
+  it("falls back to the short cadence once the reported reset time has already passed", async () => {
+    const { recordRateLimit, resetUsageForTests } = await import("../sessions/claudeUsage.js");
+    const { nextRetryAt } = await import("./scheduler.js");
+    resetUsageForTests();
+
+    const resetsAtSeconds = Math.floor(Date.now() / 1000) - 60;
+    recordRateLimit({ rateLimitType: "five_hour", status: "rejected", resetsAt: resetsAtSeconds });
+
+    const before = Date.now();
+    const at = nextRetryAt().getTime();
+    expect(at - before).toBeGreaterThan(4 * 60_000);
+    expect(at - before).toBeLessThan(6 * 60_000);
+  });
+});
+
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const WEEKDAYS = [1, 2, 3, 4, 5];
 
