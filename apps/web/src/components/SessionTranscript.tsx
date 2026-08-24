@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Check, Eye, ShieldQuestion, Undo2, Wrench, X } from "lucide-react";
 import type { SessionEventRecord, SessionRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
@@ -175,12 +175,25 @@ export function SessionTranscript({
   session,
   events,
   refreshSession,
+  liveTextRef,
+  subscribeStreamDelta,
+  streaming,
   compact = false,
 }: {
   sessionId: string;
   session: SessionRecord | null;
   events: SessionEventRecord[];
   refreshSession: () => void;
+  /** Current in-progress reply text. Written by useSessionStream directly, on
+   *  every token — read here only to seed the DOM node, never as a render
+   *  dependency (see the effect below). */
+  liveTextRef: RefObject<string>;
+  /** Registers a callback fired synchronously on every streamed token. */
+  subscribeStreamDelta: (listener: () => void) => () => void;
+  /** True for the whole span of a reply streaming in. Flips at most twice per
+   *  turn (start, end) — safe to use as a normal render dependency, unlike
+   *  the token text itself. */
+  streaming: boolean;
   /**
    * Chat mode. One long-running conversation restarts the underlying process
    * whenever it goes idle, so per-run bookkeeping ("Session started", turn
@@ -209,33 +222,23 @@ export function SessionTranscript({
     return null;
   }, [events, resolvedRequestIds]);
 
-  const liveText = useMemo(() => {
-    let lastFinalIdx = -1;
-    for (let i = events.length - 1; i >= 0; i--) {
-      if (events[i].type === "assistant" || events[i].type === "result") {
-        lastFinalIdx = i;
-        break;
-      }
-    }
-    let text = "";
-    for (let i = lastFinalIdx + 1; i < events.length; i++) {
-      const e = events[i];
-      if (e.type !== "stream_event") continue;
-      const payload = e.payload as {
-        event?: { type?: string; delta?: { type?: string; text?: string } };
-      };
-      const delta = payload.event?.delta;
-      if (payload.event?.type === "content_block_delta" && delta?.type === "text_delta") {
-        text += delta.text ?? "";
-      }
-    }
-    return text;
-  }, [events]);
+  // Writes straight into the DOM on every token rather than through React
+  // state/render — see liveTextRef's doc comment and DESIGN_SYSTEM.md's
+  // Conversation and memory section. Re-subscribing on session switches is
+  // what clears stale text left over from a previous session's node.
+  const liveTextNodeRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const node = liveTextNodeRef.current;
+    if (node) node.textContent = liveTextRef.current;
+    return subscribeStreamDelta(() => {
+      if (liveTextNodeRef.current) liveTextNodeRef.current.textContent = liveTextRef.current;
+    });
+  }, [subscribeStreamDelta, liveTextRef, sessionId]);
 
   // While a turn is in flight but nothing has streamed back yet, say so — otherwise
   // the UI looks identical to "nothing happened".
   const thinking =
-    !liveText &&
+    !streaming &&
     !pendingPermission &&
     (session?.status === "running" || session?.status === "starting");
 
@@ -255,9 +258,9 @@ export function SessionTranscript({
         <TranscriptEntry key={event.id} event={event} compact={compact} />
       ))}
 
-      {liveText && (
+      {streaming && (
         <div className="animate-message-in rounded-2xl rounded-tl-md border border-border bg-white/[0.03] px-4 py-3 text-body whitespace-pre-wrap text-foreground shadow-elev-1">
-          {liveText}
+          <span ref={liveTextNodeRef} />
           <span className="animate-pulse-soft text-accent-bright">▍</span>
         </div>
       )}

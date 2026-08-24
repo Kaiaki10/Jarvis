@@ -180,13 +180,17 @@ export function JarvisChat() {
 }
 
 function ChatBody({ sessionId, activityKey }: { sessionId: string; activityKey: number }) {
-  const { session, events, refreshSession } = useSessionStream(sessionId, activityKey);
+  const { session, events, refreshSession, liveTextRef, subscribeStreamDelta, streaming } =
+    useSessionStream(sessionId, activityKey);
   return (
     <SessionTranscript
       sessionId={sessionId}
       session={session}
       events={events}
       refreshSession={refreshSession}
+      liveTextRef={liveTextRef}
+      subscribeStreamDelta={subscribeStreamDelta}
+      streaming={streaming}
       compact
     />
   );

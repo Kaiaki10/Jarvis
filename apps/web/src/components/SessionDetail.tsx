@@ -18,7 +18,8 @@ import { STATUS_LABEL, STATUS_TONE } from "@/lib/sessionStatus";
  */
 export function SessionDetail({ sessionId }: { sessionId: string }) {
   const [activityKey, setActivityKey] = useState(0);
-  const { session, events, refreshSession } = useSessionStream(sessionId, activityKey);
+  const { session, events, refreshSession, liveTextRef, subscribeStreamDelta, streaming } =
+    useSessionStream(sessionId, activityKey);
   const [followUp, setFollowUp] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -91,6 +92,9 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
             session={session}
             events={events}
             refreshSession={refreshSession}
+            liveTextRef={liveTextRef}
+            subscribeStreamDelta={subscribeStreamDelta}
+            streaming={streaming}
           />
         </div>
       </div>

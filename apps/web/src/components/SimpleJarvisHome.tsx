@@ -442,10 +442,22 @@ function AgentPresence({ active, listening, name }: { active: boolean; listening
 }
 
 function SimpleTranscript({ sessionId, activityKey, onActivity }: { sessionId: string; activityKey: number; onActivity: (active: boolean) => void }) {
-  const { session, events, refreshSession } = useSessionStream(sessionId, activityKey);
+  const { session, events, refreshSession, liveTextRef, subscribeStreamDelta, streaming } =
+    useSessionStream(sessionId, activityKey);
   const active = session ? ["starting", "running", "waiting_permission"].includes(session.status) : false;
   useEffect(() => onActivity(active), [active, onActivity]);
-  return <SessionTranscript sessionId={sessionId} session={session} events={events} refreshSession={refreshSession} compact />;
+  return (
+    <SessionTranscript
+      sessionId={sessionId}
+      session={session}
+      events={events}
+      refreshSession={refreshSession}
+      liveTextRef={liveTextRef}
+      subscribeStreamDelta={subscribeStreamDelta}
+      streaming={streaming}
+      compact
+    />
+  );
 }
 
 function SimpleEmptyState({ agentName, model, onSuggestion }: { agentName: string; model: ChatModel; onSuggestion: (value: string) => void }) {

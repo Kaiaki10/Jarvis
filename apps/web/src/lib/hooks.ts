@@ -40,6 +40,52 @@ export function useSessionStream(sessionId: string, activityKey = 0) {
   const lastStreamSignalAt = useRef(0);
   const latestResultSeq = useRef(0);
 
+  // A turn streams back one delta per token — far too often to run through
+  // React state (DESIGN_SYSTEM.md: "never put one React state update per
+  // token on the render path"). liveTextRef is the source of truth for the
+  // in-progress text; subscribeStreamDelta lets a consumer write it straight
+  // into a DOM node on every token. streaming is real state, but only ever
+  // flips on the rare start/end of a turn, not per token — consumers use it
+  // to decide whether the live line exists at all.
+  const liveTextRef = useRef("");
+  const streamingRef = useRef(false);
+  const [streaming, setStreaming] = useState(false);
+  const streamListeners = useRef(new Set<() => void>());
+
+  const subscribeStreamDelta = useCallback((listener: () => void) => {
+    streamListeners.current.add(listener);
+    return () => {
+      streamListeners.current.delete(listener);
+    };
+  }, []);
+
+  // Stable identity (reads everything through refs) so the long-lived
+  // EventSource closure below never holds a stale copy of it.
+  const absorbEvent = useCallback((event: SessionEventRecord) => {
+    if (event.type === "assistant" || event.type === "result") {
+      if (streamingRef.current) {
+        streamingRef.current = false;
+        liveTextRef.current = "";
+        setStreaming(false);
+      }
+      return;
+    }
+    if (event.type !== "stream_event") return;
+    const payload = event.payload as {
+      event?: { type?: string; delta?: { type?: string; text?: string } };
+    };
+    const delta = payload.event?.delta;
+    if (payload.event?.type !== "content_block_delta" || delta?.type !== "text_delta" || !delta.text) {
+      return;
+    }
+    liveTextRef.current += delta.text;
+    if (!streamingRef.current) {
+      streamingRef.current = true;
+      setStreaming(true);
+    }
+    for (const listener of streamListeners.current) listener();
+  }, []);
+
   const events = eventState.sessionId === sessionId ? eventState.events : [];
   const storedSession = sessionState.sessionId === sessionId ? sessionState.session : null;
   const session = !liveSession
@@ -64,20 +110,27 @@ export function useSessionStream(sessionId: string, activityKey = 0) {
       if (!incoming.length || lastSeq.current.sessionId !== sessionId) return [];
       for (const event of incoming) {
         if (event.type === "result") latestResultSeq.current = Math.max(latestResultSeq.current, event.seq);
+        // Replays the batch through the same reducer the live SSE path uses,
+        // so a reconnect that lands mid-turn reconstructs the in-progress
+        // text instead of losing it.
+        absorbEvent(event);
       }
-      setEventState((prev) => {
-        const current = prev.sessionId === sessionId ? prev.events : [];
-        const bySeq = new Map([...current, ...incoming].map((event) => [event.seq, event]));
-        const merged = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
-        lastSeq.current = { sessionId, seq: merged.at(-1)?.seq ?? since };
-        return { sessionId, events: merged };
-      });
+      const nonStream = incoming.filter((event) => event.type !== "stream_event");
+      if (nonStream.length) {
+        setEventState((prev) => {
+          const current = prev.sessionId === sessionId ? prev.events : [];
+          const bySeq = new Map([...current, ...nonStream].map((event) => [event.seq, event]));
+          const merged = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+          return { sessionId, events: merged };
+        });
+      }
+      lastSeq.current = { sessionId, seq: incoming.at(-1)?.seq ?? since };
       refreshSession();
       return incoming;
     } catch {
       return [];
     }
-  }, [refreshSession, sessionId, setEventState]);
+  }, [absorbEvent, refreshSession, sessionId]);
 
   // Sending a message opens a short recovery window. It costs nothing while
   // the conversation is idle, stops as soon as the new result arrives, and
@@ -148,6 +201,12 @@ export function useSessionStream(sessionId: string, activityKey = 0) {
         if (event.seq <= lastSeq.current.seq) return;
         lastSeq.current.seq = event.seq;
         if (event.type === "result") latestResultSeq.current = event.seq;
+
+        absorbEvent(event);
+        // Every token has its own seq and reaches here, but only writes to
+        // liveTextRef/DOM above -- it never becomes a state update.
+        if (event.type === "stream_event") return;
+
         setEventState((prev) => ({
           sessionId,
           events: [...(prev.sessionId === sessionId ? prev.events : []), event],
@@ -185,7 +244,13 @@ export function useSessionStream(sessionId: string, activityKey = 0) {
           (latest, event) => event.type === "result" ? Math.max(latest, event.seq) : latest,
           0
         );
-        setEventState({ sessionId, events: initial });
+        // Opening a session mid-turn (a running automation, a page refresh
+        // during a reply) should show whatever has already streamed rather
+        // than waiting for the next token.
+        liveTextRef.current = "";
+        streamingRef.current = false;
+        for (const event of initial) absorbEvent(event);
+        setEventState({ sessionId, events: initial.filter((event) => event.type !== "stream_event") });
         refreshSession();
         void connect();
       })
@@ -200,7 +265,7 @@ export function useSessionStream(sessionId: string, activityKey = 0) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       currentSource?.close();
     };
-  }, [catchUpEvents, refreshSession, sessionId]);
+  }, [absorbEvent, catchUpEvents, refreshSession, sessionId]);
 
-  return { session, events, refreshSession };
+  return { session, events, refreshSession, liveTextRef, subscribeStreamDelta, streaming };
 }
