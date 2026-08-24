@@ -14,11 +14,7 @@ Each run picks **one** item, completes it properly, and records the outcome here
 
 ## Up next
 
-- [ ] Loading states: lists render "Loading…" as plain text. Add skeleton rows so the
-      layout doesn't jump when data arrives.
-- [ ] Relative timestamps: the sessions list shows status but never when anything ran.
-      Add a subtle "3m ago" per row.
-- [ ] Keyboard: Cmd/Ctrl+Enter should submit the launcher prompt from anywhere in the form.
+(empty — see Notes for where to look next)
 
 ## Design
 
@@ -27,6 +23,13 @@ these are things noticed while doing it that were out of scope for that pass.
 
 ## Done
 
+- [x] **2026-08-24** (retroactive) Relative timestamps and Cmd/Ctrl+Enter, found already
+      shipped while clearing stale "Up next" entries: `5d313d2` added a shared
+      `relativeTime()` helper and a "5m ago" badge to the session history list (and
+      consolidated `NotificationsList`'s own copy into it), and `SimpleJarvisHome.tsx`
+      already binds Cmd/Ctrl+Enter at the whole chat-panel level, not just the textarea,
+      so it submits after tabbing to the model picker or voice button too. Neither had
+      ever been checked off, so both sat in "Up next" describing work already done.
 - [x] **2026-08-24** Loading states: replaced the plain "Loading…" text in nine spots
       across eight components (SessionList, JarvisChat, SimpleJarvisHome,
       SettingsPanel, StripeCardsPanel, SpendBudgets x2, ConnectionWizard,
@@ -76,6 +79,14 @@ these are things noticed while doing it that were out of scope for that pass.
 
 ## Notes
 
+- **2026-08-24**: `src/platforms/actions.test.ts` (new) failed twice on `sendDiscordMessage`'s
+  first two tests with a 5s vitest timeout, both times only on the *first* run after the
+  file was created — every run since, alone or in the full suite, passed cleanly in ~3s.
+  Looked hard for real global-fetch pollution leaking across test files (several other
+  files `vi.stubGlobal("fetch", ...)`, all clean up with `afterEach(() => vi.unstubAllGlobals())`)
+  and found nothing; treating it as a one-off cold-start cost (fresh TS transform, first
+  FormData/fetch resolution) rather than a real bug. If it reappears reproducibly, that
+  theory is wrong — look again before dismissing it a second time.
 - **2026-08-20** (resolved): the test suite regression noted earlier today — 16 tests
   timing out on a clean tree, traced to parallel test files racing to import `db.ts`
   and initialize SQLite at the same time — is fixed. `apps/orchestrator/vitest.config.ts`

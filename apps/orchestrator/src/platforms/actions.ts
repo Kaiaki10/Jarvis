@@ -284,16 +284,99 @@ function buildXTools(creds: Creds, sessionId?: string, connectionId?: string): A
   ]);
 }
 
+/**
+ * Slack retired the old single-request `files.upload` on 2025-11-12. The
+ * replacement is three calls: reserve an upload slot, PUT the raw bytes to
+ * the URL it hands back, then complete the upload — which is also where the
+ * channel and caption are attached, so a successful upload always ends up
+ * posted rather than left as an orphaned file only the uploader can see.
+ */
+export async function uploadImageToSlack(
+  creds: Creds,
+  fileName: string,
+  channelId: string,
+  comment: string
+): Promise<void> {
+  const { bytes, path } = readImage(fileName);
+
+  const urlForm = new FormData();
+  urlForm.append("filename", basename(path));
+  urlForm.append("length", String(bytes.length));
+  const urlRes = await fetch("https://slack.com/api/files.getUploadURLExternal", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${creds.botToken}` },
+    body: urlForm,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  const urlData = (await urlRes.json()) as {
+    ok?: boolean;
+    error?: string;
+    upload_url?: string;
+    file_id?: string;
+  };
+  if (!urlData.ok || !urlData.upload_url || !urlData.file_id) {
+    throw new Error(`Slack refused the upload request: ${urlData.error ?? "unknown error"}`);
+  }
+
+  const putRes = await fetch(urlData.upload_url, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: new Uint8Array(bytes),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!putRes.ok) {
+    throw new Error(`Slack rejected the image bytes (HTTP ${putRes.status}).`);
+  }
+
+  const completeForm = new FormData();
+  completeForm.append("files", JSON.stringify([{ id: urlData.file_id, title: fileName }]));
+  completeForm.append("channel_id", channelId);
+  completeForm.append("initial_comment", comment);
+  const completeRes = await fetch("https://slack.com/api/files.completeUploadExternal", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${creds.botToken}` },
+    body: completeForm,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  const completeData = (await completeRes.json()) as { ok?: boolean; error?: string };
+  if (!completeData.ok) {
+    throw new Error(`Slack refused to complete the upload: ${completeData.error ?? "unknown error"}`);
+  }
+}
+
 function buildSlackTools(creds: Creds, sessionId?: string, connectionId?: string): AnyTool[] {
   return erase([
     tool(
       "post_to_slack",
-      "Send a message to a Slack channel in the connected workspace.",
+      "Send a message to a Slack channel in the connected workspace, optionally with one image.",
       {
-        channel: z.string().describe("Channel name (e.g. #general) or channel ID."),
+        channel: z
+          .string()
+          .describe(
+            "Channel name (e.g. #general) or channel ID for a text-only message. " +
+              "Attaching an image requires the actual channel ID (e.g. C0123AB4CDE) — Slack's " +
+              "upload API does not accept a #name there."
+          ),
         text: z.string().describe("Message body. Slack markdown is supported."),
+        imageFile: z
+          .string()
+          .optional()
+          .describe(
+            "Optional filename of an image from the Jarvis images folder, as returned by list_available_images. " +
+              "Plain filename only. Requires channel to be a channel ID, not a #name."
+          ),
       },
       async (args) => guarded("slack", "post_to_slack", connectionId, async () => {
+        if (args.imageFile) {
+          try {
+            await uploadImageToSlack(creds, args.imageFile, args.channel, args.text);
+          } catch (err) {
+            // Fail rather than silently posting the text without the image the user expected.
+            return fail(err instanceof Error ? err.message : String(err));
+          }
+          return ok(`Message with image ${args.imageFile} sent to ${args.channel}.`);
+        }
+
         const res = await fetch("https://slack.com/api/chat.postMessage", {
           method: "POST",
           headers: {
@@ -311,32 +394,66 @@ function buildSlackTools(creds: Creds, sessionId?: string, connectionId?: string
   ]);
 }
 
+/** A `files[0]` + `payload_json` multipart body is Discord's own documented shape for an attachment on message create. */
+export async function sendDiscordMessage(
+  creds: Creds,
+  channelId: string,
+  text: string,
+  imageFile?: string
+): Promise<Response> {
+  const url = `https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`;
+  if (!imageFile) {
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bot ${creds.botToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ content: text }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  }
+
+  const { bytes, path } = readImage(imageFile);
+  const form = new FormData();
+  form.append("payload_json", JSON.stringify({ content: text }));
+  form.append("files[0]", new Blob([new Uint8Array(bytes)], { type: mimeTypeFor(path) }), basename(path));
+  return fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bot ${creds.botToken}` },
+    body: form,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+}
+
 function buildDiscordTools(creds: Creds, sessionId?: string, connectionId?: string): AnyTool[] {
   return erase([
     tool(
       "post_to_discord",
-      "Send a message to a Discord channel the bot has access to.",
+      "Send a message to a Discord channel the bot has access to, optionally with one image.",
       {
         channelId: z.string().describe("Numeric Discord channel ID."),
         text: z.string().describe("Message body."),
+        imageFile: z
+          .string()
+          .optional()
+          .describe(
+            "Optional filename of an image from the Jarvis images folder, as returned by list_available_images. Plain filename only."
+          ),
       },
       async (args) => guarded("discord", "post_to_discord", connectionId, async () => {
-        const res = await fetch(
-          `https://discord.com/api/v10/channels/${encodeURIComponent(args.channelId)}/messages`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bot ${creds.botToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ content: args.text }),
-            signal: AbortSignal.timeout(TIMEOUT_MS),
-          }
-        );
+        let res: Response;
+        try {
+          res = await sendDiscordMessage(creds, args.channelId, args.text, args.imageFile);
+        } catch (err) {
+          // readImage throws for a bad filename before any request is sent.
+          return fail(err instanceof Error ? err.message : String(err));
+        }
         if (!res.ok) {
           return fail(`Discord refused the message (HTTP ${res.status}): ${await res.text()}`);
         }
-        return ok(`Message sent to Discord channel ${args.channelId}.`);
+        const withImage = args.imageFile ? ` with image ${args.imageFile}` : "";
+        return ok(`Message sent to Discord channel ${args.channelId}${withImage}.`);
       }, args.text, sessionId)
     ),
   ]);

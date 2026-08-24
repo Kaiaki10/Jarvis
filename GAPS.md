@@ -27,11 +27,6 @@ connections do not exist yet, and email campaigns need audience/list semantics r
 a single-recipient send tool. Those channels can still use the content calendar and manual
 published state, but only X has confirmed automatic dispatch today.
 
-### medium — Slack and Discord tools are still text-only
-`post_to_slack` and `post_to_discord` send text only. X now supports attaching an
-image from the watched folder; the same could be offered for the other platforms,
-which use simpler single-request uploads.
-
 ### medium — Orchestrator API has no per-agent authorization
 Every request now carries a shared token, so the API is no longer open to anything running
 locally. Repository queries, mutations, child-resource checks, notifications, and frontend
@@ -54,6 +49,26 @@ Every platform requires manually copying tokens. Proper OAuth flows would be fri
 but need a public redirect URL.
 
 ## Closed
+
+- **2026-08-24** `post_to_slack` and `post_to_discord` could only send text; X was the
+  only platform that could attach an image from the watched folder. Both now accept an
+  optional `imageFile`, reusing the same `list_available_images` / images-folder
+  convention as X. Discord's upload is a single multipart request (`payload_json` +
+  `files[0]`), no new scope needed beyond Send Messages/Attach Files. Slack needed real
+  research, not the "simpler single-request" upload this gap assumed: `files.upload`
+  was retired 2025-11-12, so it now goes through the current three-call flow
+  (`files.getUploadURLExternal` → raw-byte POST → `files.completeUploadExternal`, the
+  last of which also carries the channel and caption). That requires a `files:write`
+  bot scope the connection wizard didn't request before — added, with a reinstall
+  warning like the existing scope changes. It also only accepts a real channel ID, not
+  a `#name` the way `chat.postMessage` does; the tool description says so rather than
+  silently failing on a plausible-looking argument. Verified against Slack's and
+  Discord's current API docs (no live workspace credentials available here to test
+  against); added `actions.test.ts` — previously nonexistent for this file — covering
+  both new code paths against mocked `fetch`: correct request shapes for the happy
+  path, and each documented failure mode (refused upload URL, rejected byte upload,
+  refused completion, a path-traversal filename). Full suite green across three
+  consecutive runs.
 
 - **2026-08-20** After the IPv6-loopback fix, the same user's Firefox still
   bounced straight back to `/login?from=%2F` on a fresh tab, even though the

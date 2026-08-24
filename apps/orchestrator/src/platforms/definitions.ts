@@ -85,7 +85,7 @@ const slack: Platform = {
       {
         title: "Subscribe to messages",
         body: [
-          "Under OAuth & Permissions add bot scopes chat:write, app_mentions:read, and im:history.",
+          "Under OAuth & Permissions add bot scopes chat:write, app_mentions:read, im:history, and files:write (needed to attach images).",
           "Under Event Subscriptions enable events, then subscribe to app_mention and message.im.",
           "Under App Home keep the Messages tab enabled and allow users to send messages so direct messages reach Jarvis.",
         ],
@@ -160,7 +160,7 @@ const discord: Platform = {
       {
         title: "Invite the bot to your server",
         body: [
-          "Open OAuth2 → URL Generator, tick the bot scope, choose the permissions it needs (Send Messages at minimum), then open the generated URL and pick your server.",
+          "Open OAuth2 → URL Generator, tick the bot scope, choose the permissions it needs (Send Messages and Attach Files at minimum), then open the generated URL and pick your server.",
           "The bot has to be in the server before it can post there.",
         ],
       },
