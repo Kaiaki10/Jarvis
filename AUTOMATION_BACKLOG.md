@@ -28,18 +28,27 @@ these are things noticed while doing it that were out of scope for that pass.
 - [ ] `ScheduledTasksPanel` rows use a `<details>` element whose summary marker is
       hidden. Verify the disclosure state is announced to screen readers and that the
       row is operable by keyboard.
-- [ ] The narrow (900px) viewport was only ever checked by screenshot at page level.
-      Walk each page at that width and check nothing overflows — `SettingsPanel` and
-      `ConnectionWizard` have the widest form rows and are the likeliest to break.
-- [ ] `SettingsPanel` and `ConnectionWizard` were swept onto the type scale mechanically
-      but never redesigned. Both are long unbroken forms with no grouping or visual
-      rhythm — the densest, least considered pages in the app.
 - [ ] Loading states render as the plain word "Loading…" in six components. Skeleton
       rows matching the real row height would stop the layout jumping when data lands.
       (Also listed under Up next; whichever job gets there first should tick both.)
 
 ## Done
 
+- [x] **2026-08-24** `SettingsPanel`/`ConnectionWizard` redesign — already done, not
+      newly built: `c5d31b9` ("Give Settings and Connections a shape you can navigate",
+      2026-08-23) gave both pages a section rail and sticky headers, which is exactly
+      what this item asked for. Verified live against an isolated preview instance —
+      the "On this page" rail with an active-section indicator renders correctly at
+      1600px. This Design entry predates that commit and was never marked done.
+- [x] **2026-08-24** Narrow (900px) viewport sweep: walked all 23 pages the dashboard
+      has (the same list `scripts/screenshot-dashboard.mjs` screenshots) against a live,
+      isolated preview instance at 900px, measuring `document.documentElement.scrollWidth
+      - clientWidth` on each. Zero horizontal overflow anywhere, including `SettingsPanel`
+      and `ConnectionWizard` (walked its full multi-step credential form for both Stripe
+      and Coinbase, its widest platforms). No fix needed — the concern this item raised
+      didn't reproduce. Caveat: checked against fresh/default fixture data, not
+      unusually long real content (a very long business-context paste, a long error
+      message), which this pass wouldn't catch.
 - [x] **2026-08-18** Tool call visibility: `TranscriptEntry` in `SessionTranscript.tsx` was
       silently dropping `tool_use` content blocks. Added a `ToolCallRow` — a wrench icon, a
       humanized label ("Ran npm test", "Read store.tsx"), and a `<details>` disclosure for
