@@ -12,6 +12,7 @@ import { notify } from "../notifications/notifier.js";
 import { listImages, imagesFolder, readImage, mimeTypeFor } from "./media.js";
 import { basename } from "node:path";
 import { withPlatformLock } from "./platformLock.js";
+import { drawFromWallet } from "../billing/walletFunding.js";
 
 type Creds = Record<string, string>;
 
@@ -375,11 +376,77 @@ function buildResendTools(creds: Creds, sessionId?: string, connectionId?: strin
   ]);
 }
 
+/**
+ * The wallet, as something Jarvis can actually reach.
+ *
+ * Only ever a draw-down. Coinbase's spend permission moves tokens from the
+ * operator's wallet to Jarvis's own spender account and takes no recipient, so
+ * this tool structurally cannot send money to a third party however it is
+ * asked. That is the property worth keeping: the worst a confused or
+ * manipulated model can do here is move the operator's own money into the
+ * operator's own agent account, inside a limit they signed.
+ *
+ * Three separate ceilings, none of which this code can raise: the daily
+ * envelope under Money (checked first, so a refusal costs no gas), the
+ * on-chain allowance, and the approval gate every non-read tool passes
+ * through.
+ */
+function buildWalletTools(_creds: Creds, _sessionId?: string, _connectionId?: string): AnyTool[] {
+  return erase([
+    tool(
+      "draw_usdc_from_wallet",
+      "Draw USDC from the operator's Coinbase wallet into Jarvis's own spender account, within the spend permission they granted. " +
+        "This does NOT pay anyone — it moves the operator's money into your account so it is available. There is no way to send it onward from here. " +
+        "Use it only when the operator has asked you to fund something, and say plainly what the money is for.",
+      {
+        purposeLabel: z
+          .string()
+          .min(1)
+          .max(200)
+          .describe(
+            "What this is for, in the operator's terms — it appears in the ledger they read. E.g. 'Anthropic Console top-up'."
+          ),
+        amountUsdc: z
+          .number()
+          .positive()
+          .max(10_000)
+          .describe("Amount in USDC, as a decimal number of dollars. E.g. 12.5 for $12.50."),
+      },
+      async (args) => {
+        // Rounded to the token's six decimals here rather than left to the
+        // caller: a model writing minor units gets $12.50 wrong by a factor of
+        // a million about as often as it gets it right.
+        const amountMinor = Math.round(args.amountUsdc * 1_000_000);
+        if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+          return fail("That amount could not be read as a USDC value.");
+        }
+        try {
+          const spend = await drawFromWallet({
+            purposeLabel: args.purposeLabel.trim(),
+            amountMinor,
+          });
+          return ok(
+            `Drew ${(spend.amountMinor / 1_000_000).toFixed(2)} USDC for "${spend.purposeLabel}". ` +
+              `Transaction ${spend.txHash ?? "pending"}. It is in Jarvis's spender account and recorded in the shared ledger.`
+          );
+        } catch (err) {
+          // Surfaced verbatim: these messages are the envelope and the
+          // permission explaining themselves, and are what the operator needs
+          // to hear rather than a generic failure.
+          return fail(err instanceof Error ? err.message : String(err));
+        }
+      }
+    ),
+  ]);
+}
+
+
 const BUILDERS: Record<string, (creds: Creds, sessionId?: string, connectionId?: string) => AnyTool[]> = {
   x: buildXTools,
   slack: buildSlackTools,
   discord: buildDiscordTools,
   resend: buildResendTools,
+  coinbase: buildWalletTools,
 };
 
 export interface PlatformToolset {

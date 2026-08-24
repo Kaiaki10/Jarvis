@@ -289,3 +289,51 @@ export async function revokeSpendPermission(permissionHash: string): Promise<voi
     network: "base",
   });
 }
+
+/**
+ * Draws funds from the operator's wallet using whichever granted permission
+ * can cover the amount.
+ *
+ * The permission hash is resolved here rather than asked for, because the
+ * caller that matters is a language model. Making it list permissions and pass
+ * a hash back adds a step whose only possible failure is a wrong hash — and a
+ * wrong hash is either a confusing error or, worse, the wrong permission.
+ *
+ * Widest allowance first, so a small permission sitting alongside a large one
+ * does not fail a spend the operator has plainly authorised. Expired ones are
+ * skipped rather than attempted: the chain would reject them anyway, and paying
+ * gas to be told so is worse than saying it here.
+ *
+ * Note what this does and does not do. Coinbase's spend permission moves tokens
+ * from the operator's wallet to Jarvis's *own spender account* — there is no
+ * recipient parameter, and there cannot be one. So this is a draw-down, not a
+ * payment: Jarvis can take what it was authorised to take, and cannot send it
+ * to a stranger, because the destination is fixed by the contract rather than
+ * chosen here.
+ */
+export async function drawFromWallet(input: {
+  purposeLabel: string;
+  amountMinor: number;
+}): Promise<WalletSpendRecord> {
+  const permissions = await listGrantedPermissions();
+  if (permissions.length === 0) {
+    throw new Error(
+      "No spend permission has been granted to Jarvis yet, so there is nothing to draw from. Grant one on the Crypto → Wallet page."
+    );
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const usable = permissions
+    .filter((permission) => permission.end === 0 || permission.end > nowSeconds)
+    .sort((a, b) => (BigInt(b.allowanceMinor) > BigInt(a.allowanceMinor) ? 1 : -1));
+
+  if (usable.length === 0) {
+    throw new Error("Every spend permission granted to Jarvis has expired. Grant a new one.");
+  }
+
+  return spendFromPermission({
+    purposeLabel: input.purposeLabel,
+    amountMinor: input.amountMinor,
+    permissionHash: usable[0].permissionHash,
+  });
+}

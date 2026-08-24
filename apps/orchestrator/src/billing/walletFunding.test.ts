@@ -281,3 +281,77 @@ describe("granting and revoking", () => {
     await expect(revokeSpendPermission("0xmissing")).rejects.toThrow(/No such spend permission/i);
   });
 });
+
+describe("drawing from the wallet", () => {
+  beforeEach(() => {
+    Object.values(cdpMocks).forEach((mock) => mock.mockReset());
+  });
+
+  it("says there is nothing to draw from before a permission exists", async () => {
+    await connectWallet();
+    mockSpender();
+    cdpMocks.listSpendPermissions.mockResolvedValue({ spendPermissions: [] });
+    const { drawFromWallet } = await import("./walletFunding.js");
+    await expect(drawFromWallet({ purposeLabel: "Console", amountMinor: 1_000_000 })).rejects.toThrow(
+      /No spend permission has been granted/i
+    );
+    expect(cdpMocks.useSpendPermission).not.toHaveBeenCalled();
+  });
+
+  it("refuses when every permission has expired, without paying gas to find out", async () => {
+    await connectWallet();
+    mockSpender();
+    const past = Math.floor(Date.now() / 1000) - 60;
+    cdpMocks.listSpendPermissions.mockResolvedValue({
+      spendPermissions: [{ ...fakePermission(), permission: { ...fakePermission().permission, end: past } }],
+    });
+    const { drawFromWallet } = await import("./walletFunding.js");
+    await expect(drawFromWallet({ purposeLabel: "Console", amountMinor: 1_000 })).rejects.toThrow(
+      /expired/i
+    );
+    expect(cdpMocks.useSpendPermission).not.toHaveBeenCalled();
+  });
+
+  it("picks the widest allowance, so a small permission cannot block an authorised spend", async () => {
+    await connectWallet();
+    mockSpender();
+    const future = Math.floor(Date.now() / 1000) + 86_400;
+    const small = fakePermission({ permissionHash: "0xsmall", allowance: 1_000_000n });
+    const large = fakePermission({ permissionHash: "0xlarge", allowance: 90_000_000n });
+    small.permission.end = future;
+    large.permission.end = future;
+    cdpMocks.listSpendPermissions.mockResolvedValue({ spendPermissions: [small, large] });
+    cdpMocks.useSpendPermission.mockResolvedValue({ transactionHash: "0xdraw" });
+
+    const { setEnvelope } = await import("./envelopes.js");
+    setEnvelope({ rail: "wallet", period: "day", limitMinor: 90_000_000, currency: "USDC" });
+
+    const { drawFromWallet } = await import("./walletFunding.js");
+    const spend = await drawFromWallet({ purposeLabel: "Console", amountMinor: 50_000_000 });
+
+    expect(spend.txHash).toBe("0xdraw");
+    expect(cdpMocks.useSpendPermission).toHaveBeenCalledWith(
+      expect.objectContaining({ value: 50_000_000n })
+    );
+  });
+
+  it("is still stopped by the daily envelope, before the chain is touched", async () => {
+    await connectWallet();
+    mockSpender();
+    const future = Math.floor(Date.now() / 1000) + 86_400;
+    const permission = fakePermission({ allowance: 90_000_000n });
+    permission.permission.end = future;
+    cdpMocks.listSpendPermissions.mockResolvedValue({ spendPermissions: [permission] });
+
+    const { setEnvelope } = await import("./envelopes.js");
+    setEnvelope({ rail: "wallet", period: "day", limitMinor: 2_000_000, currency: "USDC" });
+
+    const { drawFromWallet } = await import("./walletFunding.js");
+    // The on-chain allowance would happily permit this; the operator's own
+    // daily limit is the tighter of the two and has to win.
+    await expect(
+      drawFromWallet({ purposeLabel: "Too much", amountMinor: 50_000_000 })
+    ).rejects.toThrow();
+    expect(cdpMocks.useSpendPermission).not.toHaveBeenCalled();
+  });
+});
