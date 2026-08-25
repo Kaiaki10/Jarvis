@@ -13,13 +13,18 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 
 ## Open
 
-### high — Attribution and marketing allocation are not autonomous yet
-Paid Growth can ingest ad-platform performance, but Campaign Studio does not yet connect
-organic impressions and clicks through leads and revenue in one attribution model. Without
-that cross-channel evidence Jarvis cannot safely decide what content won or shift the full
-marketing allocation toward it. The next increment is a normalized measurement ledger and
-campaign experiments; allocation must remain bounded and approval-gated until that evidence
-is trustworthy.
+### high — Cross-channel attribution (organic + leads + revenue) still has no evidence to work from
+Paid Growth now has a real measurement ledger and a declared-experiment mechanism for
+comparing paid campaigns against each other (closed below), but Campaign Studio still has
+no structured organic engagement data — `social_metrics` exists but is unpopulated, blocked
+on X's metrics API returning HTTP 402 "credits depleted" rather than a code gap — and no
+customer or lead ever carries an acquisition channel or revenue figure; `customers` has no
+such column and no inbound path (webhook or website widget) captures a referrer or UTM.
+Until at least one of those exists, "shift the full marketing allocation toward what's
+winning" has no organic or lead-revenue evidence to act on — only the paid-vs-paid
+comparison closed below is real today. Tracked links remain a deliberate non-goal per
+`WORKFLOW_PLAN.md`; whether that still holds is worth reconfirming against the live
+`BUSINESS_CONTEXT.md` before anyone builds click tracking to close this the rest of the way.
 
 ### medium — Automatic publishing currently supports X only
 The publication worker is adapter-based, but LinkedIn, Instagram, Facebook, and blog
@@ -45,6 +50,32 @@ Every platform requires manually copying tokens. Proper OAuth flows would be fri
 but need a public redirect URL.
 
 ## Closed
+
+- **2026-08-25** The paid-only slice of the attribution gap is closed: a `measurement_facts`
+  append-only ledger (mirrors `social_metrics`'s one-row-per-observation design) now records
+  real ad-platform revenue, spend, impressions, clicks, and conversions from both the
+  15-minute auto-sync and the manual entry path, and a declared `campaign_experiments`
+  concept (named variants, an explicit hypothesis, minimum-conversions-and-days-running
+  thresholds) replaces `engine.ts`'s old always-on heuristic that compared any two unrelated
+  active campaigns by ROAS with no context. Concluding an experiment proposes the existing
+  `reallocate` decision kind, tagged with the experiment it came from, through the same
+  approval gate in `decidePaidGrowthRecommendation` — no new execution path, no auto-apply.
+  Organic and lead/revenue evidence remain out of scope; see the sharpened entry above for
+  what's still open.
+
+  Verified live in the `jarvis-lab` worktree on scratch ports, not just typed and tested:
+  doing so found and fixed two real bugs a running app surfaced that unit tests hadn't.
+  The manual performance-update endpoint never wrote to the new ledger — only the auto-sync
+  path did, and auto-sync needs live ad-platform credentials nobody has yet, so the one path
+  actually testable today silently produced zero history. And `PaidGrowthCenter`'s two
+  dialogs (`CreatePaidCampaign`, `PerformanceEditor`) each kept an independent numeric `key`
+  counter from `useDialog()`; as literal JSX siblings they eventually land on the same
+  integer, which tripped React's duplicate-key warning once both had been opened the same
+  number of times in the live session. Also fixed, found incidentally while already in the
+  same files: `api.ts` called `/paid-growth/campaigns/...` for every Paid Growth mutation
+  (create, sync, launch, manual update) while the orchestrator only ever registered
+  `/paid-growth/workflows/...` — a live 404 on every one of those UI actions, invisible until
+  now because zero campaigns existed yet to click those buttons on.
 
 - **2026-08-24** "Dashboard is desktop-only" was already stale when reviewed: `AppShell.tsx`
   has had a full off-canvas mobile sidebar since `2c1c18b` ("v3.0 Flagship 1: reach Jarvis
