@@ -78,6 +78,10 @@ import type {
   CreatePaidGrowthCampaignRequest,
   UpdatePaidGrowthCampaignRequest,
   UpdatePaidGrowthPerformanceRequest,
+  MeasurementFactRecord,
+  CampaignExperimentRecord,
+  CampaignExperimentsOverview,
+  CreateCampaignExperimentRequest,
   ChatModel,
   ClaudeModel,
   ClaudeUsageSnapshot,
@@ -395,19 +399,29 @@ getSpend: () =>
   getPaidGrowth: () => request<PaidGrowthOverview>(scoped("/paid-growth")),
   getTrends: () => request<TrendsOverview>(scoped("/insights/trends")),
   createPaidGrowthCampaign: (body: CreatePaidGrowthCampaignRequest) =>
-    request<PaidGrowthCampaignRecord>(scoped("/paid-growth/campaigns"), { method: "POST", body: JSON.stringify(body) }),
+    request<PaidGrowthCampaignRecord>(scoped("/paid-growth/workflows"), { method: "POST", body: JSON.stringify(body) }),
   updatePaidGrowthCampaign: (id: string, patch: UpdatePaidGrowthCampaignRequest) =>
-    request<PaidGrowthCampaignRecord>(scoped(`/paid-growth/campaigns/${id}`), { method: "PATCH", body: JSON.stringify(patch) }),
+    request<PaidGrowthCampaignRecord>(scoped(`/paid-growth/workflows/${id}`), { method: "PATCH", body: JSON.stringify(patch) }),
   updatePaidGrowthPerformance: (id: string, body: UpdatePaidGrowthPerformanceRequest) =>
-    request<PaidGrowthCampaignRecord>(scoped(`/paid-growth/campaigns/${id}/performance`), { method: "POST", body: JSON.stringify(body) }),
+    request<PaidGrowthCampaignRecord>(scoped(`/paid-growth/workflows/${id}/performance`), { method: "POST", body: JSON.stringify(body) }),
   syncPaidGrowthCampaign: (id: string) =>
-    request<{ campaign: PaidGrowthCampaignRecord; decisions: PaidGrowthDecisionRecord[]; overview: PaidGrowthOverview }>(scoped(`/paid-growth/campaigns/${id}/sync`), { method: "POST" }),
+    request<{ campaign: PaidGrowthCampaignRecord; decisions: PaidGrowthDecisionRecord[]; overview: PaidGrowthOverview }>(scoped(`/paid-growth/workflows/${id}/sync`), { method: "POST" }),
   requestPaidGrowthLaunch: (id: string) =>
-    request<PaidGrowthDecisionRecord>(scoped(`/paid-growth/campaigns/${id}/request-launch`), { method: "POST" }),
+    request<PaidGrowthDecisionRecord>(scoped(`/paid-growth/workflows/${id}/request-launch`), { method: "POST" }),
   refreshPaidGrowthRecommendations: () =>
     request<{ created: PaidGrowthDecisionRecord[]; overview: PaidGrowthOverview }>(scoped("/paid-growth/recommendations/refresh"), { method: "POST" }),
   reviewPaidGrowthDecision: (id: string, decision: "approve" | "reject") =>
     request<{ decision: PaidGrowthDecisionRecord; overview: PaidGrowthOverview }>(scoped(`/paid-growth/decisions/${id}/review`), { method: "POST", body: JSON.stringify({ decision }) }),
+  getPaidGrowthHistory: (id: string) =>
+    request<MeasurementFactRecord[]>(scoped(`/paid-growth/workflows/${id}/history`)),
+  getCampaignExperiments: () =>
+    request<CampaignExperimentsOverview>(scoped("/paid-growth/experiments")),
+  createCampaignExperiment: (body: CreateCampaignExperimentRequest) =>
+    request<CampaignExperimentRecord>(scoped("/paid-growth/experiments"), { method: "POST", body: JSON.stringify(body) }),
+  concludeCampaignExperiment: (id: string) =>
+    request<{ experiment: CampaignExperimentRecord; decision: PaidGrowthDecisionRecord | null; overview: CampaignExperimentsOverview }>(scoped(`/paid-growth/experiments/${id}/conclude`), { method: "POST" }),
+  abandonCampaignExperiment: (id: string, reason: string) =>
+    request<{ experiment: CampaignExperimentRecord; overview: CampaignExperimentsOverview }>(scoped(`/paid-growth/experiments/${id}/abandon`), { method: "POST", body: JSON.stringify({ reason }) }),
 
   getCustomerOperations: () => request<CustomerOperationsOverview>(scoped("/customer-operations")),
   updateCustomerServicePolicy: (patch: UpdateCustomerServicePolicyRequest) =>

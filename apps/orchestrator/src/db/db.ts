@@ -160,6 +160,7 @@ for (const migration of [
   { table: "customer_reply_drafts", column: "escalation_reason", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN escalation_reason TEXT" },
   { table: "customer_reply_drafts", column: "auto_send", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN auto_send INTEGER NOT NULL DEFAULT 0" },
   { table: "paid_growth_campaigns", column: "external_budget_entity_id", sql: "ALTER TABLE paid_growth_campaigns ADD COLUMN external_budget_entity_id TEXT" },
+  { table: "paid_growth_decisions", column: "experiment_id", sql: "ALTER TABLE paid_growth_decisions ADD COLUMN experiment_id TEXT REFERENCES campaign_experiments(id) ON DELETE SET NULL" },
   // v2: which agent owns the row. Only root tables carry it — everything else
   // (deliverables, content_items, customer_messages, …) reaches its agent
   // through an existing foreign key, so ten columns cover full isolation.

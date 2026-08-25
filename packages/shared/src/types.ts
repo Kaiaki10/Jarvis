@@ -464,7 +464,8 @@ export type NotificationType =
   | "session_failed"
   | "automation_failed"
   | "customer_escalation"
-  | "paid_growth_approval";
+  | "paid_growth_approval"
+  | "campaign_experiment_concluded";
 
 export type NotificationSeverity = "info" | "warning" | "error";
 
@@ -842,6 +843,8 @@ export interface PaidGrowthDecisionRecord {
   reason: string;
   proposedDailyBudgetMinor: number | null;
   sourcePaidCampaignId: string | null;
+  /** Set when this decision came from a concluded campaign experiment rather than the standalone per-campaign heuristics. */
+  experimentId: string | null;
   createdAt: string;
   reviewedAt: string | null;
 }
@@ -906,6 +909,65 @@ export interface UpdatePaidGrowthPerformanceRequest {
   impressions: number;
   clicks: number;
   conversions: number;
+}
+
+// ---- Measurement ledger + campaign experiments (GAPS.md attribution gap, paid-only slice) ----
+
+/** 'paid_ads' is the only real source today. Widen this when organic/lead facts exist. */
+export type MeasurementFactSource = "paid_ads";
+
+export type MeasurementFactMetric = "spent_minor" | "revenue_minor" | "impressions" | "clicks" | "conversions";
+
+export interface MeasurementFactRecord {
+  id: string;
+  source: MeasurementFactSource;
+  paidCampaignId: string | null;
+  workflowId: string | null;
+  metric: MeasurementFactMetric;
+  value: number;
+  currency: string | null;
+  capturedAt: string;
+}
+
+export type CampaignExperimentStatus = "running" | "concluded" | "abandoned";
+
+export interface CampaignExperimentRecord {
+  id: string;
+  name: string;
+  hypothesis: string;
+  status: CampaignExperimentStatus;
+  minConversionsPerVariant: number;
+  minDaysRunning: number;
+  startedAt: string;
+  concludedAt: string | null;
+  winnerPaidCampaignId: string | null;
+  conclusionNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CampaignExperimentEligibility {
+  ready: boolean;
+  reason: string;
+}
+
+export interface CampaignExperimentView extends CampaignExperimentRecord {
+  variants: PaidGrowthCampaignView[];
+  /** null once concluded or abandoned -- eligibility only matters while running. */
+  eligibility: CampaignExperimentEligibility | null;
+}
+
+export interface CampaignExperimentsOverview {
+  experiments: CampaignExperimentView[];
+}
+
+export interface CreateCampaignExperimentRequest {
+  name: string;
+  hypothesis: string;
+  variantPaidCampaignIds: string[];
+  controlPaidCampaignId?: string;
+  minConversionsPerVariant?: number;
+  minDaysRunning?: number;
 }
 
 export type CustomerChannel = "website" | "email" | "x" | "instagram" | "facebook";

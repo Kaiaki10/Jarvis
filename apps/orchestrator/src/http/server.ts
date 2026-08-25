@@ -158,6 +158,8 @@ import {
   updatePaidGrowthCampaignSchema,
   updatePaidGrowthPerformanceSchema,
   reviewPaidGrowthDecisionSchema,
+  createCampaignExperimentSchema,
+  abandonCampaignExperimentSchema,
   createWebsiteConversationSchema,
   websiteMessageSchema,
 } from "./validation.js";
@@ -166,15 +168,17 @@ import {
   getPaidGrowthCampaign,
   listPaidGrowthDecisions,
   updatePaidGrowthCampaign,
-  updatePaidGrowthPerformance,
 } from "../db/paidGrowthRepo.js";
+import { listMeasurementFacts } from "../db/measurementFactsRepo.js";
 import {
   decidePaidGrowthRecommendation,
   paidGrowthOverview,
+  recordManualPerformance,
   refreshPaidGrowthRecommendations,
   requestPaidGrowthLaunch,
   syncPaidGrowthCampaign,
 } from "../paidGrowth/service.js";
+import { abandonExperiment, campaignExperimentsOverview, concludeExperiment, createExperiment } from "../paidGrowth/experimentService.js";
 import { startPaidGrowthMonitor } from "../paidGrowth/monitor.js";
 import { trendsOverview } from "../insights/trendsService.js";
 import { apiToken, isValidToken, tokenFromRequest } from "../security/apiToken.js";
@@ -2215,7 +2219,7 @@ app.post("/paid-growth/workflows/:id/performance", (req: Request, res: Response)
     res.status(400).json({ error: "Cumulative spend cannot move backward" });
     return;
   }
-  const campaign = updatePaidGrowthPerformance(current.id, body);
+  const campaign = recordManualPerformance(current.id, body);
   globalBus.emit("paid_growth_changed");
   res.json(campaign);
 });
@@ -2286,6 +2290,74 @@ app.post("/paid-growth/decisions/:id/review", async (req: Request, res: Response
     const decision = await decidePaidGrowthRecommendation(req.params.id, body.decision);
     globalBus.emit("paid_growth_changed");
     res.json({ decision, overview: paidGrowthOverview(agentId) });
+  } catch (error) {
+    res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/paid-growth/workflows/:id/history", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const campaign = getPaidGrowthCampaign(req.params.id, agentId);
+  if (!campaign) { res.status(404).json({ error: "Paid campaign not found" }); return; }
+  res.json(listMeasurementFacts(campaign.id));
+});
+
+// ---- Campaign experiments (GAPS.md attribution gap, paid-only slice) ----
+
+app.get("/paid-growth/experiments", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(campaignExperimentsOverview(agentId));
+});
+
+app.post("/paid-growth/experiments", (req: Request, res: Response) => {
+  const body = validatedBody(createCampaignExperimentSchema, req, res);
+  if (!body) return;
+  const agentId = owningAgentId(req, res); if (agentId === null) return;
+  try {
+    const experiment = createExperiment(body, agentId);
+    globalBus.emit("paid_growth_changed");
+    res.status(201).json(experiment);
+  } catch (error) {
+    res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post("/paid-growth/experiments/:id/conclude", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  try {
+    const { experiment, decision } = concludeExperiment(req.params.id, agentId);
+    if (decision) {
+      notify({
+        type: "paid_growth_approval",
+        severity: "info",
+        title: "Experiment concluded with a decision ready",
+        body: `${experiment.name}: ${decision.reason}`,
+        agentId,
+      });
+    } else {
+      notify({
+        type: "campaign_experiment_concluded",
+        severity: "info",
+        title: "Experiment concluded, inconclusive",
+        body: `${experiment.name}: ${experiment.conclusionNote ?? "No winner was declared."}`,
+        agentId,
+      });
+    }
+    globalBus.emit("paid_growth_changed");
+    res.json({ experiment, decision, overview: campaignExperimentsOverview(agentId) });
+  } catch (error) {
+    res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post("/paid-growth/experiments/:id/abandon", (req: Request, res: Response) => {
+  const body = validatedBody(abandonCampaignExperimentSchema, req, res);
+  if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  try {
+    const experiment = abandonExperiment(req.params.id, body.reason, agentId);
+    globalBus.emit("paid_growth_changed");
+    res.json({ experiment, overview: campaignExperimentsOverview(agentId) });
   } catch (error) {
     res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
   }

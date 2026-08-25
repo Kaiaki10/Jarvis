@@ -159,6 +159,7 @@ interface DecisionRow {
   reason: string;
   proposed_daily_budget_minor: number | null;
   source_paid_campaign_id: string | null;
+  experiment_id: string | null;
   created_at: string;
   reviewed_at: string | null;
 }
@@ -172,6 +173,7 @@ function mapDecision(row: DecisionRow): PaidGrowthDecisionRecord {
     reason: row.reason,
     proposedDailyBudgetMinor: row.proposed_daily_budget_minor,
     sourcePaidCampaignId: row.source_paid_campaign_id,
+    experimentId: row.experiment_id,
     createdAt: row.created_at,
     reviewedAt: row.reviewed_at,
   };
@@ -183,14 +185,15 @@ export function createPaidGrowthDecision(input: {
   reason: string;
   proposedDailyBudgetMinor?: number | null;
   sourcePaidCampaignId?: string | null;
+  experimentId?: string | null;
 }): PaidGrowthDecisionRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO paid_growth_decisions
-      (id, paid_campaign_id, kind, status, reason, proposed_daily_budget_minor, source_paid_campaign_id, created_at, reviewed_at)
-     VALUES (?, ?, ?, 'proposed', ?, ?, ?, ?, NULL)`
-  ).run(id, input.paidCampaignId, input.kind, input.reason, input.proposedDailyBudgetMinor ?? null, input.sourcePaidCampaignId ?? null, now);
+      (id, paid_campaign_id, kind, status, reason, proposed_daily_budget_minor, source_paid_campaign_id, experiment_id, created_at, reviewed_at)
+     VALUES (?, ?, ?, 'proposed', ?, ?, ?, ?, ?, NULL)`
+  ).run(id, input.paidCampaignId, input.kind, input.reason, input.proposedDailyBudgetMinor ?? null, input.sourcePaidCampaignId ?? null, input.experimentId ?? null, now);
   return getPaidGrowthDecision(id)!;
 }
 

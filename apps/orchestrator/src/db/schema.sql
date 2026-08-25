@@ -452,6 +452,64 @@ CREATE TABLE IF NOT EXISTS paid_growth_decisions (
 CREATE INDEX IF NOT EXISTS idx_paid_growth_status ON paid_growth_campaigns(status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_paid_growth_decisions_status ON paid_growth_decisions(status, created_at DESC);
 
+-- GAPS.md attribution gap, paid-only slice: an append-only fact log, one row
+-- per observation exactly like social_metrics below -- never overwritten, so
+-- a time series survives even though paid_growth_campaigns itself only keeps
+-- current cumulative totals. `source` is 'paid_ads' today; the shape accepts
+-- 'organic' | 'lead' later without a migration, but nothing writes those yet
+-- -- organic is blocked on X API credits and there is no revenue signal to
+-- attribute a lead to (see BUSINESS_CONTEXT.md: zero customers, zero revenue).
+CREATE TABLE IF NOT EXISTS measurement_facts (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL,
+  paid_campaign_id TEXT REFERENCES paid_growth_campaigns(id) ON DELETE CASCADE,
+  -- Denormalized from the campaign at write time so organic/lead facts (which
+  -- will have no paid_campaign_id) can still join on the one column every
+  -- source shares, without a future migration.
+  workflow_id TEXT REFERENCES workflows(id) ON DELETE SET NULL,
+  metric TEXT NOT NULL, -- spent_minor | revenue_minor | impressions | clicks | conversions
+  value REAL NOT NULL,
+  currency TEXT,
+  captured_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_measurement_facts_campaign
+  ON measurement_facts(paid_campaign_id, metric, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_measurement_facts_workflow
+  ON measurement_facts(workflow_id, metric, captured_at DESC);
+
+-- A deliberately declared comparison, not an ad-hoc ranking. Concluding one is
+-- the only thing allowed to justify a reallocate decision now -- engine.ts no
+-- longer compares unrelated active campaigns globally.
+CREATE TABLE IF NOT EXISTS campaign_experiments (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  hypothesis TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running', -- running | concluded | abandoned
+  min_conversions_per_variant INTEGER NOT NULL DEFAULT 5,
+  min_days_running INTEGER NOT NULL DEFAULT 7,
+  started_at TEXT NOT NULL,
+  concluded_at TEXT,
+  winner_paid_campaign_id TEXT REFERENCES paid_growth_campaigns(id) ON DELETE SET NULL,
+  conclusion_note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- No agent_id of its own -- reached through its variants, same rule as
+-- paid_growth_decisions (V2_PLAN.md: only root tables carry agent_id).
+CREATE TABLE IF NOT EXISTS campaign_experiment_variants (
+  experiment_id TEXT NOT NULL REFERENCES campaign_experiments(id) ON DELETE CASCADE,
+  paid_campaign_id TEXT NOT NULL REFERENCES paid_growth_campaigns(id) ON DELETE CASCADE,
+  is_control INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (experiment_id, paid_campaign_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_experiments_status
+  ON campaign_experiments(status, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_experiment_variants_campaign
+  ON campaign_experiment_variants(paid_campaign_id);
+
 CREATE TABLE IF NOT EXISTS platform_actions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   platform_id TEXT NOT NULL,

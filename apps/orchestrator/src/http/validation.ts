@@ -301,6 +301,19 @@ export const reviewPaidGrowthDecisionSchema = z.object({
   decision: z.enum(["approve", "reject"]),
 }).strict();
 
+export const createCampaignExperimentSchema = z.object({
+  name: z.string().trim().min(1).max(300),
+  hypothesis: z.string().trim().min(1).max(2_000),
+  variantPaidCampaignIds: z.array(z.string().uuid()).min(2).max(10),
+  controlPaidCampaignId: z.string().uuid().optional(),
+  minConversionsPerVariant: z.number().int().min(1).max(10_000).optional(),
+  minDaysRunning: z.number().int().min(1).max(365).optional(),
+}).strict();
+
+export const abandonCampaignExperimentSchema = z.object({
+  reason: z.string().trim().min(1).max(2_000),
+}).strict();
+
 const customerChannel = z.enum(["website", "email", "x", "instagram", "facebook"]);
 const customerPriority = z.enum(["low", "normal", "high", "urgent"]);
 

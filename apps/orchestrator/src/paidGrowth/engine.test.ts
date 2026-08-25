@@ -49,4 +49,16 @@ describe("paid growth engine", () => {
   it("never recommends automatic decisions for drafts", () => {
     expect(recommendPaidGrowthActions([campaign({ status: "draft" })])).toEqual([]);
   });
+
+  it("no longer proposes reallocation between unrelated campaigns on its own", () => {
+    // This used to rank every active campaign globally and propose moving
+    // budget from the worst to the best ROAS with no declared comparison.
+    // That's now `experimentEngine.ts`'s job, gated behind a deliberately
+    // declared experiment -- see GAPS.md's attribution gap.
+    const actions = recommendPaidGrowthActions([
+      campaign({ id: "a", name: "Strong", spentMinor: 1_000, revenueMinor: 5_000, conversions: 10 }),
+      campaign({ id: "b", name: "Weak", spentMinor: 1_000, revenueMinor: 500, conversions: 10 }),
+    ]);
+    expect(actions.some((action) => action.kind === "reallocate")).toBe(false);
+  });
 });

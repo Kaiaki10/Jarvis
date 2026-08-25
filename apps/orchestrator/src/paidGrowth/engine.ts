@@ -77,23 +77,12 @@ export function recommendPaidGrowthActions(
     }
   }
 
-  const ranked = candidates
-    .map((campaign) => ({ campaign, roas: paidGrowthMetrics(campaign).roas }))
-    .filter((entry): entry is { campaign: PaidGrowthCampaignRecord; roas: number } =>
-      entry.roas !== null && entry.campaign.conversions >= 2
-    )
-    .sort((a, b) => b.roas - a.roas);
-  const best = ranked[0];
-  const worst = ranked.at(-1);
-  if (best && worst && best.campaign.id !== worst.campaign.id && best.roas >= worst.roas * 1.5) {
-    recommendations.push({
-      paidCampaignId: best.campaign.id,
-      kind: "reallocate",
-      reason: `${best.campaign.name} is producing ${best.roas.toFixed(2)}× ROAS versus ${worst.roas.toFixed(2)}× for ${worst.campaign.name}.`,
-      proposedDailyBudgetMinor: Math.round(best.campaign.dailyBudgetMinor * 1.2),
-      sourcePaidCampaignId: worst.campaign.id,
-    });
-  }
+  // Reallocation used to be proposed here too, ranking every unrelated active
+  // campaign globally by ROAS. That compared campaigns with different
+  // objectives against each other with no context. It's replaced by
+  // `experimentEngine.ts`'s `evaluateExperiment`, which only compares
+  // campaigns a human deliberately grouped into a declared experiment, against
+  // a stricter, explicit conclusion rule. See GAPS.md's attribution gap.
 
   return recommendations;
 }

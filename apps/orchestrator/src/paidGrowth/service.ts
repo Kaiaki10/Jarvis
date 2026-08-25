@@ -1,6 +1,7 @@
-import type { PaidGrowthOverview } from "@jarvis/shared";
+import type { PaidGrowthOverview, UpdatePaidGrowthPerformanceRequest } from "@jarvis/shared";
 import { checkCapacity } from "../billing/envelopes.js";
 import { getConnection } from "../db/connectionsRepo.js";
+import { recordMeasurementFacts } from "../db/measurementFactsRepo.js";
 import {
   createPaidGrowthDecision,
   activeAdBudgetMinor,
@@ -69,6 +70,29 @@ export function refreshPaidGrowthRecommendations(agentId?: string) {
   return created;
 }
 
+/**
+ * The manual performance-entry path (`/paid-growth/workflows/:id/performance`).
+ * Has to feed the measurement ledger too, not just the auto-sync path below --
+ * a campaign on a platform Jarvis can't sync yet, or one someone enters by
+ * hand for now, would otherwise never accumulate any history, making campaign
+ * experiments untestable for it. See GAPS.md's attribution gap.
+ */
+export function recordManualPerformance(id: string, body: UpdatePaidGrowthPerformanceRequest) {
+  const campaign = updatePaidGrowthPerformance(id, body)!;
+  recordMeasurementFacts({
+    paidCampaignId: campaign.id,
+    workflowId: campaign.workflowId,
+    currency: campaign.currency,
+    capturedAt: new Date().toISOString(),
+    spentMinor: campaign.spentMinor,
+    revenueMinor: campaign.revenueMinor,
+    impressions: campaign.impressions,
+    clicks: campaign.clicks,
+    conversions: campaign.conversions,
+  });
+  return campaign;
+}
+
 export async function syncPaidGrowthCampaign(id: string, agentId?: string) {
   const campaign = getPaidGrowthCampaign(id, agentId);
   if (!campaign) throw new Error("Paid campaign not found");
@@ -92,6 +116,19 @@ export async function syncPaidGrowthCampaign(id: string, agentId?: string) {
     throw new Error("The platform returned less cumulative spend than Jarvis has already recorded");
   }
   const updated = updatePaidGrowthPerformance(id, performance, true)!;
+  // Written as a side effect of the sync that already runs every 15 minutes
+  // (monitor.ts), not a separate poller. See GAPS.md's attribution gap.
+  recordMeasurementFacts({
+    paidCampaignId: updated.id,
+    workflowId: updated.workflowId,
+    currency: updated.currency,
+    capturedAt: updated.lastSyncedAt!,
+    spentMinor: updated.spentMinor,
+    revenueMinor: updated.revenueMinor,
+    impressions: updated.impressions,
+    clicks: updated.clicks,
+    conversions: updated.conversions,
+  });
   const decisions = refreshPaidGrowthRecommendations(agentId);
   return { campaign: updated, decisions };
 }

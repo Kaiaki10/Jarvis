@@ -30,6 +30,7 @@ import type {
   MemoryReflectionRecord,
   CustomerOperationsOverview,
   PaidGrowthOverview,
+  CampaignExperimentsOverview,
   TrendsOverview,
   PlatformSignupProgress,
   SignupEmailEvent,
@@ -76,6 +77,8 @@ interface StoreValue {
   refreshCustomerOperations: () => Promise<void>;
   paidGrowth: PaidGrowthOverview | null;
   refreshPaidGrowth: () => Promise<void>;
+  campaignExperiments: CampaignExperimentsOverview | null;
+  refreshCampaignExperiments: () => Promise<void>;
   /** A derived, descriptive view over campaigns/customers/paid-growth — refreshed
    *  whenever any of those change rather than on its own SSE event. */
   trends: TrendsOverview | null;
@@ -166,6 +169,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [campaigns, setCampaigns] = useState<WorkflowOverview | null>(null);
   const [customerOperations, setCustomerOperations] = useState<CustomerOperationsOverview | null>(null);
   const [paidGrowth, setPaidGrowth] = useState<PaidGrowthOverview | null>(null);
+  const [campaignExperiments, setCampaignExperiments] = useState<CampaignExperimentsOverview | null>(null);
   const [trends, setTrends] = useState<TrendsOverview | null>(null);
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTaskRecord[]>([]);
   const [settings, setSettings] = useState<SettingsRecord | null>(null);
@@ -248,6 +252,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const refreshPaidGrowth = useCallback(async () => {
     setPaidGrowth(await api.getPaidGrowth());
+  }, []);
+
+  const refreshCampaignExperiments = useCallback(async () => {
+    setCampaignExperiments(await api.getCampaignExperiments());
   }, []);
 
   const refreshTrends = useCallback(async () => {
@@ -400,6 +408,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       source.addEventListener("paid-growth-changed", () => {
         refreshPaidGrowth().catch(() => {});
+        refreshCampaignExperiments().catch(() => {});
         refreshTrends().catch(() => {});
       });
 
@@ -447,6 +456,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             refreshPrimaryChat(),
             refreshCustomerOperations(),
             refreshPaidGrowth(),
+            refreshCampaignExperiments(),
             refreshTrends(),
           ]));
       });
@@ -475,6 +485,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refreshWorkflows,
     refreshCustomerOperations,
     refreshPaidGrowth,
+    refreshCampaignExperiments,
     refreshTrends,
     refreshConnections,
     refreshEvolution,
@@ -518,13 +529,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshWorkflows(),
         refreshCustomerOperations(),
         refreshPaidGrowth(),
+        refreshCampaignExperiments(),
         refreshTrends(),
         refreshEvolution(),
         refreshMemories(),
         refreshNotifications(),
       ]);
     },
-    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat, refreshWorkflows, refreshCustomerOperations, refreshPaidGrowth, refreshTrends, refreshEvolution, refreshMemories, refreshNotifications]
+    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat, refreshWorkflows, refreshCustomerOperations, refreshPaidGrowth, refreshCampaignExperiments, refreshTrends, refreshEvolution, refreshMemories, refreshNotifications]
   );
 
   const removeSession = useCallback(async (id: string) => {
@@ -569,6 +581,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshCustomerOperations,
       paidGrowth,
       refreshPaidGrowth,
+      campaignExperiments,
+      refreshCampaignExperiments,
       trends,
       refreshTrends,
       scheduledTasks,
@@ -616,6 +630,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshCustomerOperations,
       paidGrowth,
       refreshPaidGrowth,
+      campaignExperiments,
+      refreshCampaignExperiments,
       trends,
       refreshTrends,
       scheduledTasks,
@@ -719,6 +735,11 @@ export function useCustomerOperations() {
 export function usePaidGrowth() {
   const { paidGrowth, refreshPaidGrowth } = useStore();
   return { overview: paidGrowth, refresh: refreshPaidGrowth };
+}
+
+export function useCampaignExperiments() {
+  const { campaignExperiments, refreshCampaignExperiments } = useStore();
+  return { overview: campaignExperiments, refresh: refreshCampaignExperiments };
 }
 
 export function useTrends() {

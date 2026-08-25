@@ -35,6 +35,8 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Overlay as MotionOverlay } from "@/components/motion";
 import { useDialog } from "@/lib/useDialog";
+import { CampaignExperiments } from "@/components/CampaignExperiments";
+import type { MeasurementFactRecord } from "@jarvis/shared";
 
 const PLATFORM_META: Record<PaidMediaPlatform, { label: string; connectionId: string }> = {
   google_ads: { label: "Google Ads", connectionId: "google_ads" },
@@ -139,6 +141,8 @@ export function PaidGrowthCenter() {
         </div>
       </div>
 
+      <CampaignExperiments />
+
       <Card>
         <CardHeader title="Investment policy" description="Jarvis can recommend continuously, but it cannot silently expand the approved envelope." />
         <div className="grid gap-3 px-5 pb-5 md:grid-cols-3">
@@ -151,9 +155,14 @@ export function PaidGrowthCenter() {
       {/* Mounted whether or not they are showing, so closing is something you
           can see. `key` remounts each form on open, which conditional rendering
           used to do for free — without it a cancelled draft would still be
-          sitting there next time. */}
-      <CreatePaidCampaign key={createDialog.key} open={createDialog.open} campaigns={organic?.workflows ?? []} connections={connections} onClose={createDialog.hide} onCreated={async () => { await refresh(); createDialog.hide(); }} />
-      {metricsCampaign && <PerformanceEditor key={metricsDialog.key} open={metricsDialog.open} campaign={metricsCampaign} onClose={metricsDialog.hide} onSave={async (body) => { await act(`metrics-${metricsCampaign.id}`, () => api.updatePaidGrowthPerformance(metricsCampaign.id, body)); metricsDialog.hide(); }} />}
+          sitting there next time. Prefixed rather than the bare counter:
+          createDialog and metricsDialog each keep their own independent key
+          sequence, and as plain integers they eventually land on the same
+          number while sitting here as literal JSX siblings — reproduced live
+          opening two campaigns then two Manual update dialogs, both landing on
+          key 2 and tripping React's duplicate-key warning. */}
+      <CreatePaidCampaign key={`create-${createDialog.key}`} open={createDialog.open} campaigns={organic?.workflows ?? []} connections={connections} onClose={createDialog.hide} onCreated={async () => { await refresh(); createDialog.hide(); }} />
+      {metricsCampaign && <PerformanceEditor key={`metrics-${metricsDialog.key}`} open={metricsDialog.open} campaign={metricsCampaign} onClose={metricsDialog.hide} onSave={async (body) => { await act(`metrics-${metricsCampaign.id}`, () => api.updatePaidGrowthPerformance(metricsCampaign.id, body)); metricsDialog.hide(); }} />}
     </div>
   );
 }
@@ -283,5 +292,25 @@ function CreatePaidCampaign({ open, campaigns, connections, onClose, onCreated }
 function PerformanceEditor({ open, campaign, onClose, onSave }: { open: boolean; campaign: PaidGrowthCampaignView; onClose: () => void; onSave: (body: { spentMinor: number; revenueMinor: number; impressions: number; clicks: number; conversions: number }) => Promise<void> }) {
   const [spent, setSpent] = useState(campaign.spentMinor / 100); const [revenue, setRevenue] = useState(campaign.revenueMinor / 100); const [impressions, setImpressions] = useState(campaign.impressions); const [clicks, setClicks] = useState(campaign.clicks); const [conversions, setConversions] = useState(campaign.conversions); const [saving, setSaving] = useState(false);
   const valid = spent >= campaign.spentMinor / 100 && revenue >= 0 && impressions >= clicks && clicks >= conversions;
-  return <Overlay open={open} onDismiss={onClose}><Card elevation={2} className="w-full max-w-xl"><CardHeader title="Update cumulative performance" description={`${campaign.name} · use the latest platform totals`} icon={<BarChart3 className="h-4 w-4" />} /><CardBody className="space-y-3"><div className="grid gap-3 sm:grid-cols-2"><label><span className="mb-1.5 block text-label text-muted">Spend</span><Input type="number" min={campaign.spentMinor / 100} step={0.01} value={spent} onChange={(event) => setSpent(Number(event.target.value))} className="w-full" /></label><label><span className="mb-1.5 block text-label text-muted">Attributed revenue</span><Input type="number" min={0} step={0.01} value={revenue} onChange={(event) => setRevenue(Number(event.target.value))} className="w-full" /></label></div><div className="grid gap-3 sm:grid-cols-3"><label><span className="mb-1.5 block text-label text-muted">Impressions</span><Input type="number" min={0} value={impressions} onChange={(event) => setImpressions(Number(event.target.value))} className="w-full" /></label><label><span className="mb-1.5 block text-label text-muted">Clicks</span><Input type="number" min={0} value={clicks} onChange={(event) => setClicks(Number(event.target.value))} className="w-full" /></label><label><span className="mb-1.5 block text-label text-muted">Conversions</span><Input type="number" min={0} value={conversions} onChange={(event) => setConversions(Number(event.target.value))} className="w-full" /></label></div><p className="text-label text-muted">This is a cumulative ledger. Spend cannot decrease, clicks cannot exceed impressions, and conversions cannot exceed clicks.</p><div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!valid || saving} onClick={async () => { setSaving(true); try { await onSave({ spentMinor: Math.round(spent * 100), revenueMinor: Math.round(revenue * 100), impressions, clicks, conversions }); } finally { setSaving(false); } }}>{saving ? "Saving…" : "Save performance"}</Button></div></CardBody></Card></Overlay>;
+  return <Overlay open={open} onDismiss={onClose}><Card elevation={2} className="w-full max-w-xl"><CardHeader title="Update cumulative performance" description={`${campaign.name} · use the latest platform totals`} icon={<BarChart3 className="h-4 w-4" />} /><CardBody className="space-y-3"><div className="grid gap-3 sm:grid-cols-2"><label><span className="mb-1.5 block text-label text-muted">Spend</span><Input type="number" min={campaign.spentMinor / 100} step={0.01} value={spent} onChange={(event) => setSpent(Number(event.target.value))} className="w-full" /></label><label><span className="mb-1.5 block text-label text-muted">Attributed revenue</span><Input type="number" min={0} step={0.01} value={revenue} onChange={(event) => setRevenue(Number(event.target.value))} className="w-full" /></label></div><div className="grid gap-3 sm:grid-cols-3"><label><span className="mb-1.5 block text-label text-muted">Impressions</span><Input type="number" min={0} value={impressions} onChange={(event) => setImpressions(Number(event.target.value))} className="w-full" /></label><label><span className="mb-1.5 block text-label text-muted">Clicks</span><Input type="number" min={0} value={clicks} onChange={(event) => setClicks(Number(event.target.value))} className="w-full" /></label><label><span className="mb-1.5 block text-label text-muted">Conversions</span><Input type="number" min={0} value={conversions} onChange={(event) => setConversions(Number(event.target.value))} className="w-full" /></label></div><p className="text-label text-muted">This is a cumulative ledger. Spend cannot decrease, clicks cannot exceed impressions, and conversions cannot exceed clicks.</p><PerformanceHistory campaignId={campaign.id} open={open} /><div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!valid || saving} onClick={async () => { setSaving(true); try { await onSave({ spentMinor: Math.round(spent * 100), revenueMinor: Math.round(revenue * 100), impressions, clicks, conversions }); } finally { setSaving(false); } }}>{saving ? "Saving…" : "Save performance"}</Button></div></CardBody></Card></Overlay>;
+}
+
+/** Read-only recent history from the measurement ledger, fetched once when the dialog opens. */
+function PerformanceHistory({ campaignId, open }: { campaignId: string; open: boolean }) {
+  const [facts, setFacts] = useState<MeasurementFactRecord[] | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    api.getPaidGrowthHistory(campaignId).then(setFacts).catch(() => setFacts([]));
+  }, [campaignId, open]);
+
+  if (!facts || facts.length === 0) return null;
+  return (
+    <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
+      <table className="w-full text-label">
+        <thead className="sticky top-0 bg-surface text-micro text-muted"><tr><th className="px-3 py-1.5 text-left font-normal">Captured</th><th className="px-3 py-1.5 text-left font-normal">Metric</th><th className="px-3 py-1.5 text-right font-normal">Value</th></tr></thead>
+        <tbody>{facts.slice(0, 25).map((fact) => <tr key={fact.id} className="border-t border-border"><td className="px-3 py-1 text-muted">{new Date(fact.capturedAt).toLocaleString()}</td><td className="px-3 py-1 text-foreground">{fact.metric.replace("_minor", "")}</td><td className="px-3 py-1 text-right tabular-nums text-foreground">{fact.value.toLocaleString()}</td></tr>)}</tbody>
+      </table>
+    </div>
+  );
 }
