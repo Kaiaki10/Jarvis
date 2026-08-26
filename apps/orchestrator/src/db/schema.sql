@@ -698,6 +698,25 @@ CREATE TABLE IF NOT EXISTS operator_sessions (
 CREATE INDEX IF NOT EXISTS idx_operator_sessions_operator
   ON operator_sessions(operator_id, expires_at DESC);
 
+-- A short-lived credential scoped to exactly one agent, minted by the Next.js
+-- dashboard (apps/web/src/app/api/token/route.ts) through POST /agent-tokens
+-- once it has confirmed the caller's operator session. Mirrors operator_sessions:
+-- the token itself is the primary key (plaintext, unguessable, no hashing), and
+-- security comes from length + a short expires_at rather than a lookup secret.
+-- operator_id is nullable because JARVIS_REQUIRE_LOGIN=0 installs mint tokens
+-- with no operator identity to attach at all.
+CREATE TABLE IF NOT EXISTS agent_tokens (
+  token TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  operator_id TEXT REFERENCES operators(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  last_used_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_tokens_agent
+  ON agent_tokens(agent_id, expires_at DESC);
+
 -- A pending WebAuthn ceremony's challenge, bridging the options/verify round
 -- trip. Short-lived by construction: verify deletes its row on success or
 -- failure, and a fresh ceremony sweeps expired rows rather than needing a

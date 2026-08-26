@@ -139,16 +139,80 @@ export function ensureApiToken(): Promise<string> {
   return tokenPromise;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = await ensureApiToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...init?.headers,
-    },
+interface AgentTokenEntry {
+  token: string;
+  expiresAt: number;
+}
+
+/** Re-mint this far ahead of expiry so a request never races a token dying mid-flight. */
+const AGENT_TOKEN_REFRESH_MARGIN_MS = 5 * 60_000;
+
+/**
+ * One scoped token per agent, keyed the same way `activeAgentId` is —
+ * per-agent, not global, since each carries entitlement to exactly one agent
+ * (see `agentAuth.ts` on the orchestrator: an agent-scoped token is not valid
+ * for any other agent, or for an unscoped request).
+ */
+const agentTokenCache = new Map<string, Promise<AgentTokenEntry>>();
+
+async function mintAgentToken(agentId: string): Promise<AgentTokenEntry> {
+  const res = await fetch(`/api/token?agentId=${encodeURIComponent(agentId)}`, { cache: "no-store" });
+  if (!res.ok) {
+    const { error } = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(error ?? "Could not mint an agent-scoped token.");
+  }
+  const body = (await res.json()) as { token: string; expiresAt: string };
+  return { token: body.token, expiresAt: Date.parse(body.expiresAt) };
+}
+
+function refreshAgentToken(agentId: string): Promise<AgentTokenEntry> {
+  const promise = mintAgentToken(agentId).catch((err) => {
+    // Clear the cache so a later attempt can succeed — otherwise one failure
+    // would leave this agent permanently unauthenticated.
+    if (agentTokenCache.get(agentId) === promise) agentTokenCache.delete(agentId);
+    throw err;
   });
+  agentTokenCache.set(agentId, promise);
+  return promise;
+}
+
+/** Fetches (or reuses, or proactively refreshes) the bearer token scoped to one agent. */
+async function ensureAgentToken(agentId: string): Promise<string> {
+  const existing = agentTokenCache.get(agentId) ?? refreshAgentToken(agentId);
+  const entry = await existing;
+  if (entry.expiresAt - Date.now() < AGENT_TOKEN_REFRESH_MARGIN_MS) {
+    return (await refreshAgentToken(agentId)).token;
+  }
+  return entry.token;
+}
+
+/** Extracts the `agentId` query param `scoped()` appends, without changing any of its ~80 call sites. */
+function agentIdFromPath(path: string): string | null {
+  const queryIndex = path.indexOf("?");
+  if (queryIndex === -1) return null;
+  return new URLSearchParams(path.slice(queryIndex + 1)).get("agentId");
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const agentId = agentIdFromPath(path);
+  const token = await (agentId ? ensureAgentToken(agentId) : ensureApiToken());
+  const fetchWith = (bearer: string) =>
+    fetch(`${BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${bearer}`,
+        ...init?.headers,
+      },
+    });
+  let res = await fetchWith(token);
+  // A scoped call can 401/403 if its token expired or was minted before the
+  // agent it names — the master-token path never expires, so it has nothing
+  // equivalent to retry here.
+  if (!res.ok && agentId && (res.status === 401 || res.status === 403)) {
+    agentTokenCache.delete(agentId);
+    res = await fetchWith(await ensureAgentToken(agentId));
+  }
   if (!res.ok) {
     // The orchestrator returns { error } with a message written for a person;
     // prefer that over dumping status codes and raw bodies into the UI.
@@ -578,7 +642,9 @@ getSpend: () =>
  * fetched once at runtime rather than baked in at build time.
  */
 export async function sessionStreamUrl(sessionId: string, since = 0) {
-  const token = await ensureApiToken();
+  // Mirrors scoped()'s own condition exactly: /sessions/:id/stream is
+  // agent-scoped, so an unscoped call needs the master token instead.
+  const token = await (activeAgentId ? ensureAgentToken(activeAgentId) : ensureApiToken());
   const path = scoped(`/sessions/${sessionId}/stream?since=${since}`);
   return `${BASE_URL}${path}&token=${encodeURIComponent(token)}`;
 }

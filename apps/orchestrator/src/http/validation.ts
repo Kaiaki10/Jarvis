@@ -20,6 +20,11 @@ const daysOfWeek = z
 /** Which agent owns a newly created row. Absent means the default agent. */
 const agentId = z.string().uuid().optional();
 
+export const mintAgentTokenSchema = z.object({
+  agentId: z.string().uuid(),
+  operatorId: z.string().uuid().optional(),
+}).strict();
+
 export const createSessionSchema = z
   .object({
     agentId,

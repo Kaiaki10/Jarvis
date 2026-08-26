@@ -162,6 +162,7 @@ import {
   abandonCampaignExperimentSchema,
   createWebsiteConversationSchema,
   websiteMessageSchema,
+  mintAgentTokenSchema,
 } from "./validation.js";
 import {
   createPaidGrowthCampaign,
@@ -183,6 +184,10 @@ import { startPaidGrowthMonitor } from "../paidGrowth/monitor.js";
 import { trendsOverview } from "../insights/trendsService.js";
 import { apiToken, isValidToken, tokenFromRequest } from "../security/apiToken.js";
 import { isAllowedOrigin, isUnauthenticatedPath } from "./authGuard.js";
+import { authenticate, resolveScopedAgentId, type AuthContext } from "./agentAuth.js";
+import { createAgentToken, getValidAgentToken, touchAgentToken } from "../db/agentTokenRepo.js";
+
+type AuthedRequest = Request & { auth?: AuthContext };
 import {
   beginAuthentication,
   beginRegistration,
@@ -297,6 +302,8 @@ import { startApproveServer } from "./approveServer.js";
 
 const PORT = Number(process.env.PORT ?? 4317);
 const HOST = process.env.HOST ?? "127.0.0.1";
+/** Short enough that a leaked token dies within the hour; long enough that minting a fresh one on every agent switch never reads as a re-auth. */
+const AGENT_TOKEN_TTL_MS = 60 * 60_000;
 /**
  * "localhost" resolves to both `127.0.0.1` and `::1` on a normal dual-stack
  * machine, and a browser that tries the IPv6 address first has no guarantee
@@ -398,7 +405,13 @@ app.use((req: Request, res: Response, next) => {
   // Preflight carries no credentials by design; the cors middleware above has
   // already decided whether the origin may proceed to the real request.
   if (req.method === "OPTIONS") return next();
-  if (isValidToken(tokenFromRequest(req))) return next();
+  const token = tokenFromRequest(req);
+  const auth = authenticate(token, isValidToken, getValidAgentToken);
+  if (auth) {
+    (req as AuthedRequest).auth = auth;
+    if (auth.kind === "agent") touchAgentToken(token!);
+    return next();
+  }
   res.status(401).json({
     error:
       "Missing or invalid API token. The dashboard reads it automatically; a script must send it as a Bearer token.",
@@ -492,6 +505,29 @@ app.post("/auth/logout", (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+/**
+ * Mints a short-lived credential scoped to exactly one agent. Master-token
+ * only: a per-agent token must never be able to mint another one, or a
+ * short-lived credential could renew itself indefinitely and defeat the TTL.
+ * Called server-to-server by the Next.js dashboard's `/api/token` route, which
+ * already holds the master token and has already resolved the operator's
+ * session (same-origin, unlike this request).
+ */
+app.post("/agent-tokens", (req: Request, res: Response) => {
+  if ((req as AuthedRequest).auth?.kind !== "master") {
+    res.status(403).json({ error: "Only the master token may mint agent tokens" });
+    return;
+  }
+  const body = validatedBody(mintAgentTokenSchema, req, res);
+  if (!body) return;
+  if (!getAgent(body.agentId)) {
+    res.status(400).json({ error: "Unknown agent" });
+    return;
+  }
+  const record = createAgentToken({ agentId: body.agentId, operatorId: body.operatorId ?? null, ttlMs: AGENT_TOKEN_TTL_MS });
+  res.status(201).json({ token: record.token, expiresAt: record.expiresAt });
+});
+
 app.post("/auth/webauthn/register/options", async (req: Request, res: Response) => {
   try {
     // Bootstrapping the first operator has no session yet; adding a second
@@ -571,12 +607,20 @@ app.post("/auth/webauthn/login/verify", async (req: Request, res: Response) => {
  */
 function scopedAgentId(req: Request, res: Response): string | undefined | null {
   const raw = req.query.agentId ?? (req.body as { agentId?: unknown } | undefined)?.agentId;
-  if (raw === undefined || raw === "") return undefined;
-  if (typeof raw !== "string" || !getAgent(raw)) {
-    res.status(400).json({ error: "Unknown agent" });
+  const requestedAgentId = raw === undefined || raw === "" ? undefined : typeof raw === "string" ? raw : "";
+  // Set by the auth middleware above on every request that reaches here — every
+  // route calling this has already passed that gate, so this is always present.
+  const auth = (req as AuthedRequest).auth!;
+  const result = resolveScopedAgentId({
+    requestedAgentId,
+    agentExists: (id) => Boolean(getAgent(id)),
+    auth,
+  });
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
     return null;
   }
-  return raw;
+  return result.agentId;
 }
 
 /** Creates fall back to the default agent so nothing is ever left unowned. */
@@ -2885,3 +2929,8 @@ function shutdown() {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+// For server.integration.test.ts -- booting the real app in-process on an
+// ephemeral port, rather than mocking the HTTP layer, is what actually proves
+// the auth middleware and scopedAgentId's cross-check behave correctly together.
+export { app, server };

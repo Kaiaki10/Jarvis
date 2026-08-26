@@ -25,12 +25,19 @@ const TOKEN_PATH =
   process.env.JARVIS_TOKEN_PATH ??
   join(process.cwd(), "..", "orchestrator", "jarvis.token");
 
-async function hasValidSession(cookieHeader: string | null): Promise<boolean> {
+interface Operator {
+  id: string;
+  displayName: string;
+}
+
+async function resolveOperator(cookieHeader: string | null): Promise<Operator | null> {
   const res = await fetch(`${BASE_URL}/auth/session`, {
     headers: cookieHeader ? { cookie: cookieHeader } : {},
     cache: "no-store",
   }).catch(() => null);
-  return res?.ok ?? false;
+  if (!res?.ok) return null;
+  const body = (await res.json().catch(() => null)) as { operator?: Operator } | null;
+  return body?.operator ?? null;
 }
 
 /**
@@ -40,11 +47,16 @@ async function hasValidSession(cookieHeader: string | null): Promise<boolean> {
  * orchestrator's generated token, so there is nothing to trace or include.
  */
 export async function GET(request: Request) {
+  const agentId = new URL(request.url).searchParams.get("agentId");
+
   // Same switch the proxy reads, from the same module — the two gates have to
   // agree or the dashboard loads and then fails every request.
-  if (loginRequired() && !(await hasValidSession(request.headers.get("cookie")))) {
-    return Response.json({ error: "Not logged in" }, { status: 401 });
+  let operator: Operator | null = null;
+  if (loginRequired()) {
+    operator = await resolveOperator(request.headers.get("cookie"));
+    if (!operator) return Response.json({ error: "Not logged in" }, { status: 401 });
   }
+
   if (!existsSync(/*turbopackIgnore: true*/ TOKEN_PATH)) {
     // The orchestrator writes this on first start. Saying so beats a bare 500.
     return Response.json(
@@ -52,12 +64,30 @@ export async function GET(request: Request) {
       { status: 503 }
     );
   }
-  const token = readFileSync(/*turbopackIgnore: true*/ TOKEN_PATH, "utf-8").trim();
-  if (!token) {
+  const masterToken = readFileSync(/*turbopackIgnore: true*/ TOKEN_PATH, "utf-8").trim();
+  if (!masterToken) {
     return Response.json({ error: "Orchestrator token file is empty." }, { status: 503 });
   }
+
+  if (agentId) {
+    // Minted server-to-server: this process already legitimately holds the
+    // master token (the file read above), and has already confirmed the
+    // operator session same-origin, which a direct browser request to the
+    // orchestrator never reliably would (different port — see api.ts's own
+    // note on why it doesn't send credentials cross-origin).
+    const mint = await fetch(`${BASE_URL}/agent-tokens`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${masterToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId, ...(operator ? { operatorId: operator.id } : {}) }),
+      cache: "no-store",
+    }).catch(() => null);
+    if (!mint) return Response.json({ error: "Could not reach the orchestrator to mint an agent token." }, { status: 502 });
+    const body = await mint.json().catch(() => ({}));
+    return Response.json(body, { status: mint.status, headers: { "Cache-Control": "no-store" } });
+  }
+
   return Response.json(
-    { token },
+    { token: masterToken },
     // Never let a proxy or the browser cache a credential.
     { headers: { "Cache-Control": "no-store" } }
   );
