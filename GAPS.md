@@ -32,24 +32,48 @@ connections do not exist yet, and email campaigns need audience/list semantics r
 a single-recipient send tool. Those channels can still use the content calendar and manual
 published state, but only X has confirmed automatic dispatch today.
 
-### medium — Orchestrator API has no per-agent authorization
-Every request now carries a shared token, so the API is no longer open to anything running
-locally. Repository queries, mutations, child-resource checks, notifications, and frontend
-refreshes are scoped by `agent_id`; a selected agent cannot accidentally see or change a
-different agent's records. The token is still single-tenant, however: it proves the caller
-is the dashboard, not *which* agent the caller is entitled to act as. A caller holding it can
-deliberately name any valid agent. Closing that distinct authorization gap means either a
-per-agent grant or server-side derivation of the acting agent from something the caller
-cannot choose.
-
-Remote access remains out of scope: both services bind to `127.0.0.1` and the token is a
-same-machine trust boundary, not user authentication.
-
 ### low — Credentials are entered by hand
 Every platform requires manually copying tokens. Proper OAuth flows would be friendlier
 but need a public redirect URL.
 
 ## Closed
+
+- **2026-08-26** Per-agent authorization is closed: the shared master token used
+  to prove only "this is the dashboard," not *which* agent the caller was entitled
+  to act as — anyone holding it could deliberately name any valid agent, since
+  `scopedAgentId` only ever checked that the id existed. Closed by short-lived,
+  per-agent scoped tokens (`agent_tokens`, mirroring `operator_sessions`'s own
+  shape) minted through the same-origin `/api/token` route, which already
+  reliably resolves the operator's passkey session — the direct
+  browser-to-orchestrator calls never could, being cross-port. A per-agent token
+  is now valid *only* for the one agent it was minted for; it is explicitly
+  refused for an unscoped request too, since an unscoped read can return every
+  agent's data. The master token is no longer sufficient on its own for any
+  agent-scoped route — confirmed by grep that no in-process orchestrator module
+  (scheduler, Slack bridge, paid-growth executor, customer webhooks, notifier)
+  ever called its own HTTP API with the master token plus an `agentId`, so only
+  the dashboard needed migrating, and this same change does it. Room
+  conversations (`conversationRunner.ts`) run entirely in-process and never
+  touch this layer at all.
+
+  Two design shortcuts were deliberately rejected rather than taken: per-*operator*
+  grants (moot — there is exactly one operator per install; extra passkeys are
+  just extra devices for that same person) and forwarding the operator-session
+  cookie cross-port to the orchestrator directly (this would have reintroduced
+  the exact cross-origin-cookie fragility this codebase already hit and fixed
+  once — see the 2026-08-20 entries below on Firefox Total Cookie Protection and
+  the IPv6-loopback cookie bug). Remote access stays out of scope, as before:
+  both services still bind to `127.0.0.1`.
+
+  Verified live in `jarvis-lab` on scratch ports, not just typed and tested —
+  this repo's first real HTTP-layer integration test (`server.integration.test.ts`,
+  booting the actual Express app on an ephemeral port) covers the full
+  authorization matrix, and a live browser run confirmed real agent-switching
+  mints and uses a distinct bearer token per agent (16 real requests captured
+  carrying the new agent's own token), the shared global event stream survives
+  the switch untouched (opened once, no reconnect), and `/api/token` correctly
+  401s with no valid operator session in login-required mode — for both the
+  master-token and the per-agent-mint code paths.
 
 - **2026-08-25** The paid-only slice of the attribution gap is closed: a `measurement_facts`
   append-only ledger (mirrors `social_metrics`'s one-row-per-observation design) now records
