@@ -105,31 +105,6 @@ export function JarvisChat() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div
-            role="group"
-            aria-label="Select LLM"
-            className="flex items-center rounded-lg border border-border bg-background p-0.5"
-          >
-            {([
-              ["claude", "Claude"],
-              ["gpt-5.6-sol", "GPT-5.6 Sol"],
-              ["local", "Local LLM"],
-            ] as Array<[ChatModel, string]>).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={model === value}
-                onClick={() => setModel(value)}
-                className={`rounded-md px-2.5 py-1.5 text-label transition-colors ${
-                  model === value
-                    ? "bg-accent text-white"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           <Link href="/under-the-hood/brain/memory" aria-label="Open Jarvis memory">
             <Badge tone="accent"><Brain className="h-3 w-3" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} remembered</Badge>
           </Link>
@@ -163,6 +138,34 @@ export function JarvisChat() {
       {/* The composer is its own plane — darker than the transcript above it, so
           the boundary between reading and typing is unmistakable. */}
       <div className="border-t border-border bg-black/25 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <span className="text-micro font-medium uppercase tracking-wider text-muted">Model</span>
+          <div
+            role="group"
+            aria-label="Select LLM"
+            className="flex shrink-0 items-center rounded-lg border border-border bg-background p-1 shadow-sm"
+          >
+            {([
+              ["claude", "Claude"],
+              ["gpt-5.6-sol", "GPT-5.6 Sol"],
+              ["local", "Local LLM"],
+            ] as Array<[ChatModel, string]>).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={model === value}
+                onClick={() => setModel(value)}
+                className={`rounded-md px-3 py-1.5 text-label font-medium transition-colors ${
+                  model === value
+                    ? "bg-accent text-white shadow-sm"
+                    : "text-muted hover:bg-accent/10 hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div
           className={`flex items-end gap-2 rounded-xl border px-2 py-1 transition-[border-color,box-shadow] duration-200 ${
             focused
