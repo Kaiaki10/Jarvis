@@ -113,7 +113,7 @@ export function JarvisChat() {
           >
             <option value="claude">Claude</option>
             <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
-            <option value="local">Local LLM</option>
+            <option value="local">Qwen3-Coder-Next · Local Z440</option>
           </select>
           <Link href="/under-the-hood/brain/memory" aria-label="Open Jarvis memory">
             <Badge tone="accent"><Brain className="h-3 w-3" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} remembered</Badge>
@@ -145,8 +145,6 @@ export function JarvisChat() {
         </div>
       </div>
 
-      {/* The composer is its own plane — darker than the transcript above it, so
-          the boundary between reading and typing is unmistakable. */}
       <div className="border-t border-border bg-black/25 p-3">
         <div
           className={`flex items-end gap-2 rounded-xl border px-2 py-1 transition-[border-color,box-shadow] duration-200 ${

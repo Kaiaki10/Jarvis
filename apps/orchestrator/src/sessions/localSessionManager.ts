@@ -11,7 +11,10 @@ export type LocalFollowUpOutcome =
 
 const active = new Map<string, LocalHandle>();
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen3:14b";
+// Qwen3-Coder-Next is the default local coding/agent model. The environment
+// variable remains an intentional escape hatch for a smaller model on weaker
+// hardware or for testing a different Ollama model.
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen3-coder-next:q4_K_M";
 
 function publish(sessionId: string, event: SessionEventRecord): void {
   globalBus.emit("session_event", event);
