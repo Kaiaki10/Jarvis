@@ -1,7 +1,8 @@
 import { appendSessionEvent, getSession, getSettings, listSessionEvents, updateSession } from "../db/repo.js";
-import { buildMemoryContext, recordMemoryReflection, remember } from "../db/memoryRepo.js";
+import { buildMemoryContext, recordMemoryReflection } from "../db/memoryRepo.js";
+import { getAgent } from "../db/agentRepo.js";
 import { globalBus } from "../events/globalBus.js";
-import type { MemoryKind, SessionEventRecord } from "@jarvis/shared";
+import type { SessionEventRecord } from "@jarvis/shared";
 
 interface LocalHandle { abort: AbortController; }
 export type LocalFollowUpOutcome =
@@ -41,13 +42,15 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
   const controller = new AbortController();
   active.set(params.id, { abort: controller });
   const startedAt = Date.now();
+  const priorHistory = history(params.id);
   userTurn(params.id, params.prompt);
   updateSession(params.id, { status: "running", currentActivity: `Running local LLM · ${OLLAMA_MODEL}…` });
   globalBus.emit("session_updated", params.id);
 
   try {
     const session = getSession(params.id);
-    const agentContext = params.agentId ? undefined : getSettings().businessContext;
+    const agent = params.agentId ? getAgent(params.agentId) : undefined;
+    const agentContext = agent?.systemPrompt?.trim() || getSettings().businessContext;
     const memory = buildMemoryContext(40, params.agentId ?? null);
     const system = [
       "You are Jarvis, a local AI assistant running on the user's computer.",
@@ -59,7 +62,7 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
 
     const messages = [
       { role: "system", content: system },
-      ...history(params.id).slice(-40),
+      ...priorHistory.slice(-40),
       { role: "user", content: params.prompt },
     ];
 
