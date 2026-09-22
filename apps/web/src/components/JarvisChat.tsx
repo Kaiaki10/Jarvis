@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUp, Brain, Loader2, Sparkles } from "lucide-react";
-import type { SessionRecord } from "@jarvis/shared";
+import type { ChatModel, SessionRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { useSessionStream } from "@/lib/hooks";
 import { Card } from "@/components/ui/Card";
@@ -24,6 +24,7 @@ import { useConnectionStatus, useMemories } from "@/lib/store";
  */
 export function JarvisChat() {
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [model, setModel] = useState<ChatModel>("claude");
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -38,13 +39,13 @@ export function JarvisChat() {
 
   useEffect(() => {
     api
-      .getChat()
+      .getChat(model)
       .then(({ session }: { session: SessionRecord | null }) => {
         setSessionId(session?.id ?? null);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [model]);
 
   const onSent = useCallback((id: string) => setSessionId(id), []);
 
@@ -55,7 +56,7 @@ export function JarvisChat() {
     setError(null);
     setDraft("");
     try {
-      const { sessionId: id } = await api.sendChat(text);
+      const { sessionId: id } = await api.sendChat(text, model);
       onSent(id);
       setActivityKey((key) => key + 1);
     } catch (err) {
@@ -103,9 +104,21 @@ export function JarvisChat() {
             </div>
           </div>
         </div>
-        <Link href="/under-the-hood/brain/memory" aria-label="Open Jarvis memory">
-          <Badge tone="accent"><Brain className="h-3 w-3" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} remembered</Badge>
-        </Link>
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Select LLM"
+            value={model}
+            onChange={(e) => setModel(e.target.value as ChatModel)}
+            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-label text-foreground outline-none"
+          >
+            <option value="claude">Claude</option>
+            <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
+            <option value="local">Local LLM</option>
+          </select>
+          <Link href="/under-the-hood/brain/memory" aria-label="Open Jarvis memory">
+            <Badge tone="accent"><Brain className="h-3 w-3" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} remembered</Badge>
+          </Link>
+        </div>
       </div>
       <div
         ref={scrollAreaRef}
