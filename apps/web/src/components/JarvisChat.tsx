@@ -105,16 +105,31 @@ export function JarvisChat() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select
+          <div
+            role="group"
             aria-label="Select LLM"
-            value={model}
-            onChange={(e) => setModel(e.target.value as ChatModel)}
-            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-label text-foreground outline-none"
+            className="flex items-center rounded-lg border border-border bg-background p-0.5"
           >
-            <option value="claude">Claude</option>
-            <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
-            <option value="local">Local LLM</option>
-          </select>
+            {([
+              ["claude", "Claude"],
+              ["gpt-5.6-sol", "GPT-5.6 Sol"],
+              ["local", "Local LLM"],
+            ] as Array<[ChatModel, string]>).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={model === value}
+                onClick={() => setModel(value)}
+                className={`rounded-md px-2.5 py-1.5 text-label transition-colors ${
+                  model === value
+                    ? "bg-accent text-white"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <Link href="/under-the-hood/brain/memory" aria-label="Open Jarvis memory">
             <Badge tone="accent"><Brain className="h-3 w-3" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} remembered</Badge>
           </Link>
