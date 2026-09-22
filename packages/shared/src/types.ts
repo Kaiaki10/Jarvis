@@ -56,7 +56,7 @@ export type SessionStatus =
   | "interrupted";
 
 /** Models available in the focused, simple Jarvis conversation. */
-export type ChatModel = "claude" | "gpt-5.6-sol";
+export type ChatModel = "claude" | "gpt-5.6-sol" | "local";
 
 /** Which underlying Claude model answers, when `model` is "claude". */
 export type ClaudeModel = "default" | "opus" | "haiku" | "fable";
