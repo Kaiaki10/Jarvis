@@ -44,7 +44,7 @@ export const chatMessageSchema = z
   .object({
     text: z.string().trim().min(1).max(100_000),
     agentId: z.string().uuid().optional(),
-    model: z.enum(["claude", "gpt-5.6-sol"]).default("claude"),
+    model: z.enum(["claude", "gpt-5.6-sol", "local"]).default("claude"),
     claudeModel: z.enum(["default", "opus", "haiku", "fable"]).optional(),
     autoApproveLocalTools: z.boolean().optional(),
   })
