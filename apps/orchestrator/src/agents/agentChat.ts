@@ -16,6 +16,7 @@ import {
   startCodexSession,
 } from "../sessions/codexSessionManager.js";
 import type { ChatModel, ClaudeModel } from "@jarvis/shared";
+import { sendLocalFollowUp, startLocalSession } from "../sessions/localSessionManager.js";
 
 export type AgentChatFailureReason = "agent_not_found" | "working_directory_missing" | "at_capacity" | "busy";
 
@@ -50,7 +51,9 @@ export function sendAgentChat(
     }
     const outcome = model === "gpt-5.6-sol"
       ? sendCodexFollowUp(existing.id, text)
-      : sendFollowUp(existing.id, text, { memoryWritable: true, claudeModel, autoApproveLocalTools });
+      : model === "local"
+        ? sendLocalFollowUp(existing.id, text)
+        : sendFollowUp(existing.id, text, { memoryWritable: true, claudeModel, autoApproveLocalTools });
     if (outcome.ok) return { ok: true, sessionId: existing.id, resumed: outcome.resumed, afterSeq };
     if (outcome.reason === "busy") {
       return { ok: false, reason: "busy", message: "GPT-5.6 Sol is still answering the previous message." };
@@ -95,6 +98,8 @@ export function sendAgentChat(
 
   if (model === "gpt-5.6-sol") {
     startCodexSession({ id: session.id, prompt: text, cwd, title: agent.name, agentId });
+  } else if (model === "local") {
+    startLocalSession({ id: session.id, prompt: text, cwd, title: agent.name, agentId });
   } else {
     void startSession({
       id: session.id,
