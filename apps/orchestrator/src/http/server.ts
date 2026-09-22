@@ -693,7 +693,7 @@ app.get("/sessions", (req: Request, res: Response) => {
 app.get("/chat", (req: Request, res: Response) => {
   const agentId = owningAgentId(req, res);
   if (agentId === null) return;
-  const model = req.query.model === "gpt-5.6-sol" ? "gpt-5.6-sol" : "claude";
+  const model = req.query.model === "gpt-5.6-sol" || req.query.model === "local" ? req.query.model : "claude";
   const id = agentId ? getAgentChatSessionId(agentId, model) : getPrimarySessionId();
   const session = id ? getSession(id) : undefined;
   res.json({ session: session ?? null });
