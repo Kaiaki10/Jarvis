@@ -17,6 +17,14 @@ export interface AgentRecord {
   allowedTools: string[] | null;
   /** The agent's one ongoing conversation, continued rather than restarted. */
   chatSessionId: string | null;
+  /**
+   * The agent's brain: which lane answers for it and which specific model.
+   * `brainModel` null means the lane default. Changed per agent or for all
+   * agents at once via the brain preset; the chat composer writes through to
+   * these fields so there is exactly one source of truth per agent.
+   */
+  brainLane: ChatModel;
+  brainModel: string | null;
   status: AgentStatus;
   createdAt: string;
   updatedAt: string;
@@ -31,6 +39,8 @@ export interface CreateAgentRequest {
   color?: string;
   permissionMode?: string;
   allowedTools?: string[];
+  brainLane?: ChatModel;
+  brainModel?: string | null;
 }
 
 export interface UpdateAgentRequest {
@@ -42,6 +52,8 @@ export interface UpdateAgentRequest {
   color?: string;
   permissionMode?: string;
   allowedTools?: string[] | null;
+  brainLane?: ChatModel;
+  brainModel?: string | null;
   status?: AgentStatus;
 }
 

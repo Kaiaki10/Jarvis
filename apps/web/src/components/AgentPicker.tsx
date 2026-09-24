@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { Archive, Bot, Check, FolderOpen, Plus, RotateCcw } from "lucide-react";
-import type { AgentRecord } from "@jarvis/shared";
+import { useEffect, useState } from "react";
+import { Archive, Bot, Check, Cpu, FolderOpen, Plus, RotateCcw, Zap, Brain, Sparkles } from "lucide-react";
+import type { AgentRecord, ChatModel, LocalModelsStatus, OpenCodeModelsStatus } from "@jarvis/shared";
+import { CLAUDE_MODELS } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { useAgents } from "@/lib/store";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { Input, Textarea } from "@/components/ui/Input";
+import { Input, Textarea, Select } from "@/components/ui/Input";
 import { Stagger } from "@/components/motion/Stagger";
 
 /**
@@ -21,17 +22,54 @@ export function AgentPicker() {
   const { agents, refresh, activeAgent, selectAgent } = useAgents();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [localModels, setLocalModels] = useState<LocalModelsStatus>({ reachable: false, models: [] });
+  const [opencodeModels, setOpencodeModels] = useState<OpenCodeModelsStatus>({ reachable: false, models: [] });
+  const [presetBusy, setPresetBusy] = useState<ChatModel | null>(null);
 
   const active = agents.filter((agent) => agent.status === "active");
   const archived = agents.filter((agent) => agent.status === "archived");
 
   const effectiveId = activeAgent?.id ?? null;
 
+  useEffect(() => {
+    let cancelled = false;
+    api.getLocalModels()
+      .then((status) => { if (!cancelled) setLocalModels(status); })
+      .catch(() => { if (!cancelled) setLocalModels({ reachable: false, models: [] }); });
+    api.getOpencodeModels()
+      .then((status) => { if (!cancelled) setOpencodeModels(status); })
+      .catch(() => { if (!cancelled) setOpencodeModels({ reachable: false, models: [] }); });
+    return () => { cancelled = true; };
+  }, []);
+
   async function setStatus(agent: AgentRecord, status: "active" | "archived") {
     setError(null);
     try {
       if (status === "archived") await api.archiveAgent(agent.id);
       else await api.updateAgent(agent.id, { status: "active" });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function applyPreset(lane: ChatModel) {
+    setPresetBusy(lane);
+    setError(null);
+    try {
+      await api.setBrainPreset(lane);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPresetBusy(null);
+    }
+  }
+
+  async function setBrain(agent: AgentRecord, brainLane: ChatModel, brainModel: string | null) {
+    setError(null);
+    try {
+      await api.updateAgent(agent.id, { brainLane, brainModel });
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -48,18 +86,24 @@ export function AgentPicker() {
         )}
 
         {active.length ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {active.map((agent, index) => (
-              <Stagger key={agent.id} index={index}>
-                <AgentCard
-                  agent={agent}
-                  selected={agent.id === effectiveId}
-                  onSelect={() => selectAgent(agent.id)}
-                  onArchive={() => setStatus(agent, "archived")}
-                />
-              </Stagger>
-            ))}
-          </div>
+          <>
+            <BrainPresetBar busy={presetBusy} onPreset={applyPreset} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              {active.map((agent, index) => (
+                <Stagger key={agent.id} index={index}>
+                  <AgentCard
+                    agent={agent}
+                    selected={agent.id === effectiveId}
+                    onSelect={() => selectAgent(agent.id)}
+                    onArchive={() => setStatus(agent, "archived")}
+                    localModels={localModels}
+                    opencodeModels={opencodeModels}
+                    onBrain={(lane, model) => setBrain(agent, lane, model)}
+                  />
+                </Stagger>
+              ))}
+            </div>
+          </>
         ) : (
           <Card>
             <CardBody>
@@ -145,16 +189,58 @@ function AgentAvatar({ agent, muted = false }: { agent: AgentRecord; muted?: boo
   );
 }
 
+/**
+ * Group brains: one lane for every active agent at once. Each agent keeps
+ * the specific model it already has for that lane (or the lane default), so
+ * flipping the whole fleet never orphans anyone's threads.
+ */
+function BrainPresetBar({ busy, onPreset }: { busy: ChatModel | null; onPreset: (lane: ChatModel) => void }) {
+  const presets: Array<{ lane: ChatModel; label: string; title: string }> = [
+    { lane: "claude", label: "All Claude", title: "Every agent answers with Claude" },
+    { lane: "gpt-5.6-sol", label: "All GPT", title: "Every agent answers with GPT-5.6 Sol" },
+    { lane: "local", label: "All Local", title: "Every agent answers with its Ollama model" },
+    { lane: "opencode", label: "All OpenCode", title: "Every agent answers with its OpenCode model" },
+  ];
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-black/20 px-3 py-2.5">
+      <span className="flex items-center gap-1.5 text-micro font-medium uppercase tracking-wider text-muted">
+        <Brain className="h-3.5 w-3.5" strokeWidth={1.75} />
+        Fleet brains
+      </span>
+      {presets.map(({ lane, label, title }) => (
+        <Button
+          key={lane}
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 rounded-lg px-2.5 text-micro text-muted"
+          title={title}
+          disabled={busy !== null}
+          onClick={() => onPreset(lane)}
+        >
+          {busy === lane ? "Applying…" : label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function AgentCard({
   agent,
   selected,
   onSelect,
   onArchive,
+  localModels,
+  opencodeModels,
+  onBrain,
 }: {
   agent: AgentRecord;
   selected: boolean;
   onSelect: () => void;
   onArchive: () => void;
+  localModels: LocalModelsStatus;
+  opencodeModels: OpenCodeModelsStatus;
+  onBrain: (lane: ChatModel, model: string | null) => void;
 }) {
   return (
     <Card
@@ -184,6 +270,91 @@ function AgentCard({
             <span className="truncate font-mono">{agent.cwd}</span>
           </div>
         )}
+
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-black/20 px-2.5 py-2">
+          <span className="text-micro font-medium uppercase tracking-wider text-muted">Brain</span>
+          <Select
+            aria-label={`${agent.name} brain lane`}
+            className="h-7 w-auto rounded-lg py-0 text-micro"
+            value={agent.brainLane}
+            onChange={(e) => onBrain(e.target.value as ChatModel, agent.brainModel)}
+          >
+            <option value="claude">Claude</option>
+            <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
+            <option value="local">Local</option>
+            <option value="opencode">OpenCode</option>
+          </Select>
+          {agent.brainLane === "claude" && (
+            <Select
+              aria-label={`${agent.name} Claude model`}
+              className="h-7 w-auto max-w-40 rounded-lg py-0 text-micro"
+              value={agent.brainModel ?? "default"}
+              onChange={(e) => onBrain("claude", e.target.value)}
+            >
+              {CLAUDE_MODELS.map((option) => (
+                <option key={option.value} value={option.value} title={option.description}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          )}
+          {agent.brainLane === "local" && (
+            localModels.reachable && localModels.models.length > 0 ? (
+              <Select
+                aria-label={`${agent.name} local model`}
+                className="h-7 w-auto max-w-40 rounded-lg py-0 text-micro"
+                value={agent.brainModel ?? ""}
+                onChange={(e) => onBrain("local", e.target.value || null)}
+              >
+                <option value="" disabled>Pick a model</option>
+                {localModels.models.map((option) => (
+                  <option key={option.name} value={option.name}>{option.name}</option>
+                ))}
+              </Select>
+            ) : (
+              <span className="text-micro text-muted" title="Ollama isn't reachable — start it to choose a model">
+                Ollama offline
+              </span>
+            )
+          )}
+          {agent.brainLane === "opencode" && (
+            opencodeModels.reachable && opencodeModels.models.length > 0 ? (
+              <Select
+                aria-label={`${agent.name} OpenCode model`}
+                className="h-7 w-auto max-w-40 rounded-lg py-0 text-micro"
+                value={agent.brainModel ?? ""}
+                onChange={(e) => onBrain("opencode", e.target.value || null)}
+              >
+                <option value="" disabled>Pick a model</option>
+                {opencodeModels.models.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </Select>
+            ) : (
+              <span className="text-micro text-muted" title="OpenCode Inference isn't reachable — check the connection">
+                OpenCode offline
+              </span>
+            )
+          )}
+          {agent.brainLane === "gpt-5.6-sol" && (
+            <span className="flex items-center gap-1 text-micro text-muted">
+              <Sparkles className="h-3 w-3" strokeWidth={1.75} />
+              GPT-5.6 Sol
+            </span>
+          )}
+          {agent.brainLane === "local" && agent.brainModel && (
+            <span className="flex items-center gap-1 text-micro text-muted">
+              <Cpu className="h-3 w-3" strokeWidth={1.75} />
+              {agent.brainModel}
+            </span>
+          )}
+          {agent.brainLane === "opencode" && agent.brainModel && (
+            <span className="flex items-center gap-1 text-micro text-muted">
+              <Zap className="h-3 w-3" strokeWidth={1.75} />
+              {agent.brainModel}
+            </span>
+          )}
+        </div>
 
         <div className="mt-auto flex items-center gap-2 pt-1">
           <Button

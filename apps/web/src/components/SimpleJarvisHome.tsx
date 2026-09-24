@@ -68,19 +68,24 @@ export function SimpleJarvisHome() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  // The composer mirrors the active agent's brain — the single source of
+  // truth, shared with the agents page and the fleet presets. Guarded on the
+  // agent id (not the record) so store refreshes mid-typing don't reset it.
   useEffect(() => {
-    const saved = window.localStorage.getItem("jarvis-simple-model");
-    if (saved !== "claude" && saved !== "gpt-5.6-sol") return;
-    const frame = window.requestAnimationFrame(() => setModel(saved));
+    if (!activeAgent || brainInitRef.current === activeAgent.id) return;
+    brainInitRef.current = activeAgent.id;
+    const frame = window.requestAnimationFrame(() => {
+      setModel(activeAgent.brainLane);
+      if (activeAgent.brainLane === "claude") {
+        setClaudeModel((activeAgent.brainModel as ClaudeModel) || "default");
+      } else if (activeAgent.brainLane === "local") {
+        setLocalModel(activeAgent.brainModel);
+      } else if (activeAgent.brainLane === "opencode") {
+        setOpencodeModel(activeAgent.brainModel);
+      }
+    });
     return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem("jarvis-simple-claude-model");
-    if (saved !== "default" && saved !== "opus" && saved !== "haiku" && saved !== "fable") return;
-    const frame = window.requestAnimationFrame(() => setClaudeModel(saved));
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [activeAgent]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("jarvis-simple-auto-approve");
@@ -132,9 +137,11 @@ export function SimpleJarvisHome() {
           [model]: session ? { agentId: activeAgent?.id ?? null, sessionId: session.id } : undefined,
         }));
         if (session && model === "claude") {
-          setClaudeModel(session.claudeModel);
           setAutoApproveLocalTools(session.autoApproveLocalTools);
         }
+        // The thread pointer is restored here, but never the lane: the
+        // composer mirrors the agent's brain, so a thread started on an older
+        // brain simply yields to a fresh thread on the current one.
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -223,18 +230,32 @@ export function SimpleJarvisHome() {
     ? selectedSession.sessionId
     : model === "claude" ? primarySessionId : null;
 
+  /** Every composer pick rewrites the active agent's brain — one source of truth. */
+  function writeBrain(brainLane: ChatModel, brainModel: string | null) {
+    const id = activeAgent?.id;
+    if (!id) return;
+    api.updateAgent(id, { brainLane, brainModel }).catch((err) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
+  }
+
   function chooseModel(next: ChatModel) {
     setModel(next);
     setWorking(false);
     setError(null);
-    window.localStorage.setItem("jarvis-simple-model", next);
+    const sub =
+      next === "claude" ? claudeModel
+      : next === "local" ? (localModel ?? null)
+      : next === "opencode" ? (opencodeModel ?? null)
+      : null;
+    writeBrain(next, sub);
   }
 
   function chooseClaudeModel(next: ClaudeModel) {
     setClaudeModel(next);
-    window.localStorage.setItem("jarvis-simple-claude-model", next);
     // Takes effect on the next message in this same conversation — see
     // sendFollowUp's mid-conversation setModel handling in sessionManager.ts.
+    if (model === "claude") writeBrain("claude", next);
   }
 
   function toggleAutoApprove() {
@@ -243,6 +264,34 @@ export function SimpleJarvisHome() {
     window.localStorage.setItem("jarvis-simple-auto-approve", String(next));
     // Also takes effect on the next message — sendFollowUp restarts the
     // underlying query when this changes, same idea as the model switch above.
+  }
+
+  function chooseLocalModel(next: string) {
+    setLocalModel(next);
+    // Next message in this conversation runs on the newly picked model —
+    // runTurn's modelFor() honours it via the request's localModel field.
+    if (model === "local") writeBrain("local", next);
+  }
+
+  function refreshLocalModels() {
+    if (model !== "local") return;
+    api.getLocalModels()
+      .then((status) => setLocalModels(status))
+      .catch(() => setLocalModels({ reachable: false, models: [] }));
+  }
+
+  function chooseOpencodeModel(next: string) {
+    setOpencodeModel(next);
+    // Next message in this conversation runs on the newly picked model —
+    // runTurn's modelFor() honours it via the request's opencodeModel field.
+    if (model === "opencode") writeBrain("opencode", next);
+  }
+
+  function refreshOpencodeModels() {
+    if (model !== "opencode") return;
+    api.getOpencodeModels()
+      .then((status) => setOpencodeModels(status))
+      .catch(() => setOpencodeModels({ reachable: false, models: [] }));
   }
 
   return (
@@ -277,7 +326,9 @@ export function SimpleJarvisHome() {
             <p className="mt-5 max-w-md text-body leading-relaxed text-foreground-secondary">
               {model === "gpt-5.6-sol"
                 ? `Talk naturally. ${agentName} keeps the context, remembers what matters, and brings GPT-5.6 Sol reasoning to your local workspace.`
-                : `Talk naturally. ${agentName} keeps the context, remembers what matters, and can act across your business when you approve it.`}
+                : model === "opencode"
+                  ? `Talk naturally. ${agentName} keeps the context, remembers what matters, and answers through OpenCode-hosted models with the same workspace tools.`
+                  : `Talk naturally. ${agentName} keeps the context, remembers what matters, and can act across your business when you approve it.`}
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-micro text-muted lg:justify-start">
               <span className="flex items-center gap-1.5"><Brain className="h-3.5 w-3.5" strokeWidth={1.75} />{memories.filter((memory) => memory.status === "active").length} memories</span>
@@ -317,6 +368,12 @@ export function SimpleJarvisHome() {
                   <ClaudeModelPicker model={claudeModel} onChange={chooseClaudeModel} />
                   <AutoApproveToggle enabled={autoApproveLocalTools} onToggle={toggleAutoApprove} />
                 </>
+              )}
+              {model === "local" && (
+                <LocalModelPicker status={localModels} value={localModel ?? ""} onChange={chooseLocalModel} onRefresh={refreshLocalModels} />
+              )}
+              {model === "opencode" && (
+                <OpenCodeModelPicker status={opencodeModels} value={opencodeModel ?? ""} onChange={chooseOpencodeModel} onRefresh={refreshOpencodeModels} />
               )}
               <div className="hidden items-center gap-2 rounded-full border border-border bg-black/20 px-3 py-1.5 text-micro text-muted sm:flex">
                 <AudioLines className={`h-3.5 w-3.5 ${isActive ? "text-accent-bright" : ""}`} strokeWidth={1.75} />

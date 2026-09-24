@@ -13,6 +13,15 @@ CREATE TABLE IF NOT EXISTS agents (
   color TEXT NOT NULL DEFAULT 'accent',
   permission_mode TEXT NOT NULL DEFAULT 'default',
   allowed_tools TEXT,
+  -- Which lane answers for this agent and which specific model (null = lane
+  -- default). Set per agent or for all agents at once via the brain preset.
+  brain_lane TEXT NOT NULL DEFAULT 'claude',
+  brain_model TEXT,
+  -- One ongoing conversation pointer per lane family, so flipping an agent's
+  -- brain (or applying a group preset) parks the other threads instead of
+  -- orphaning them. chat_session_id stays the Claude pointer.
+  local_chat_session_id TEXT,
+  opencode_chat_session_id TEXT,
   -- Replaces settings.primary_session_id: one ongoing conversation per agent.
   chat_session_id TEXT,
   -- The simple form keeps a separate continuous thread for Codex.

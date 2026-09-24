@@ -64,6 +64,8 @@ export const createAgentSchema = z
     color: z.string().trim().max(40).optional(),
     permissionMode: permissionMode.optional(),
     allowedTools: allowedTools.optional(),
+    brainLane: z.enum(["claude", "gpt-5.6-sol", "local", "opencode"]).optional(),
+    brainModel: z.string().trim().min(1).max(200).nullable().optional(),
   })
   .strict();
 
@@ -77,10 +79,25 @@ export const updateAgentSchema = z
     color: z.string().trim().max(40).optional(),
     permissionMode: permissionMode.optional(),
     allowedTools: allowedTools.nullable().optional(),
+    brainLane: z.enum(["claude", "gpt-5.6-sol", "local", "opencode"]).optional(),
+    brainModel: z.string().trim().min(1).max(200).nullable().optional(),
     status: z.enum(["active", "archived"]).optional(),
   })
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, "at least one field is required");
+
+/**
+ * Applies one lane to every active agent at once ("go completely local").
+ * Each agent keeps the specific model it already has; otherwise the preset's
+ * model wins, otherwise the lane default (null). A null model means no
+ * opinion — specifics are kept, never cleared.
+ */
+export const setBrainPresetSchema = z
+  .object({
+    lane: z.enum(["claude", "gpt-5.6-sol", "local", "opencode"]),
+    model: z.string().trim().min(1).max(200).nullable().optional(),
+  })
+  .strict();
 
 const memoryKind = z.enum(["preference", "business", "relationship", "decision", "fact"]);
 export const createMemorySchema = z.object({

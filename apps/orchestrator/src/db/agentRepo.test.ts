@@ -143,6 +143,39 @@ describe("agentRepo", () => {
     expect(updated?.name).toBe("Partial");
   });
 
+  it("defaults new agents to the Claude brain and round-trips brain changes", async () => {
+    const { createAgent, getAgent, updateAgent } = await import("./agentRepo.js");
+    const agent = createAgent({ name: "Brainiac" });
+    expect(agent.brainLane).toBe("claude");
+    expect(agent.brainModel).toBeNull();
+
+    const updated = updateAgent(agent.id, { brainLane: "local", brainModel: "qwen3:14b" });
+    expect(updated?.brainLane).toBe("local");
+    expect(updated?.brainModel).toBe("qwen3:14b");
+    expect(getAgent(agent.id)?.brainLane).toBe("local");
+  });
+
+  it("applies a lane preset to every active agent without touching specifics it didn't set", async () => {
+    const { createAgent, getAgent, setBrainPreset } = await import("./agentRepo.js");
+    const pinned = createAgent({ name: "Pinned", brainLane: "local", brainModel: "llama3.2:latest" });
+    const fresh = createAgent({ name: "Fresh" });
+
+    const updated = setBrainPreset("opencode", "mimo-v2.6-flash-free");
+    expect(updated.length).toBeGreaterThanOrEqual(2);
+    // The preset model wins only where the agent has none for the lane...
+    expect(getAgent(fresh.id)?.brainLane).toBe("opencode");
+    expect(getAgent(fresh.id)?.brainModel).toBe("mimo-v2.6-flash-free");
+    // ...but an existing specific model survives the flip.
+    expect(getAgent(pinned.id)?.brainLane).toBe("opencode");
+    expect(getAgent(pinned.id)?.brainModel).toBe("llama3.2:latest");
+
+    // Null model means no opinion: every agent keeps whatever it has.
+    setBrainPreset("local", null);
+    expect(getAgent(pinned.id)?.brainLane).toBe("local");
+    expect(getAgent(pinned.id)?.brainModel).toBe("llama3.2:latest");
+    expect(getAgent(fresh.id)?.brainModel).toBe("mimo-v2.6-flash-free");
+  });
+
   it("returns undefined rather than throwing for an unknown agent", async () => {
     const { getAgent, updateAgent } = await import("./agentRepo.js");
     expect(getAgent("nope")).toBeUndefined();

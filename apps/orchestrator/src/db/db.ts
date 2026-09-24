@@ -145,6 +145,12 @@ for (const migration of [
   { table: "sessions", column: "opencode_model", sql: "ALTER TABLE sessions ADD COLUMN opencode_model TEXT" },
   { table: "sessions", column: "auto_approve_local_tools", sql: "ALTER TABLE sessions ADD COLUMN auto_approve_local_tools INTEGER NOT NULL DEFAULT 0" },
   { table: "agents", column: "codex_chat_session_id", sql: "ALTER TABLE agents ADD COLUMN codex_chat_session_id TEXT" },
+  // Per-agent brains (which lane answers, which model) plus one conversation
+  // pointer per lane family so brain flips park threads instead of orphaning.
+  { table: "agents", column: "brain_lane", sql: "ALTER TABLE agents ADD COLUMN brain_lane TEXT NOT NULL DEFAULT 'claude'" },
+  { table: "agents", column: "brain_model", sql: "ALTER TABLE agents ADD COLUMN brain_model TEXT" },
+  { table: "agents", column: "local_chat_session_id", sql: "ALTER TABLE agents ADD COLUMN local_chat_session_id TEXT" },
+  { table: "agents", column: "opencode_chat_session_id", sql: "ALTER TABLE agents ADD COLUMN opencode_chat_session_id TEXT" },
   { table: "scheduled_tasks", column: "retry_count", sql: "ALTER TABLE scheduled_tasks ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0" },
   { table: "tasks", column: "mission_id", sql: "ALTER TABLE tasks ADD COLUMN mission_id TEXT REFERENCES missions(id) ON DELETE SET NULL" },
   { table: "platform_actions", column: "external_post_id", sql: "ALTER TABLE platform_actions ADD COLUMN external_post_id TEXT" },

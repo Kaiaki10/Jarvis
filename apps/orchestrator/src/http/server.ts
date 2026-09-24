@@ -147,6 +147,7 @@ import {
   generateWorkflowContentSchema,
   createAgentSchema,
   updateAgentSchema,
+  setBrainPresetSchema,
   createConversationSchema,
   conversationMessageSchema,
   createMemorySchema,
@@ -226,6 +227,7 @@ import {
   getAgent,
   getDefaultAgent,
   listAgents,
+  setBrainPreset,
   updateAgent,
 } from "../db/agentRepo.js";
 import {
@@ -1462,7 +1464,8 @@ app.post("/sessions/:id/messages", (req: Request, res: Response) => {
         "This session never got far enough to be resumed. Launch a new one instead.",
     });
   } else if (outcome.reason === "busy") {
-    res.status(409).json({ error: "GPT-5.6 Sol is still answering the previous message." });
+    const busyLabel = session?.model === "gpt-5.6-sol" ? "GPT-5.6 Sol" : session?.model === "opencode" ? "The OpenCode model" : "Jarvis";
+    res.status(409).json({ error: `${busyLabel} is still answering the previous message.` });
   } else {
     res.status(429).json({
       error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}). Wait for one to finish, then try again.`,

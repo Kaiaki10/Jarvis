@@ -10,6 +10,8 @@ import {
   createPaidGrowthCampaignSchema,
   updatePaidGrowthPerformanceSchema,
   createPaymentLinkSchema,
+  updateAgentSchema,
+  setBrainPresetSchema,
   chatMessageSchema,
 } from "./validation.js";
 
@@ -160,5 +162,15 @@ describe("HTTP validation", () => {
     expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 24.5, currency: "GBP" }).success).toBe(false);
     expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 25000, currency: "JPY" }).success).toBe(false);
     expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 25000 }).success).toBe(false);
+  });
+
+  it("accepts brain lanes and models on agents, and lanes on the fleet preset", () => {
+    expect(updateAgentSchema.safeParse({ brainLane: "local", brainModel: "qwen3:14b" }).success).toBe(true);
+    expect(updateAgentSchema.safeParse({ brainLane: "opencode", brainModel: null }).success).toBe(true);
+    expect(updateAgentSchema.safeParse({ brainLane: "made-up" }).success).toBe(false);
+    expect(updateAgentSchema.safeParse({}).success).toBe(false);
+    expect(setBrainPresetSchema.safeParse({ lane: "local" }).success).toBe(true);
+    expect(setBrainPresetSchema.safeParse({ lane: "gpt-5.6-sol", model: null }).success).toBe(true);
+    expect(setBrainPresetSchema.safeParse({ lane: "made-up" }).success).toBe(false);
   });
 });

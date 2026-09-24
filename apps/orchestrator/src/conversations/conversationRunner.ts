@@ -21,7 +21,22 @@ import {
   sendFollowUp,
   startSession,
 } from "../sessions/sessionManager.js";
-import type { SessionEventRecord } from "@jarvis/shared";
+import {
+  interruptCodexSession,
+  sendCodexFollowUp,
+  startCodexSession,
+} from "../sessions/codexSessionManager.js";
+import {
+  interruptLocalSession,
+  sendLocalFollowUp,
+  startLocalSession,
+} from "../sessions/localSessionManager.js";
+import {
+  interruptOpencodeSession,
+  sendOpencodeFollowUp,
+  startOpencodeSession,
+} from "../sessions/opencodeSessionManager.js";
+import type { ChatModel, SessionEventRecord } from "@jarvis/shared";
 
 /**
  * Rooms currently being driven, so a second start cannot run the same room
@@ -55,7 +70,7 @@ export function isConversationRunning(id: string): boolean {
  * the backstop: without it a session that never completes would hold the room
  * open indefinitely.
  */
-function awaitTurn(sessionId: string): Promise<{ ok: boolean; text: string }> {
+function awaitTurn(sessionId: string, lane: ChatModel): Promise<{ ok: boolean; text: string }> {
   return new Promise((resolve) => {
     let settled = false;
 
@@ -77,7 +92,7 @@ function awaitTurn(sessionId: string): Promise<{ ok: boolean; text: string }> {
     };
 
     const timer = setTimeout(() => {
-      void interruptSession(sessionId);
+      interruptRoomTurn(sessionId, lane);
       finish({ ok: false, text: "" });
     }, TURN_TIMEOUT_MS);
 
@@ -92,6 +107,91 @@ function endRoom(id: string, status: "completed" | "stopped" | "error", reason: 
     stopReason: reason,
   });
   globalBus.emit("conversations_changed");
+}
+
+/**
+ * Starts one room turn on the speaker's own brain. Local and OpenCode lanes
+ * run read-only (see the call site); Codex is read-only sandboxed already;
+ * Claude keeps the room's pre-approved tool list.
+ */
+function startRoomTurn(input: {
+  lane: ChatModel;
+  laneModel: string | null;
+  sessionId: string;
+  prompt: string;
+  cwd: string;
+  agentName: string;
+  title: string;
+  agentId: string;
+  permissionMode: string;
+}): void {
+  switch (input.lane) {
+    case "local":
+      startLocalSession({
+        id: input.sessionId, prompt: input.prompt, cwd: input.cwd,
+        title: input.agentName, agentId: input.agentId, localModel: input.laneModel, readOnly: true,
+      });
+      return;
+    case "opencode":
+      startOpencodeSession({
+        id: input.sessionId, prompt: input.prompt, cwd: input.cwd,
+        title: input.agentName, agentId: input.agentId, opencodeModel: input.laneModel, readOnly: true,
+      });
+      return;
+    case "gpt-5.6-sol":
+      startCodexSession({
+        id: input.sessionId, prompt: input.prompt, cwd: input.cwd,
+        title: input.agentName, agentId: input.agentId,
+      });
+      return;
+    default:
+      void startSession({
+        id: input.sessionId,
+        prompt: input.prompt,
+        cwd: input.cwd,
+        permissionMode: input.permissionMode,
+        allowedTools: ROOM_ALLOWED_TOOLS,
+        title: `${input.agentName} in ${input.title}`,
+        agentId: input.agentId,
+      });
+  }
+}
+
+function sendRoomFollowUp(
+  sessionId: string,
+  lane: ChatModel,
+  laneModel: string | null,
+  prompt: string
+): { ok: true } | { ok: false; reason: string } {
+  const wrap = (outcome: { ok: boolean; reason?: string }) =>
+    outcome.ok ? { ok: true as const } : { ok: false as const, reason: outcome.reason ?? "unknown" };
+  switch (lane) {
+    case "local":
+      return wrap(sendLocalFollowUp(sessionId, prompt, laneModel, true));
+    case "opencode":
+      return wrap(sendOpencodeFollowUp(sessionId, prompt, laneModel, true));
+    case "gpt-5.6-sol":
+      return wrap(sendCodexFollowUp(sessionId, prompt));
+    default:
+      return wrap(sendFollowUp(sessionId, prompt));
+  }
+}
+
+/** Stops one room turn on the lane that is actually speaking. */
+function interruptRoomTurn(sessionId: string, lane: ChatModel): void {
+  switch (lane) {
+    case "local":
+      interruptLocalSession(sessionId);
+      return;
+    case "opencode":
+      interruptOpencodeSession(sessionId);
+      return;
+    case "gpt-5.6-sol":
+      interruptCodexSession(sessionId);
+      return;
+    default:
+      void interruptSession(sessionId);
+  }
 }
 
 /**
@@ -180,9 +280,16 @@ export async function runConversation(conversationId: string): Promise<void> {
 
       // Each participant keeps one session for the whole room, so an agent
       // remembers its own earlier turns rather than meeting the room afresh.
+      // The turn runs on the speaker's own brain: rooms are how different
+      // models meet. Local and OpenCode lanes run read-only here — their
+      // `run_command` gate would stall the 5-minute turn the same way the
+      // Claude approval gate once did, so commands are never offered, only
+      // file reads. Codex is read-only sandboxed by construction already.
       let sessionId = speaker.sessionId;
       const live = sessionId ? getSession(sessionId) : undefined;
       let outcome: { ok: boolean; text: string };
+      const lane: ChatModel = agent.brainLane;
+      const laneModel = agent.brainModel;
 
       if (!sessionId || !live) {
         const cwd = agent.cwd.trim() || process.cwd();
@@ -192,26 +299,21 @@ export async function runConversation(conversationId: string): Promise<void> {
           permissionMode: agent.permissionMode,
           allowedTools: ROOM_ALLOWED_TOOLS,
           agentId: agent.id,
+          model: lane,
+          localModel: lane === "local" ? laneModel ?? undefined : undefined,
+          opencodeModel: lane === "opencode" ? laneModel ?? undefined : undefined,
         });
         sessionId = session.id;
         setParticipantSession(conversationId, agent.id, sessionId);
         speaker.sessionId = sessionId;
         globalBus.emit("session_updated", sessionId);
 
-        const turnPromise = awaitTurn(sessionId);
-        void startSession({
-          id: sessionId,
-          prompt,
-          cwd,
-          permissionMode: agent.permissionMode,
-          allowedTools: ROOM_ALLOWED_TOOLS,
-          title: `${agent.name} in ${current.title}`,
-          agentId: agent.id,
-        });
+        const turnPromise = awaitTurn(sessionId, lane);
+        startRoomTurn({ lane, laneModel, sessionId, prompt, cwd, agentName: agent.name, title: current.title, agentId: agent.id, permissionMode: agent.permissionMode });
         outcome = await turnPromise;
       } else {
-        const turnPromise = awaitTurn(sessionId);
-        const sent = sendFollowUp(sessionId, prompt);
+        const turnPromise = awaitTurn(sessionId, lane);
+        const sent = sendRoomFollowUp(sessionId, lane, laneModel, prompt);
         if (!sent.ok) {
           endRoom(conversationId, "error", `${agent.name} could not continue (${sent.reason}).`);
           return;

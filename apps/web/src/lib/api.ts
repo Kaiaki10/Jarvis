@@ -294,6 +294,11 @@ export const api = {
     request<AgentRecord>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   /** Archives rather than deletes, so the agent's history stays attributable. */
   archiveAgent: (id: string) => request<AgentRecord>(`/agents/${id}`, { method: "DELETE" }),
+  setBrainPreset: (lane: ChatModel, model?: string | null) =>
+    request<AgentRecord[]>("/agents/brain-preset", {
+      method: "POST",
+      body: JSON.stringify({ lane, model: model ?? null }),
+    }),
 
   listMemories: (status?: "active" | "archived") =>
     request<MemoryRecord[]>(scoped(`/memories${status ? `?status=${status}` : ""}`)),

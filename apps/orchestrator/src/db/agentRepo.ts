@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AgentRecord, AgentStatus } from "@jarvis/shared";
+import type { AgentRecord, AgentStatus, ChatModel } from "@jarvis/shared";
 import { db, DEFAULT_AGENT_ID } from "./db.js";
 
 interface AgentRow {
@@ -13,6 +13,8 @@ interface AgentRow {
   permission_mode: string;
   allowed_tools: string | null;
   chat_session_id: string | null;
+  brain_lane: string | null;
+  brain_model: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -30,6 +32,8 @@ function mapAgent(row: AgentRow): AgentRecord {
     permissionMode: row.permission_mode,
     allowedTools: row.allowed_tools ? (JSON.parse(row.allowed_tools) as string[]) : null,
     chatSessionId: row.chat_session_id,
+    brainLane: (row.brain_lane as ChatModel) ?? "claude",
+    brainModel: row.brain_model ?? null,
     status: row.status as AgentStatus,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -68,14 +72,16 @@ export function createAgent(input: {
   color?: string;
   permissionMode?: string;
   allowedTools?: string[] | null;
+  brainLane?: ChatModel;
+  brainModel?: string | null;
 }): AgentRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO agents (
        id, name, role, system_prompt, cwd, avatar, color,
-       permission_mode, allowed_tools, chat_session_id, status, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'active', ?, ?)`
+       permission_mode, allowed_tools, chat_session_id, brain_lane, brain_model, status, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'active', ?, ?)`
   ).run(
     id,
     input.name.trim(),
@@ -88,6 +94,8 @@ export function createAgent(input: {
     input.color?.trim() || "accent",
     input.permissionMode ?? "default",
     input.allowedTools ? JSON.stringify(input.allowedTools) : null,
+    input.brainLane ?? "claude",
+    input.brainModel ?? null,
     now,
     now
   );
@@ -106,6 +114,8 @@ export function updateAgent(
     permissionMode?: string;
     allowedTools?: string[] | null;
     chatSessionId?: string | null;
+    brainLane?: ChatModel;
+    brainModel?: string | null;
     status?: AgentStatus;
   }
 ): AgentRecord | undefined {
@@ -123,6 +133,8 @@ export function updateAgent(
     columns.allowed_tools = patch.allowedTools ? JSON.stringify(patch.allowedTools) : null;
   }
   if (patch.chatSessionId !== undefined) columns.chat_session_id = patch.chatSessionId;
+  if (patch.brainLane !== undefined) columns.brain_lane = patch.brainLane;
+  if (patch.brainModel !== undefined) columns.brain_model = patch.brainModel;
   if (patch.status !== undefined) columns.status = patch.status;
 
   const entries = Object.entries(columns);
@@ -158,4 +170,20 @@ export function archiveAgent(id: string): ArchiveAgentOutcome {
     return { ok: false, reason: "last_active_agent" };
   }
   return { ok: true, agent: updateAgent(id, { status: "archived" })! };
+}
+
+/**
+ * Applies one lane to every active agent at once — the group preset behind
+ * "go completely local". Each agent keeps the specific model it already has
+ * (switching lanes and back parks threads per lane, so a preset flip never
+ * orphans a conversation); otherwise the preset's model wins, otherwise the
+ * lane default. A null model means no opinion. Returns the updated agents.
+ */
+export function setBrainPreset(lane: ChatModel, model?: string | null): AgentRecord[] {
+  const updated: AgentRecord[] = [];
+  for (const agent of listAgents("active")) {
+    const brainModel = agent.brainModel ?? model ?? null;
+    updated.push(updateAgent(agent.id, { brainLane: lane, brainModel })!);
+  }
+  return updated;
 }

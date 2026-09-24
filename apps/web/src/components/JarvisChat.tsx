@@ -40,7 +40,22 @@ export function JarvisChat() {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const followStreamRef = useRef(true);
   const { memories } = useMemories();
+  const { activeAgent } = useAgents();
   const connectionStatus = useConnectionStatus();
+
+  // Mirror the active agent's brain (see SimpleJarvisHome): composer state is
+  // a view of it, never a second truth. Guarded on the agent id so store
+  // refreshes mid-typing don't reset it.
+  useEffect(() => {
+    if (!activeAgent || brainInitRef.current === activeAgent.id) return;
+    brainInitRef.current = activeAgent.id;
+    const frame = window.requestAnimationFrame(() => {
+      setModel(activeAgent.brainLane);
+      if (activeAgent.brainLane === "local") setLocalModel(activeAgent.brainModel);
+      else if (activeAgent.brainLane === "opencode") setOpencodeModel(activeAgent.brainModel);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeAgent]);
 
   useEffect(() => {
     api
@@ -216,12 +231,13 @@ export function JarvisChat() {
               ["claude", "Claude"],
               ["gpt-5.6-sol", "GPT-5.6 Sol"],
               ["local", "Local LLM"],
+              ["opencode", "OpenCode"],
             ] as Array<[ChatModel, string]>).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
                 aria-pressed={model === value}
-                onClick={() => setModel(value)}
+                onClick={() => chooseModel(value)}
                 className={`rounded-md px-3 py-1.5 text-label font-medium transition-colors ${
                   model === value
                     ? "bg-accent text-white shadow-sm"
