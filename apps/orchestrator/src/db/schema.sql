@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   model TEXT NOT NULL DEFAULT 'claude',
   claude_model TEXT NOT NULL DEFAULT 'default',
   local_model TEXT,
+  opencode_model TEXT,
   auto_approve_local_tools INTEGER NOT NULL DEFAULT 0,
   title TEXT NOT NULL,
   status TEXT NOT NULL,

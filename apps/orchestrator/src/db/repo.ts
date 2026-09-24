@@ -43,6 +43,8 @@ interface SessionRow {
   codex_thread_id: string | null;
   model: string;
   claude_model: string;
+  local_model: string | null;
+  opencode_model: string | null;
   auto_approve_local_tools: number;
   title: string;
   status: string;
@@ -67,6 +69,8 @@ function mapSession(row: SessionRow): SessionRecord {
     codexThreadId: row.codex_thread_id,
     model: row.model as ChatModel,
     claudeModel: row.claude_model as ClaudeModel,
+    localModel: row.local_model ?? null,
+    opencodeModel: row.opencode_model ?? null,
     autoApproveLocalTools: row.auto_approve_local_tools === 1,
     title: row.title,
     status: row.status as SessionStatus,
@@ -93,18 +97,22 @@ export function createSession(input: {
   agentId?: string | null;
   model?: ChatModel;
   claudeModel?: ClaudeModel;
+  localModel?: string;
+  opencodeModel?: string;
   autoApproveLocalTools?: boolean;
 }): SessionRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO sessions (id, agent_id, claude_session_id, codex_thread_id, model, claude_model, auto_approve_local_tools, title, status, cwd, permission_mode, allowed_tools, task_id, cost_usd, turns, error_message, created_at, updated_at)
-     VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, 'starting', ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`
+    `INSERT INTO sessions (id, agent_id, claude_session_id, codex_thread_id, model, claude_model, local_model, opencode_model, auto_approve_local_tools, title, status, cwd, permission_mode, allowed_tools, task_id, cost_usd, turns, error_message, created_at, updated_at)
+     VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, 'starting', ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`
   ).run(
     id,
     input.agentId ?? null,
     input.model ?? "claude",
     input.claudeModel ?? "default",
+    input.localModel ?? null,
+    input.opencodeModel ?? null,
     input.autoApproveLocalTools ? 1 : 0,
     input.title,
     input.cwd,
@@ -138,6 +146,8 @@ export function updateSession(
     claudeSessionId: string;
     codexThreadId: string;
     claudeModel: ClaudeModel;
+    localModel: string | null;
+    opencodeModel: string | null;
     autoApproveLocalTools: boolean;
     status: SessionStatus;
     costUsd: number;
@@ -152,11 +162,13 @@ export function updateSession(
   if (!current) return;
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE sessions SET claude_session_id = ?, codex_thread_id = ?, claude_model = ?, auto_approve_local_tools = ?, status = ?, cost_usd = ?, turns = ?, error_message = ?, summary = ?, current_activity = ?, updated_at = ? WHERE id = ?`
+    `UPDATE sessions SET claude_session_id = ?, codex_thread_id = ?, claude_model = ?, local_model = ?, opencode_model = ?, auto_approve_local_tools = ?, status = ?, cost_usd = ?, turns = ?, error_message = ?, summary = ?, current_activity = ?, updated_at = ? WHERE id = ?`
   ).run(
     patch.claudeSessionId ?? current.claudeSessionId,
     patch.codexThreadId ?? current.codexThreadId,
     patch.claudeModel ?? current.claudeModel,
+    patch.localModel !== undefined ? patch.localModel : current.localModel,
+    patch.opencodeModel !== undefined ? patch.opencodeModel : current.opencodeModel,
     (patch.autoApproveLocalTools ?? current.autoApproveLocalTools) ? 1 : 0,
     patch.status ?? current.status,
     patch.costUsd ?? current.costUsd,
@@ -1033,7 +1045,14 @@ export function setPrimarySessionId(id: string): void {
  * than sharing one global conversation.
  */
 export function getAgentChatSessionId(agentId: string, model: ChatModel = "claude"): string | null {
-  const column = model === "gpt-5.6-sol" ? "codex_chat_session_id" : "chat_session_id";
+  // One pointer per lane family: flipping an agent's brain (or applying a
+  // group preset) parks the other threads instead of orphaning them.
+  // chat_session_id stays the Claude pointer, as before.
+  const column =
+    model === "gpt-5.6-sol" ? "codex_chat_session_id"
+    : model === "local" ? "local_chat_session_id"
+    : model === "opencode" ? "opencode_chat_session_id"
+    : "chat_session_id";
   const row = db
     .prepare(`SELECT ${column} AS session_id FROM agents WHERE id = ?`)
     .get(agentId) as unknown as { session_id: string | null } | undefined;
@@ -1041,7 +1060,11 @@ export function getAgentChatSessionId(agentId: string, model: ChatModel = "claud
 }
 
 export function setAgentChatSessionId(agentId: string, sessionId: string | null, model: ChatModel = "claude"): void {
-  const column = model === "gpt-5.6-sol" ? "codex_chat_session_id" : "chat_session_id";
+  const column =
+    model === "gpt-5.6-sol" ? "codex_chat_session_id"
+    : model === "local" ? "local_chat_session_id"
+    : model === "opencode" ? "opencode_chat_session_id"
+    : "chat_session_id";
   db.prepare(`UPDATE agents SET ${column} = ?, updated_at = ? WHERE id = ?`).run(
     sessionId,
     new Date().toISOString(),

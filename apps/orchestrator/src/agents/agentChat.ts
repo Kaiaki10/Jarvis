@@ -17,6 +17,7 @@ import {
 } from "../sessions/codexSessionManager.js";
 import type { ChatModel, ClaudeModel } from "@jarvis/shared";
 import { sendLocalFollowUp, startLocalSession } from "../sessions/localSessionManager.js";
+import { sendOpencodeFollowUp, startOpencodeSession, activeOpencodeSessionCount } from "../sessions/opencodeSessionManager.js";
 
 export type AgentChatFailureReason = "agent_not_found" | "working_directory_missing" | "at_capacity" | "busy";
 
@@ -30,14 +31,16 @@ export function sendAgentChat(
   text: string,
   model: ChatModel = "claude",
   claudeModel?: ClaudeModel,
-  autoApproveLocalTools?: boolean
+  autoApproveLocalTools?: boolean,
+  localModel?: string | null,
+  opencodeModel?: string | null
 ): AgentChatOutcome {
   const agent = getAgent(agentId);
   if (!agent || agent.status !== "active") {
     return { ok: false, reason: "agent_not_found", message: "That agent is not available." };
   }
 
-  const totalActive = () => activeSessionCount() + activeCodexSessionCount();
+  const totalActive = () => activeSessionCount() + activeCodexSessionCount() + activeOpencodeSessionCount();
   const atTotalCapacity = () => totalActive() >= getSettings().maxConcurrentSessions;
   const capacityMessage = () =>
     `Jarvis is at its active-session limit (${totalActive()}/${getSettings().maxConcurrentSessions}). Try again when a run finishes.`;
@@ -52,11 +55,14 @@ export function sendAgentChat(
     const outcome = model === "gpt-5.6-sol"
       ? sendCodexFollowUp(existing.id, text)
       : model === "local"
-        ? sendLocalFollowUp(existing.id, text)
-        : sendFollowUp(existing.id, text, { memoryWritable: true, claudeModel, autoApproveLocalTools });
+        ? sendLocalFollowUp(existing.id, text, localModel)
+        : model === "opencode"
+          ? sendOpencodeFollowUp(existing.id, text, opencodeModel)
+          : sendFollowUp(existing.id, text, { memoryWritable: true, claudeModel, autoApproveLocalTools });
     if (outcome.ok) return { ok: true, sessionId: existing.id, resumed: outcome.resumed, afterSeq };
     if (outcome.reason === "busy") {
-      return { ok: false, reason: "busy", message: "GPT-5.6 Sol is still answering the previous message." };
+      const busyLabel = model === "gpt-5.6-sol" ? "GPT-5.6 Sol" : model === "local" ? "The local model" : model === "opencode" ? "The OpenCode model" : "Jarvis";
+      return { ok: false, reason: "busy", message: `${busyLabel} is still answering the previous message.` };
     }
     if (outcome.reason === "at_capacity") {
       return {
@@ -90,6 +96,8 @@ export function sendAgentChat(
     agentId,
     model,
     claudeModel,
+    localModel: model === "local" ? localModel ?? undefined : undefined,
+    opencodeModel: model === "opencode" ? opencodeModel ?? undefined : undefined,
     autoApproveLocalTools,
   });
   setAgentChatSessionId(agentId, session.id, model);
@@ -99,7 +107,9 @@ export function sendAgentChat(
   if (model === "gpt-5.6-sol") {
     startCodexSession({ id: session.id, prompt: text, cwd, title: agent.name, agentId });
   } else if (model === "local") {
-    startLocalSession({ id: session.id, prompt: text, cwd, title: agent.name, agentId });
+    startLocalSession({ id: session.id, prompt: text, cwd, title: agent.name, agentId, localModel });
+  } else if (model === "opencode") {
+    startOpencodeSession({ id: session.id, prompt: text, cwd, title: agent.name, agentId, opencodeModel });
   } else {
     void startSession({
       id: session.id,

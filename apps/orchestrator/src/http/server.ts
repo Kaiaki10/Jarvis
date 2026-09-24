@@ -298,6 +298,8 @@ import {
 } from "../billing/walletFunding.js";
 import { sendAgentChat } from "../agents/agentChat.js";
 import { interruptCodexSession, sendCodexFollowUp } from "../sessions/codexSessionManager.js";
+import { listLocalModels, interruptLocalSession, resolveLocalPermission } from "../sessions/localSessionManager.js";
+import { listOpencodeModels, interruptOpencodeSession, resolveOpencodePermission, sendOpencodeFollowUp } from "../sessions/opencodeSessionManager.js";
 import {
   refreshSlackAgentBridge,
   startSlackAgentBridge,
@@ -698,7 +700,7 @@ app.get("/sessions", (req: Request, res: Response) => {
 app.get("/chat", (req: Request, res: Response) => {
   const agentId = owningAgentId(req, res);
   if (agentId === null) return;
-  const model = req.query.model === "gpt-5.6-sol" || req.query.model === "local" ? req.query.model : "claude";
+  const model = req.query.model === "gpt-5.6-sol" || req.query.model === "local" || req.query.model === "opencode" ? req.query.model : "claude";
   const id = agentId ? getAgentChatSessionId(agentId, model) : getPrimarySessionId();
   const session = id ? getSession(id) : undefined;
   res.json({ session: session ?? null });
@@ -707,18 +709,26 @@ app.get("/chat", (req: Request, res: Response) => {
 app.post("/chat", (req: Request, res: Response) => {
   const body = validatedBody(chatMessageSchema, req, res);
   if (!body) return;
-  const { text, model, claudeModel, autoApproveLocalTools } = body;
+  const { text, model, claudeModel, localModel, opencodeModel, autoApproveLocalTools } = body;
 
   const agentId = owningAgentId(req, res);
   if (agentId === null) return;
   if (!agentId) { res.status(503).json({ error: "No default agent is available." }); return; }
-  const outcome = sendAgentChat(agentId, text, model, claudeModel, autoApproveLocalTools);
+  const outcome = sendAgentChat(agentId, text, model, claudeModel, autoApproveLocalTools, localModel, opencodeModel);
   if (!outcome.ok) {
     res.status(outcome.reason === "at_capacity" ? 429 : outcome.reason === "busy" ? 409 : outcome.reason === "agent_not_found" ? 404 : 400)
       .json({ error: outcome.message });
     return;
   }
   res.status(outcome.resumed ? 202 : 201).json({ sessionId: outcome.sessionId, resumed: outcome.resumed });
+});
+
+app.get("/chat/local-models", async (_req: Request, res: Response) => {
+  res.json(await listLocalModels());
+});
+
+app.get("/chat/opencode-models", async (_req: Request, res: Response) => {
+  res.json(await listOpencodeModels());
 });
 
 /**
@@ -855,6 +865,14 @@ app.post("/agents", (req: Request, res: Response) => {
   const agent = createAgent(body);
   globalBus.emit("agents_changed");
   res.status(201).json(agent);
+});
+
+app.post("/agents/brain-preset", (req: Request, res: Response) => {
+  const body = validatedBody(setBrainPresetSchema, req, res);
+  if (!body) return;
+  const agents = setBrainPreset(body.lane, body.model ?? null);
+  globalBus.emit("agents_changed");
+  res.json(agents);
 });
 
 app.patch("/agents/:id", (req: Request, res: Response) => {
@@ -1423,12 +1441,27 @@ app.post("/sessions/:id/permission-response", (req: Request, res: Response) => {
   if (!body) return;
   const agentId = scopedAgentId(req, res); if (agentId === null) return;
   if (agentId && getSession(req.params.id)?.agentId !== agentId) { res.status(404).json({ error: "no such session" }); return; }
-  const ok = resolvePermission(
-    req.params.id,
-    body.requestId,
-    body.decision,
-    body.updatedInput as Record<string, unknown> | undefined
-  );
+  const session = getSession(req.params.id);
+  const ok = session?.model === "local"
+    ? resolveLocalPermission(
+        req.params.id,
+        body.requestId,
+        body.decision,
+        body.updatedInput as Record<string, unknown> | undefined
+      )
+    : session?.model === "opencode"
+      ? resolveOpencodePermission(
+          req.params.id,
+          body.requestId,
+          body.decision,
+          body.updatedInput as Record<string, unknown> | undefined
+        )
+      : resolvePermission(
+        req.params.id,
+        body.requestId,
+        body.decision,
+        body.updatedInput as Record<string, unknown> | undefined
+      );
   if (!ok) {
     res.status(404).json({ error: "no pending permission request with that id" });
     return;
@@ -1443,7 +1476,11 @@ app.post("/sessions/:id/interrupt", async (req: Request, res: Response) => {
     const session = getSession(req.params.id);
     const ok = session?.model === "gpt-5.6-sol"
       ? interruptCodexSession(req.params.id)
-      : await interruptSession(req.params.id);
+      : session?.model === "local"
+        ? interruptLocalSession(req.params.id)
+        : session?.model === "opencode"
+          ? interruptOpencodeSession(req.params.id)
+          : await interruptSession(req.params.id);
     if (!ok) {
       res.status(404).json({ error: "session not active" });
       return;
@@ -2683,9 +2720,10 @@ app.get("/platform-usage", (_req: Request, res: Response) => {
 // ---- Stripe-funded billing ----
 //
 // Jarvis never moves money and never sees a PAN — see billing/stripeFunding.ts.
-// These routes only ever read balance, manage which cards exist, and mint
+// These routes only ever read balance, manage which cards exist, mint
 // short-lived reveal sessions Stripe's own Issuing Elements use directly in
-// the browser.
+// the browser, create Payment Links (which authorise no spend), and list the
+// receipts confirmed by Stripe's signed webhooks.
 
 app.get("/billing/stripe/balance", async (_req: Request, res: Response) => {
   try {

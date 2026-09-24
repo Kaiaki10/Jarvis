@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, AudioLines, Brain, Loader2, Mic, MicOff, ShieldCheck, ShieldOff, Sparkles } from "lucide-react";
+import { ArrowUp, AudioLines, Brain, Cpu, Loader2, Mic, MicOff, RefreshCw, ShieldCheck, ShieldOff, Sparkles, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSessionStream } from "@/lib/hooks";
 import { useAgents, useConnectionStatus, useMemories, useStore } from "@/lib/store";
@@ -13,7 +13,7 @@ import { ExperienceModeToggle } from "@/components/ExperienceModeToggle";
 import { Select } from "@/components/ui/Input";
 import { ClaudeUsageBadge } from "@/components/ClaudeUsageBadge";
 import { SimpleConnectChips } from "@/components/SimpleConnectChips";
-import { CLAUDE_MODELS, type ChatModel, type ClaudeModel } from "@jarvis/shared";
+import { CLAUDE_MODELS, OPENCODE_MODELS, type ChatModel, type ClaudeModel, type LocalModelsStatus, type OpenCodeModelsStatus } from "@jarvis/shared";
 
 interface BrowserSpeechRecognition {
   lang: string;
@@ -44,6 +44,11 @@ export function SimpleJarvisHome() {
   const [sentSessions, setSentSessions] = useState<Partial<Record<ChatModel, { agentId: string | null; sessionId: string }>>>({});
   const [model, setModel] = useState<ChatModel>("claude");
   const [claudeModel, setClaudeModel] = useState<ClaudeModel>("default");
+  const [localModel, setLocalModel] = useState<string | null>(null);
+  const [localModels, setLocalModels] = useState<LocalModelsStatus>({ reachable: false, models: [] });
+  const [opencodeModel, setOpencodeModel] = useState<string | null>(null);
+  const [opencodeModels, setOpencodeModels] = useState<OpenCodeModelsStatus>({ reachable: false, models: [] });
+  const brainInitRef = useRef<string | null>(null);
   const [autoApproveLocalTools, setAutoApproveLocalTools] = useState(false);
   const [loadedConversationKey, setLoadedConversationKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -85,6 +90,38 @@ export function SimpleJarvisHome() {
   }, []);
 
   useEffect(() => {
+    if (model !== "local") return;
+    let cancelled = false;
+    api.getLocalModels()
+      .then((status) => {
+        if (cancelled) return;
+        setLocalModels(status);
+        setLocalModel((current) => {
+          if (current && status.models.some((m) => m.name === current)) return current;
+          return status.models[0]?.name ?? current;
+        });
+      })
+      .catch(() => { if (!cancelled) setLocalModels({ reachable: false, models: [] }); });
+    return () => { cancelled = true; };
+  }, [model]);
+
+  useEffect(() => {
+    if (model !== "opencode") return;
+    let cancelled = false;
+    api.getOpencodeModels()
+      .then((status) => {
+        if (cancelled) return;
+        setOpencodeModels(status);
+        setOpencodeModel((current) => {
+          if (current && status.models.some((m) => m.id === current)) return current;
+          return status.models[0]?.id ?? current;
+        });
+      })
+      .catch(() => { if (!cancelled) setOpencodeModels({ reachable: false, models: [] }); });
+    return () => { cancelled = true; };
+  }, [model]);
+
+  useEffect(() => {
     let cancelled = false;
     const conversationKey = `${activeAgent?.id ?? "default"}:${model}`;
     api.getChat(model)
@@ -118,7 +155,11 @@ export function SimpleJarvisHome() {
     setError(null);
     setDraft("");
     try {
-      const { sessionId: id } = await api.sendChat(text, model, claudeModel, autoApproveLocalTools);
+      const { sessionId: id } = model === "local"
+        ? await api.sendChat(text, model, claudeModel, autoApproveLocalTools, localModel ?? undefined)
+        : model === "opencode"
+          ? await api.sendChat(text, model, claudeModel, autoApproveLocalTools, undefined, opencodeModel ?? undefined)
+          : await api.sendChat(text, model, claudeModel, autoApproveLocalTools);
       setSentSessions((current) => ({
         ...current,
         [model]: { agentId: activeAgent?.id ?? null, sessionId: id },
@@ -346,7 +387,11 @@ export function SimpleJarvisHome() {
               <span className="hidden sm:inline">
                 {model === "gpt-5.6-sol"
                   ? "Sol · reasoning and workspace analysis"
-                  : `Claude${claudeModel === "default" ? "" : ` (${CLAUDE_MODELS.find((option) => option.value === claudeModel)?.label})`} · full Jarvis tools and approvals`}
+                  : model === "local"
+                    ? `Local · ${localModel ?? "no Ollama models"} on this PC`
+                    : model === "opencode"
+                      ? `OpenCode · ${OPENCODE_MODELS.find((option) => option.value === opencodeModel)?.label ?? opencodeModel ?? "no model selected"}`
+                      : `Claude${claudeModel === "default" ? "" : ` (${CLAUDE_MODELS.find((option) => option.value === claudeModel)?.label})`} · full Jarvis tools and approvals`}
               </span>
             </div>
           </div>
@@ -382,6 +427,82 @@ function ModelPicker({ model, onChange }: { model: ChatModel; onChange: (model: 
       >
         <Brain className="h-3 w-3" strokeWidth={1.75} />
         Claude
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant={model === "local" ? "secondary" : "ghost"}
+        className={`h-7 rounded-lg px-2.5 text-micro ${model === "local" ? "text-accent-bright" : "text-muted"}`}
+        aria-pressed={model === "local"}
+        title="Local LLM · runs on Ollama models installed on this PC"
+        onClick={() => onChange("local")}
+      >
+        <Cpu className="h-3 w-3" strokeWidth={1.75} />
+        Local
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant={model === "opencode" ? "secondary" : "ghost"}
+        className={`h-7 rounded-lg px-2.5 text-micro ${model === "opencode" ? "text-accent-bright" : "text-muted"}`}
+        aria-pressed={model === "opencode"}
+        title="OpenCode · Muse Spark, MiMo, and Ling models via OpenCode Inference"
+        onClick={() => onChange("opencode")}
+      >
+        <Zap className="h-3 w-3" strokeWidth={1.75} />
+        OpenCode
+      </Button>
+    </div>
+  );
+}
+
+function LocalModelPicker({ status, value, onChange, onRefresh }: { status: LocalModelsStatus; value: string; onChange: (model: string) => void; onRefresh: () => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {status.reachable ? (
+        <Select
+          aria-label="Local model"
+          className="h-7 w-auto max-w-52 rounded-lg py-0 text-micro"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {status.models.map((option) => (
+            <option key={option.name} value={option.name}>{option.name}</option>
+          ))}
+        </Select>
+      ) : (
+        <span className="rounded-lg border border-border px-2 py-1 text-micro text-muted" title="Ollama isn't reachable — start it, then refresh">
+          Local LLM offline
+        </span>
+      )}
+      <Button type="button" size="sm" variant="ghost" className="h-7 rounded-lg px-2 text-muted" aria-label="Refresh local models" title="Refresh installed Local LLM models" onClick={onRefresh}>
+        <RefreshCw className="h-3 w-3" strokeWidth={1.75} />
+      </Button>
+    </div>
+  );
+}
+
+function OpenCodeModelPicker({ status, value, onChange, onRefresh }: { status: OpenCodeModelsStatus; value: string; onChange: (model: string) => void; onRefresh: () => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {status.reachable && status.models.length > 0 ? (
+        <Select
+          aria-label="OpenCode model"
+          className="h-7 w-auto max-w-52 rounded-lg py-0 text-micro"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {status.models.map((option) => (
+            <option key={option.id} value={option.id}>{option.label}</option>
+          ))}
+        </Select>
+      ) : (
+        <span className="rounded-lg border border-border px-2 py-1 text-micro text-muted" title="OpenCode Inference isn't reachable — check the connection, then refresh">
+          OpenCode offline
+        </span>
+      )}
+      <Button type="button" size="sm" variant="ghost" className="h-7 rounded-lg px-2 text-muted" aria-label="Refresh OpenCode models" title="Refresh available OpenCode models" onClick={onRefresh}>
+        <RefreshCw className="h-3 w-3" strokeWidth={1.75} />
       </Button>
     </div>
   );
@@ -475,7 +596,9 @@ function SimpleEmptyState({ agentName, model, onSuggestion }: { agentName: strin
       <p className="mt-2 max-w-sm text-label leading-relaxed text-muted">
         {model === "gpt-5.6-sol"
           ? `${agentName} can reason with you and analyze the local workspace. Switch to Claude when you want approval-gated business actions.`
-          : `${agentName} can think with you, create work, or operate the systems you have connected.`}
+          : model === "opencode"
+            ? `${agentName} answers here through OpenCode-hosted models with the same workspace tools. Switch to Claude when you want approval-gated business actions.`
+            : `${agentName} can think with you, create work, or operate the systems you have connected.`}
       </p>
       <div className="mt-6 flex max-w-md flex-wrap justify-center gap-2">
         {suggestions.map((suggestion) => (

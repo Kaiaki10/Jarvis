@@ -83,6 +83,8 @@ import type {
   CampaignExperimentsOverview,
   CreateCampaignExperimentRequest,
   ChatModel,
+  LocalModelsStatus,
+  OpenCodeModelsStatus,
   ClaudeModel,
   ClaudeUsageSnapshot,
   SpendEnvelopeRecord,
@@ -315,7 +317,9 @@ getSpend: () =>
     text: string,
     model: ChatModel = "claude",
     claudeModel?: ClaudeModel,
-    autoApproveLocalTools?: boolean
+    autoApproveLocalTools?: boolean,
+    localModel?: string,
+    opencodeModel?: string
   ) =>
     request<{ sessionId: string; resumed: boolean }>("/chat", {
       method: "POST",
@@ -323,10 +327,14 @@ getSpend: () =>
         text,
         model,
         claudeModel,
+        localModel,
+        opencodeModel,
         autoApproveLocalTools,
         agentId: getActiveAgentId() ?? undefined,
       }),
     }),
+  getLocalModels: () => request<LocalModelsStatus>("/chat/local-models"),
+  getOpencodeModels: () => request<OpenCodeModelsStatus>("/chat/opencode-models"),
   getSession: (id: string) => request<SessionRecord>(scoped(`/sessions/${id}`)),
   createSession: (body: CreateSessionRequest) =>
     request<SessionRecord>("/sessions", {
@@ -583,6 +591,13 @@ getSpend: () =>
       method: "POST",
       body: JSON.stringify(body),
     }),
+  listPaymentLinks: () => request<StripePaymentLinkRecord[]>("/billing/stripe/payment-links"),
+  createPaymentLink: (body: CreatePaymentLinkRequest) =>
+    request<StripePaymentLinkRecord>("/billing/stripe/payment-links", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listMoneyReceipts: () => request<MoneyReceiptRecord[]>("/billing/money/receipts"),
 
   getWalletSpenderAddress: () => request<{ address: string }>("/billing/wallet/spender-address"),
   listWalletPermissions: () => request<WalletPermission[]>("/billing/wallet/permissions"),

@@ -142,6 +142,7 @@ for (const migration of [
   { table: "sessions", column: "model", sql: "ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT 'claude'" },
   { table: "sessions", column: "claude_model", sql: "ALTER TABLE sessions ADD COLUMN claude_model TEXT NOT NULL DEFAULT 'default'" },
   { table: "sessions", column: "local_model", sql: "ALTER TABLE sessions ADD COLUMN local_model TEXT" },
+  { table: "sessions", column: "opencode_model", sql: "ALTER TABLE sessions ADD COLUMN opencode_model TEXT" },
   { table: "sessions", column: "auto_approve_local_tools", sql: "ALTER TABLE sessions ADD COLUMN auto_approve_local_tools INTEGER NOT NULL DEFAULT 0" },
   { table: "agents", column: "codex_chat_session_id", sql: "ALTER TABLE agents ADD COLUMN codex_chat_session_id TEXT" },
   { table: "scheduled_tasks", column: "retry_count", sql: "ALTER TABLE scheduled_tasks ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0" },

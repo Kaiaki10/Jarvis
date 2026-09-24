@@ -16,6 +16,8 @@ describe("HTTP validation", () => {
   it("accepts only the simple form's supported models", () => {
     expect(chatMessageSchema.safeParse({ text: "Hello", model: "gpt-5.6-sol" }).success).toBe(true);
     expect(chatMessageSchema.safeParse({ text: "Hello", model: "claude" }).success).toBe(true);
+    expect(chatMessageSchema.safeParse({ text: "Hello", model: "local", localModel: "qwen3:14b" }).success).toBe(true);
+    expect(chatMessageSchema.safeParse({ text: "Hello", model: "opencode", opencodeModel: "mimo-v2.6-flash-free" }).success).toBe(true);
     expect(chatMessageSchema.safeParse({ text: "Hello", model: "made-up" }).success).toBe(false);
   });
 

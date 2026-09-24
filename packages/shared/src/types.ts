@@ -56,7 +56,7 @@ export type SessionStatus =
   | "interrupted";
 
 /** Models available in the focused, simple Jarvis conversation. */
-export type ChatModel = "claude" | "gpt-5.6-sol" | "local";
+export type ChatModel = "claude" | "gpt-5.6-sol" | "local" | "opencode";
 
 /** Which underlying Claude model answers, when `model` is "claude". */
 export type ClaudeModel = "default" | "opus" | "haiku" | "fable";
@@ -120,6 +120,10 @@ export interface SessionRecord {
   model: ChatModel;
   /** Only meaningful when `model` is "claude"; ignored by the Codex lane. */
   claudeModel: ClaudeModel;
+  /** The Ollama model name, when `model` is "local". Null when unset. */
+  localModel: string | null;
+  /** The OpenCode Inference model id, when `model` is "opencode". Null when unset. */
+  opencodeModel: string | null;
   /**
    * When true, Claude Code's own local tools (Bash, file edits, search, web
    * fetch) run without a permission prompt. Jarvis's own outbound platform

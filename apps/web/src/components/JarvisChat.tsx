@@ -2,18 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUp, Brain, Loader2, Sparkles } from "lucide-react";
-import type { ChatModel, SessionRecord } from "@jarvis/shared";
+import { ArrowUp, Brain, Cpu, Loader2, RefreshCw, Sparkles, Zap } from "lucide-react";
+import type { ChatModel, LocalModelsStatus, OpenCodeModelsStatus, SessionRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { useSessionStream } from "@/lib/hooks";
 import { Card } from "@/components/ui/Card";
-import { Textarea } from "@/components/ui/Input";
+import { Textarea, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { SessionTranscript } from "@/components/SessionTranscript";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Crossfade } from "@/components/motion";
-import { useConnectionStatus, useMemories } from "@/lib/store";
+import { useAgents, useConnectionStatus, useMemories } from "@/lib/store";
 
 /**
  * The one ongoing conversation with Jarvis.
@@ -25,6 +25,11 @@ import { useConnectionStatus, useMemories } from "@/lib/store";
 export function JarvisChat() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [model, setModel] = useState<ChatModel>("claude");
+  const [localModel, setLocalModel] = useState<string | null>(null);
+  const [localModels, setLocalModels] = useState<LocalModelsStatus>({ reachable: false, models: [] });
+  const [opencodeModel, setOpencodeModel] = useState<string | null>(null);
+  const [opencodeModels, setOpencodeModels] = useState<OpenCodeModelsStatus>({ reachable: false, models: [] });
+  const brainInitRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -45,7 +50,39 @@ export function JarvisChat() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    if (model === "local") void refreshLocalModels(false);
+    if (model === "opencode") void refreshOpencodeModels(false);
   }, [model]);
+
+  async function refreshLocalModels(setAutopick = true) {
+    try {
+      const status = await api.getLocalModels();
+      setLocalModels(status);
+      if (setAutopick) {
+        setLocalModel((current) => {
+          if (current && status.models.some((m) => m.name === current)) return current;
+          return status.models[0]?.name ?? current;
+        });
+      }
+    } catch {
+      setLocalModels({ reachable: false, models: [] });
+    }
+  }
+
+  async function refreshOpencodeModels(setAutopick = true) {
+    try {
+      const status = await api.getOpencodeModels();
+      setOpencodeModels(status);
+      if (setAutopick) {
+        setOpencodeModel((current) => {
+          if (current && status.models.some((m) => m.id === current)) return current;
+          return status.models[0]?.id ?? current;
+        });
+      }
+    } catch {
+      setOpencodeModels({ reachable: false, models: [] });
+    }
+  }
 
   const onSent = useCallback((id: string) => setSessionId(id), []);
 
@@ -56,7 +93,11 @@ export function JarvisChat() {
     setError(null);
     setDraft("");
     try {
-      const { sessionId: id } = await api.sendChat(text, model);
+      const { sessionId: id } = model === "local"
+        ? await api.sendChat(text, model, undefined, undefined, localModel ?? undefined)
+        : model === "opencode"
+          ? await api.sendChat(text, model, undefined, undefined, undefined, opencodeModel ?? undefined)
+          : await api.sendChat(text, model);
       onSent(id);
       setActivityKey((key) => key + 1);
     } catch (err) {
@@ -66,6 +107,32 @@ export function JarvisChat() {
     } finally {
       setSending(false);
     }
+  }
+
+  /** Every pick rewrites the active agent's brain — one source of truth. */
+  function writeBrain(brainLane: ChatModel, brainModel: string | null) {
+    const id = activeAgent?.id;
+    if (!id) return;
+    api.updateAgent(id, { brainLane, brainModel }).catch(() => {});
+  }
+
+  function chooseModel(next: ChatModel) {
+    setModel(next);
+    const sub =
+      next === "local" ? (localModel ?? null)
+      : next === "opencode" ? (opencodeModel ?? null)
+      : null;
+    writeBrain(next, sub);
+  }
+
+  function chooseLocalModel(next: string) {
+    setLocalModel(next);
+    if (model === "local") writeBrain("local", next);
+  }
+
+  function chooseOpencodeModel(next: string) {
+    setOpencodeModel(next);
+    if (model === "opencode") writeBrain("opencode", next);
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -165,6 +232,80 @@ export function JarvisChat() {
               </button>
             ))}
           </div>
+          {model === "opencode" && (
+            <div className="flex items-center gap-1.5">
+              {opencodeModels.reachable && opencodeModels.models.length > 0 ? (
+                <Select
+                  aria-label="OpenCode model"
+                  className="h-8 w-auto max-w-56 rounded-lg py-0 text-label"
+                  value={opencodeModel ?? ""}
+                  onChange={(e) => chooseOpencodeModel(e.target.value)}
+                >
+                  {opencodeModels.models.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </Select>
+              ) : (
+                <span className="text-micro text-muted" title="OpenCode Inference isn't reachable — check the connection, then refresh">
+                  OpenCode offline
+                </span>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted"
+                aria-label="Refresh OpenCode models"
+                title="Refresh available OpenCode models"
+                onClick={() => void refreshOpencodeModels()}
+              >
+                <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+              </Button>
+              {opencodeModel && (
+                <span className="hidden text-micro text-muted md:flex md:items-center md:gap-1">
+                  <Zap className="h-3 w-3" strokeWidth={1.75} />
+                  {opencodeModel}
+                </span>
+              )}
+            </div>
+          )}
+          {model === "local" && (
+            <div className="flex items-center gap-1.5">
+              {localModels.reachable ? (
+                <Select
+                  aria-label="Local model"
+                  className="h-8 w-auto max-w-56 rounded-lg py-0 text-label"
+                  value={localModel ?? ""}
+                  onChange={(e) => chooseLocalModel(e.target.value)}
+                >
+                  {localModels.models.map((option) => (
+                    <option key={option.name} value={option.name}>{option.name}</option>
+                  ))}
+                </Select>
+              ) : (
+                <span className="text-micro text-muted" title="Ollama isn't reachable — start it, then refresh">
+                  Local LLM offline
+                </span>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted"
+                aria-label="Refresh local models"
+                title="Refresh installed Local LLM models"
+                onClick={() => void refreshLocalModels()}
+              >
+                <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+              </Button>
+              {localModel && (
+                <span className="hidden text-micro text-muted md:flex md:items-center md:gap-1">
+                  <Cpu className="h-3 w-3" strokeWidth={1.75} />
+                  {localModel}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div
           className={`flex items-end gap-2 rounded-xl border px-2 py-1 transition-[border-color,box-shadow] duration-200 ${
