@@ -440,6 +440,47 @@ export interface IssueStripeCardRequest {
   monthlyLimitMinor: number;
 }
 
+/**
+ * A Stripe Payment Link Jarvis created so someone can pay the operator.
+ * Only the link id, label, amount, and URL are stored — never card or
+ * customer payment details, which live entirely on Stripe's side.
+ */
+export interface StripePaymentLinkRecord {
+  id: string;
+  label: string;
+  /** Smallest currency unit (cents for USD, pence for GBP). */
+  amountMinor: number;
+  currency: string;
+  url: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface CreatePaymentLinkRequest {
+  label: string;
+  /**
+   * In the currency's minor unit (cents for USD, pence for GBP). Only
+   * two-decimal currencies are accepted, deliberately: zero-decimal ones
+   * (JPY and friends) would misprice the link by 100x if guessed at.
+   * Widen with a per-currency unit table, not a guess.
+   */
+  amountMinor: number;
+  currency: "USD" | "GBP";
+}
+
+/**
+ * A confirmed money-in receipt, recorded only when Stripe's signed webhook
+ * says the checkout completed — never from a link being created or clicked.
+ */
+export interface MoneyReceiptRecord {
+  id: string;
+  customerId: string | null;
+  email: string | null;
+  amountMinor: number;
+  currency: string;
+  createdAt: string;
+}
+
 /** The nonce Stripe.js generates client-side before requesting a reveal session — see StripeFundingPanel.tsx. */
 export interface StripeRevealSessionRequest {
   nonce: string;
@@ -968,8 +1009,8 @@ export interface UpdatePaidGrowthPerformanceRequest {
 
 // ---- Measurement ledger + campaign experiments (GAPS.md attribution gap, paid-only slice) ----
 
-/** 'paid_ads' is the only real source today. Widen this when organic/lead facts exist. */
-export type MeasurementFactSource = "paid_ads";
+/** 'paid_ads' is written by the Paid Growth sync; 'lead' is written by confirmed money-in receipts (e.g. Stripe checkouts). */
+export type MeasurementFactSource = "paid_ads" | "lead";
 
 export type MeasurementFactMetric = "spent_minor" | "revenue_minor" | "impressions" | "clicks" | "conversions";
 

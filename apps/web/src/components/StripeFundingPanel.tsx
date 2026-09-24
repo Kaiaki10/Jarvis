@@ -47,8 +47,19 @@ export function StripeFundingPanel({ publishableKey }: { publishableKey: string 
   }
 
   useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    Promise.all([api.getStripeBalance(), api.listStripeCards()])
+      .then(([b, c]) => {
+        if (cancelled) return;
+        setBalance(b);
+        setCards(c);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function issueCard() {

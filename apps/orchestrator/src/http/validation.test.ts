@@ -9,6 +9,7 @@ import {
   updateEvolutionPolicySchema,
   createPaidGrowthCampaignSchema,
   updatePaidGrowthPerformanceSchema,
+  createPaymentLinkSchema,
   chatMessageSchema,
 } from "./validation.js";
 
@@ -149,5 +150,15 @@ describe("HTTP validation", () => {
       clicks: 20,
       conversions: 30,
     }).success).toBe(false);
+  });
+
+  it("bounds payment links to a label, a positive amount, and USD/GBP", () => {
+    expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 25000, currency: "GBP" }).success).toBe(true);
+    expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 25000, currency: "USD" }).success).toBe(true);
+    expect(createPaymentLinkSchema.safeParse({ label: "", amountMinor: 25000, currency: "GBP" }).success).toBe(false);
+    expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 0, currency: "GBP" }).success).toBe(false);
+    expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 24.5, currency: "GBP" }).success).toBe(false);
+    expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 25000, currency: "JPY" }).success).toBe(false);
+    expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 25000 }).success).toBe(false);
   });
 });

@@ -558,12 +558,62 @@ function buildWalletTools(_creds: Creds, _sessionId?: string, _connectionId?: st
 }
 
 
+/**
+ * Money-in tools. Creating a payment link authorises no spend — checkout
+ * happens on Stripe's hosted page — but the link is still an outbound
+ * financial instrument in the operator's name, so it goes through the
+ * approval gate like every other non-read tool rather than auto-allow.
+ * Receipts are never created here: only the signed /webhooks/stripe
+ * endpoint records money as received.
+ */
+function buildStripeTools(_creds: Creds, _sessionId?: string, _connectionId?: string): AnyTool[] {
+  return erase([
+    tool(
+      "create_payment_link",
+      "Create a Stripe Payment Link so someone can pay the operator a fixed amount. " +
+        "The link itself collects nothing — the payer checks out on Stripe's hosted page. " +
+        "Use it only when the operator has asked you to charge for something specific, and say plainly what the payment is for. " +
+        "Amounts are minor units as a whole number: 2500 for $25.00 or £25.00.",
+      {
+        label: z
+          .string()
+          .min(1)
+          .max(200)
+          .describe("What the payment is for, in the payer's terms — it appears on the Stripe checkout page. E.g. 'October content retainer'."),
+        amountMinor: z
+          .number()
+          .int()
+          .positive()
+          .max(1_000_000_000)
+          .describe("Amount in the currency's minor unit as a whole number. E.g. 2500 for $25.00 or £25.00."),
+        currency: z
+          .enum(["USD", "GBP"])
+          .describe("Billing currency. Only two-decimal currencies are supported."),
+      },
+      async (args) => {
+        try {
+          const { createPaymentLink } = await import("../billing/stripeFunding.js");
+          const link = await createPaymentLink({ label: args.label.trim(), amountMinor: args.amountMinor, currency: args.currency });
+          const symbol = link.currency === "GBP" ? "£" : "$";
+          return ok(
+            `Created payment link "${link.label}" for ${symbol}${(link.amountMinor / 100).toFixed(2)}. Share it with the payer: ${link.url} ` +
+              `Nothing is recorded as revenue until they complete checkout — Stripe's webhook reports back and the receipt lands in the ledger on its own.`
+          );
+        } catch (err) {
+          return fail(err instanceof Error ? err.message : String(err));
+        }
+      }
+    ),
+  ]);
+}
+
 const BUILDERS: Record<string, (creds: Creds, sessionId?: string, connectionId?: string) => AnyTool[]> = {
   x: buildXTools,
   slack: buildSlackTools,
   discord: buildDiscordTools,
   resend: buildResendTools,
   coinbase: buildWalletTools,
+  stripe: buildStripeTools,
 };
 
 export interface PlatformToolset {

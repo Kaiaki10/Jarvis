@@ -267,6 +267,30 @@ export function getCustomer(id: string, agentId?: string): CustomerRecord | unde
   return row ? mapCustomer(row) : undefined;
 }
 
+/** Finds a customer by email for inbound matching (e.g. a Stripe receipt). Case-insensitive, like findOrCreateCustomer. */
+export function getCustomerByEmail(email: string, agentId?: string): CustomerRecord | undefined {
+  const normalized = email.trim();
+  if (!normalized) return undefined;
+  const row = (agentId
+    ? db.prepare(`SELECT * FROM customers WHERE lower(email) = lower(?) AND agent_id = ? LIMIT 1`).get(normalized, agentId)
+    : db.prepare(`SELECT * FROM customers WHERE lower(email) = lower(?) LIMIT 1`).get(normalized)) as unknown as CustomerRow | undefined;
+  return row ? mapCustomer(row) : undefined;
+}
+
+/**
+ * Adds to a customer's recorded revenue. A single UPDATE — not read-then-
+ * write — so two receipts landing together cannot lose one. Creates no
+ * customer; callers match or create first.
+ */
+export function addCustomerRevenue(id: string, amountMinor: number): CustomerRecord | undefined {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) return getCustomer(id);
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE customers SET revenue_minor = COALESCE(revenue_minor, 0) + ?, updated_at = ? WHERE id = ?`
+  ).run(amountMinor, now, id);
+  return getCustomer(id);
+}
+
 export function getCustomerConversation(id: string, agentId?: string): CustomerConversationRecord | undefined {
   const row = (agentId
     ? db.prepare(`SELECT c.* FROM customer_conversations c JOIN customers u ON u.id = c.customer_id WHERE c.id = ? AND u.agent_id = ?`).get(id, agentId)
@@ -305,6 +329,26 @@ function findOrCreateCustomer(input: Pick<CreateCustomerConversationRequest, "cu
     `INSERT INTO customers (id, agent_id, name, email, company, notes, acquisition_channel, utm_source, utm_medium, utm_campaign, revenue_minor, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?)`
   ).run(id, input.agentId ?? null, input.customerName.trim(), email, input.company?.trim() || null, acq, utmSrc, utmMed, utmCamp, now, now);
+  return getCustomer(id)!;
+}
+
+/**
+ * Creates a bare customer row with no conversation — for inbound matches
+ * like a Stripe payer, who is a customer by virtue of having paid even
+ * though no support thread exists.
+ */
+export function createCustomer(input: {
+  name: string;
+  email?: string | null;
+  company?: string | null;
+  agentId?: string | null;
+}): CustomerRecord {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO customers (id, agent_id, name, email, company, notes, acquisition_channel, utm_source, utm_medium, utm_campaign, revenue_minor, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`
+  ).run(id, input.agentId ?? null, input.name.trim() || "Customer", input.email?.trim() || null, input.company?.trim() || null, now, now);
   return getCustomer(id)!;
 }
 
@@ -367,6 +411,7 @@ export function deleteCustomerConversation(id: string): void {
 export function updateCustomer(id: string, patch: UpdateCustomerRequest): CustomerRecord | undefined {
   const current = getCustomer(id);
   if (!current) return undefined;
+
   const sets: string[] = [];
   const vals: Array<string | number | null> = [];
 

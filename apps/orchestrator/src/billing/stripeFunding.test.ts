@@ -5,6 +5,7 @@ const stripeMocks = vi.hoisted(() => ({
   cardsCreate: vi.fn(),
   cardsUpdate: vi.fn(),
   ephemeralKeysCreate: vi.fn(),
+  paymentLinksCreate: vi.fn(),
 }));
 
 vi.mock("stripe", () => {
@@ -13,6 +14,7 @@ vi.mock("stripe", () => {
     balance = { retrieve: stripeMocks.balanceRetrieve };
     issuing = { cards: { create: stripeMocks.cardsCreate, update: stripeMocks.cardsUpdate } };
     ephemeralKeys = { create: stripeMocks.ephemeralKeysCreate };
+    paymentLinks = { create: stripeMocks.paymentLinksCreate };
   }
   return { default: MockStripe };
 });
@@ -144,5 +146,59 @@ describe("stripeFunding", () => {
       { nonce: "nonce-456", issuing_card: "ic_test_3" },
       { apiVersion: "2026-07-29.dahlia" }
     );
+  });
+
+  it("creates a payment link, storing only the link identifiers", async () => {
+    await connectStripe();
+    stripeMocks.paymentLinksCreate.mockResolvedValue({
+      id: "plink_test_1",
+      url: "https://buy.stripe.com/test_abc",
+      active: true,
+    });
+    const { createPaymentLink, listPaymentLinks } = await import("./stripeFunding.js");
+    const link = await createPaymentLink({ label: "October retainer", amountMinor: 25000, currency: "USD" });
+
+    expect(link).toMatchObject({
+      id: "plink_test_1",
+      label: "October retainer",
+      amountMinor: 25000,
+      currency: "USD",
+      url: "https://buy.stripe.com/test_abc",
+    });
+    expect(stripeMocks.paymentLinksCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line_items: [
+          {
+            price_data: expect.objectContaining({ currency: "usd", unit_amount: 25000 }),
+            quantity: 1,
+          },
+        ],
+      })
+    );
+    expect(listPaymentLinks().find((l) => l.id === "plink_test_1")).toBeDefined();
+  });
+
+  it("creates a GBP link in pence, not pounds", async () => {
+    await connectStripe();
+    stripeMocks.paymentLinksCreate.mockResolvedValue({
+      id: "plink_test_gbp",
+      url: "https://buy.stripe.com/test_gbp",
+      active: true,
+    });
+    const { createPaymentLink } = await import("./stripeFunding.js");
+    const link = await createPaymentLink({ label: "November retainer", amountMinor: 20000, currency: "GBP" });
+    expect(link).toMatchObject({ currency: "GBP", amountMinor: 20000 });
+    expect(stripeMocks.paymentLinksCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line_items: [{ price_data: expect.objectContaining({ currency: "gbp", unit_amount: 20000 }), quantity: 1 }],
+      })
+    );
+  });
+
+  it("refuses a payment link with a non-positive amount before calling Stripe", async () => {
+    await connectStripe();
+    const { createPaymentLink } = await import("./stripeFunding.js");
+    await expect(createPaymentLink({ label: "Bad", amountMinor: 0, currency: "USD" })).rejects.toThrow(/positive/i);
+    expect(stripeMocks.paymentLinksCreate).not.toHaveBeenCalled();
   });
 });

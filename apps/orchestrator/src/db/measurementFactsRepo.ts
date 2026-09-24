@@ -74,6 +74,29 @@ export function listMeasurementFacts(paidCampaignId: string, metric?: Measuremen
 }
 
 /**
+ * Records one confirmed money-in receipt (e.g. a completed Stripe
+ * checkout) as a 'lead'-source revenue fact. Single row, not the five-row
+ * paid-ads observation — a receipt has no spend, impressions, or clicks.
+ * Has no paid_campaign_id by construction; callers that join through
+ * paid_campaigns (like listMeasurementFactsForAgent) will not see these
+ * rows, which is correct — lead revenue is read via the customer it lands
+ * on and the /attribution reads, not the ad-campaign history.
+ */
+export function recordLeadRevenue(input: {
+  revenueMinor: number;
+  currency: string;
+  capturedAt: string;
+}): MeasurementFactRecord {
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO measurement_facts (id, source, paid_campaign_id, workflow_id, metric, value, currency, captured_at)
+     VALUES (?, 'lead', NULL, NULL, 'revenue_minor', ?, ?, ?)`
+  ).run(id, input.revenueMinor, input.currency, input.capturedAt);
+  const row = db.prepare(`SELECT * FROM measurement_facts WHERE id = ?`).get(id) as unknown as FactRow;
+  return mapFact(row);
+}
+
+/**
  * Agent-scoped read. `source = 'paid_ads'` joins through paid_campaign_id
  * today; a future 'organic' or 'lead' source will need its own join branch
  * here (via workflow_id or a customer FK), not a schema change.

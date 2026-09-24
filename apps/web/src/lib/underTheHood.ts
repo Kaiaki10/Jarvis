@@ -1,4 +1,5 @@
 import {
+  Banknote,
   Bot,
   Brain,
   CalendarClock,
@@ -92,6 +93,7 @@ export const UNDER_THE_HOOD_MODULES: UnderTheHoodModule[] = [
       { slug: "budgets", label: "Budgets", icon: Wallet },
       { slug: "transactions", label: "Transactions", icon: Receipt },
       { slug: "cards", label: "Cards", icon: CreditCard },
+      { slug: "receive", label: "Receive", icon: Banknote },
     ],
   },
   {

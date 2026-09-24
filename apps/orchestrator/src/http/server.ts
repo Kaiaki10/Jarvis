@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import type { ZodType } from "zod";
+import type Stripe from "stripe";
 import { existsSync, rm, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
@@ -118,6 +119,7 @@ import {
   chatMessageSchema,
   permissionResponseSchema,
   issueStripeCardSchema,
+  createPaymentLinkSchema,
   saveConnectionSchema,
   startPlatformSignupSchema,
   stripeRevealSessionSchema,
@@ -283,9 +285,14 @@ import {
 import {
   cancelStripeCard,
   createCardRevealSession,
+  createPaymentLink,
   getIssuingBalance,
   issueStripeCard,
+  listMoneyReceipts,
+  listPaymentLinks,
   listStripeCards,
+  recordStripeReceipt,
+  verifyStripeWebhook,
 } from "../billing/stripeFunding.js";
 import {
   getSpenderAddress,
@@ -1128,6 +1135,33 @@ app.post("/webhooks/resend", async (req: Request, res: Response) => {
     console.error("[customers] rejected Resend webhook:", error);
     res.status(401).json({ error: "Invalid webhook." });
   }
+});
+
+app.post("/webhooks/stripe", (req: Request, res: Response) => {
+  const signature = String(req.headers["stripe-signature"] ?? "");
+  if (!signature) { res.status(401).json({ error: "Invalid webhook." }); return; }
+  let event: Stripe.Event;
+  try {
+    event = verifyStripeWebhook(rawBody(req), signature);
+  } catch (error) {
+    console.error("[money] rejected Stripe webhook:", error);
+    res.status(401).json({ error: "Invalid webhook." });
+    return;
+  }
+  // Only completed checkouts are money. Everything else — link views,
+  // expiring sessions, disputes — is acknowledged and ignored, never
+  // recorded as revenue.
+  if (event.type === "checkout.session.completed") {
+    try {
+      const { duplicate } = recordStripeReceipt(event.data.object as Stripe.Checkout.Session);
+      if (!duplicate) globalBus.emit("customers_changed");
+    } catch (error) {
+      console.error("[money] could not record Stripe receipt:", error);
+      res.status(500).json({ error: "Receipt could not be recorded." });
+      return;
+    }
+  }
+  res.status(200).json({ received: true });
 });
 
 app.get("/webhooks/x", (req: Request, res: Response) => {
@@ -2765,6 +2799,25 @@ app.post("/billing/stripe/cards/:cardId/reveal-session", async (req: Request, re
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Could not start a reveal session" });
   }
+});
+
+app.get("/billing/stripe/payment-links", (_req: Request, res: Response) => {
+  res.json(listPaymentLinks());
+});
+
+app.post("/billing/stripe/payment-links", async (req: Request, res: Response) => {
+  const body = validatedBody(createPaymentLinkSchema, req, res);
+  if (!body) return;
+  try {
+    const link = await createPaymentLink(body);
+    res.status(201).json(link);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Could not create a payment link" });
+  }
+});
+
+app.get("/billing/money/receipts", (_req: Request, res: Response) => {
+  res.json(listMoneyReceipts());
 });
 
 // ---- Coinbase Spend Permission spend ----

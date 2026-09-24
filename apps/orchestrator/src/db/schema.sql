@@ -207,6 +207,36 @@ CREATE TABLE IF NOT EXISTS wallet_spends (
 
 CREATE INDEX IF NOT EXISTS idx_wallet_spends_created ON wallet_spends(created_at DESC);
 
+-- Money-in (billing/stripeFunding.ts). A Payment Link Jarvis created so
+-- someone can pay the operator. Only identifiers live here — the link id,
+-- label, amount, and URL. Card and customer payment details never touch
+-- this database; they live entirely on Stripe's side.
+CREATE TABLE IF NOT EXISTS money_payment_links (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  amount_minor INTEGER NOT NULL,
+  currency TEXT NOT NULL,
+  url TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL
+);
+
+-- A confirmed receipt, written only when Stripe's signed webhook reports a
+-- completed checkout — never when a link is created or clicked. This is the
+-- system's first real revenue signal: receipts feed measurement_facts
+-- (source 'lead') and accumulate onto the customer's revenue_minor, which is
+-- what GET /attribution/revenue reads.
+CREATE TABLE IF NOT EXISTS money_receipts (
+  id TEXT PRIMARY KEY,
+  customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL,
+  email TEXT,
+  amount_minor INTEGER NOT NULL,
+  currency TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_money_receipts_created ON money_receipts(created_at DESC);
+
 -- Slack conversations stay attached to the same Jarvis agent across restarts.
 -- The Slack message body is deliberately not stored here; the canonical
 -- transcript remains the encrypted/local Jarvis session history.

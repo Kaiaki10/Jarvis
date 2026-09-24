@@ -712,7 +712,7 @@ const stripe: Platform = {
       {
         key: "secretKey",
         label: "Restricted API Key",
-        help: "Create one at Developers → API keys → Create restricted key, with read/write on Issuing and read on Balance. Not your full secret key — a restricted one scoped to only what Jarvis needs.",
+        help: "Create one at Developers → API keys → Create restricted key, with read/write on Issuing, read on Balance, and write on Payment Links (for money-in links). Not your full secret key — a restricted one scoped to only what Jarvis needs.",
         expectedPrefix: "rk_",
         placeholder: "rk_…",
         secret: true,
@@ -728,20 +728,31 @@ const stripe: Platform = {
       {
         key: "cardholderId",
         label: "Cardholder ID",
-        help: "Create a Cardholder yourself under Issuing → Cardholders in the Stripe Dashboard — this needs identity details (name, date of birth, address) Jarvis deliberately never collects — then paste its ich_… id here.",
+        help: "Only needed for virtual cards — skip it for money-in only. Create a Cardholder yourself under Issuing → Cardholders in the Stripe Dashboard — this needs identity details (name, date of birth, address) Jarvis deliberately never collects — then paste its ich_… id here.",
         expectedPrefix: "ich_",
         placeholder: "ich_…",
         secret: false,
+        optional: true,
+      },
+      {
+        key: "webhookSecret",
+        label: "Webhook Endpoint Secret",
+        help: "Only needed for money-in receipts. Create an endpoint in Developers → Webhooks pointing at this machine's public URL plus /webhooks/stripe, listening to checkout.session.completed, and paste its whsec_… secret. Without it, payment links still work but completed checkouts are never recorded as revenue.",
+        expectedPrefix: "whsec_",
+        placeholder: "whsec_…",
+        secret: true,
+        optional: true,
       },
     ],
-    capabilities: ["Per-biller virtual cards", "Spend limits enforced by Stripe, not Jarvis", "PAN reveal never touches Jarvis"],
+    capabilities: ["Per-biller virtual cards", "Spend limits enforced by Stripe, not Jarvis", "PAN reveal never touches Jarvis", "Payment links", "Receipt ledger from signed webhooks"],
     dataFreshness: "Real-time",
     steps: [
       {
         title: "Create a restricted API key",
         body: [
           "In the Stripe Dashboard, go to Developers → API keys → Create restricted key.",
-          "Grant Write access to Issuing and Read access to Balance. Nothing else.",
+          "Grant Write access to Issuing and Payment Links, and Read access to Balance. Nothing else.",
+          "If Stripe offers 'Authorizing agent access to your account', you can select it — it is Stripe's recommended option for AI agents, and its default approval rules only hold refunds and subscription cancellations, neither of which Jarvis performs.",
         ],
         linkUrl: "https://dashboard.stripe.com/apikeys",
         linkLabel: "Open Stripe API keys",
@@ -763,19 +774,32 @@ const stripe: Platform = {
         ],
         warning: "None of this — funding, KYC, compliance — is something Jarvis automates. It only ever reads balance and manages cards once the account itself is ready.",
       },
+      {
+        title: "Record completed payments (optional)",
+        body: [
+          "Payment links work without this. To record completed checkouts as revenue, expose this machine over public HTTPS (same requirement as the email and social webhooks — Jarvis itself is loopback-only) and create a webhook endpoint for /webhooks/stripe listening to checkout.session.completed.",
+          "Paste the endpoint's whsec_… secret into the field above. Only signed Stripe events are ever accepted, and each checkout is recorded exactly once even when Stripe retries delivery.",
+        ],
+      },
     ],
   },
   async test(creds) {
     const client = new Stripe(creds.secretKey);
     try {
-      const [balance, cardholder] = await Promise.all([
-        client.balance.retrieve(),
-        client.issuing.cardholders.retrieve(creds.cardholderId),
-      ]);
+      const balance = await client.balance.retrieve();
       const issuingAvailable = balance.issuing?.available ?? [];
       const summary = issuingAvailable.length
         ? issuingAvailable.map((b) => `${(b.amount / 100).toFixed(2)} ${b.currency.toUpperCase()}`).join(", ")
         : "0.00";
+      // Money-in needs no cardholder: without one the connection is still
+      // fully usable for payment links and receipt webhooks.
+      if (!creds.cardholderId) {
+        return {
+          ok: true,
+          detail: `Connected — Issuing balance ${summary}. No cardholder set: payment links work, virtual cards need a Cardholder ID.`,
+        };
+      }
+      const cardholder = await client.issuing.cardholders.retrieve(creds.cardholderId);
       return {
         ok: true,
         detail: `Connected — Issuing balance ${summary}, cardholder ${cardholder.name} (${cardholder.status})`,

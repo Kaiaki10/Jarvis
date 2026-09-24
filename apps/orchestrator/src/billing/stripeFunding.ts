@@ -1,8 +1,11 @@
 import Stripe from "stripe";
+import { createHash, randomUUID } from "node:crypto";
 import { checkCapacity } from "./envelopes.js";
-import type { IssuingBalanceLine, StripeCardRecord } from "@jarvis/shared";
+import type { IssuingBalanceLine, MoneyReceiptRecord, StripeCardRecord, StripePaymentLinkRecord } from "@jarvis/shared";
 import { db } from "../db/db.js";
 import { getConnectionCredentials } from "../db/connectionsRepo.js";
+import { addCustomerRevenue, createCustomer, getCustomerByEmail, recordCustomerInboundEvent } from "../db/customerRepo.js";
+import { recordLeadRevenue } from "../db/measurementFactsRepo.js";
 import { notify } from "../notifications/notifier.js";
 
 /**
@@ -11,6 +14,10 @@ import { notify } from "../notifications/notifier.js";
  * Stripe's own Issuing Elements use directly in the browser. Funding the
  * Stripe balance itself (bank transfer, Stripe's crypto onramp, whatever)
  * happens entirely on Stripe's side; nothing here initiates a transfer.
+ *
+ * Money-in follows the same shape: Jarvis creates Payment Links and records
+ * confirmed receipts, but card and customer payment details never reach this
+ * server — checkout and payment happen entirely on Stripe's hosted pages.
  */
 
 interface CardRow {
@@ -45,6 +52,19 @@ function stripeCreds(): { secretKey: string; cardholderId: string } {
 
 function client(): Stripe {
   return new Stripe(stripeCreds().secretKey);
+}
+
+/** Secret key only — payment links and webhooks don't need the cardholder. */
+function secretKey(): string {
+  const creds = getConnectionCredentials("stripe");
+  if (!creds?.secretKey) {
+    throw new Error("Stripe is not connected yet — add a restricted API key first.");
+  }
+  return creds.secretKey;
+}
+
+function linkClient(): Stripe {
+  return new Stripe(secretKey());
 }
 
 /** The balance Jarvis-issued cards can actually draw on — Stripe's own Issuing-specific balance line, not the account's general balance. */
@@ -164,4 +184,151 @@ export function activeCardCapacityMinor(): number {
     )
     .get() as unknown as { total: number };
   return row.total;
+}
+
+interface PaymentLinkRow {
+  id: string;
+  label: string;
+  amount_minor: number;
+  currency: string;
+  url: string;
+  status: string;
+  created_at: string;
+}
+
+function mapPaymentLink(row: PaymentLinkRow): StripePaymentLinkRecord {
+  return {
+    id: row.id,
+    label: row.label,
+    amountMinor: row.amount_minor,
+    currency: row.currency,
+    url: row.url,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+interface ReceiptRow {
+  id: string;
+  customer_id: string | null;
+  email: string | null;
+  amount_minor: number;
+  currency: string;
+  created_at: string;
+}
+
+function mapReceipt(row: ReceiptRow): MoneyReceiptRecord {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    email: row.email,
+    amountMinor: row.amount_minor,
+    currency: row.currency,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * Creates a Stripe Payment Link so someone can pay the operator. The link
+ * itself collects nothing — checkout happens on Stripe's hosted page, and
+ * only a signed `checkout.session.completed` webhook (see below) records
+ * money as received. Creating a link is safe to approve freely: unlike a
+ * card or an ad budget, it authorises no spend.
+ */
+export async function createPaymentLink(input: {
+  label: string;
+  amountMinor: number;
+  currency: "USD" | "GBP";
+}): Promise<StripePaymentLinkRecord> {
+  const label = input.label.trim();
+  if (!label) throw new Error("A payment link needs a label.");
+  if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) {
+    throw new Error("A payment link needs a positive amount in the currency's minor unit (cents, pence).");
+  }
+  const link = await linkClient().paymentLinks.create({
+    line_items: [
+      {
+        price_data: {
+          currency: input.currency.toLowerCase(),
+          product_data: { name: label.slice(0, 200) },
+          unit_amount: input.amountMinor,
+        },
+        quantity: 1,
+      },
+    ],
+  });
+  if (!link.url) throw new Error("Stripe created the link but returned no URL.");
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO money_payment_links (id, label, amount_minor, currency, url, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(link.id, label, input.amountMinor, input.currency, link.url, link.active === false ? "inactive" : "active", now);
+  return mapPaymentLink(
+    db.prepare(`SELECT * FROM money_payment_links WHERE id = ?`).get(link.id) as unknown as PaymentLinkRow
+  );
+}
+
+export function listPaymentLinks(): StripePaymentLinkRecord[] {
+  const rows = db.prepare(`SELECT * FROM money_payment_links ORDER BY created_at DESC`).all() as unknown as PaymentLinkRow[];
+  return rows.map(mapPaymentLink);
+}
+
+export function listMoneyReceipts(limit = 100): MoneyReceiptRecord[] {
+  const rows = db.prepare(`SELECT * FROM money_receipts ORDER BY created_at DESC LIMIT ?`).all(limit) as unknown as ReceiptRow[];
+  return rows.map(mapReceipt);
+}
+
+/**
+ * Verifies a Stripe webhook payload against the endpoint secret. Throws on
+ * anything unverifiable — the route answers 401 and records nothing.
+ */
+export function verifyStripeWebhook(raw: Buffer, signature: string): Stripe.Event {
+  const creds = getConnectionCredentials("stripe");
+  if (!creds?.webhookSecret) {
+    throw new Error("Stripe webhooks are not configured — add the endpoint secret first.");
+  }
+  return new Stripe(secretKey()).webhooks.constructEvent(raw, signature, creds.webhookSecret);
+}
+
+export interface StripeReceipt {
+  duplicate: boolean;
+  receipt?: MoneyReceiptRecord;
+}
+
+/**
+ * Records a completed Stripe checkout as money received. Idempotent: Stripe
+ * retries webhook deliveries, and each retry carries the same session id, so
+ * the second arrival is acknowledged without double-counting revenue.
+ *
+ * The payer is matched to a customer by email, created if new, and the
+ * amount accumulates onto their revenue. The same amount lands in
+ * measurement_facts as a 'lead'-source fact and in money_receipts — three
+ * views of one event, all written together.
+ */
+export function recordStripeReceipt(session: Stripe.Checkout.Session): StripeReceipt {
+  const sessionId = session.id;
+  const amountMinor = session.amount_total ?? 0;
+  const currency = (session.currency ?? "usd").toUpperCase();
+  if (!sessionId || !Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+    throw new Error("That checkout session carries no usable amount.");
+  }
+  if (!recordCustomerInboundEvent("stripe", sessionId, createHash("sha256").update(JSON.stringify(session)).digest("hex"))) {
+    return { duplicate: true };
+  }
+  const email = session.customer_details?.email?.trim() || null;
+  const name = session.customer_details?.name?.trim() || email || "Customer";
+  const customer = email ? (getCustomerByEmail(email) ?? createCustomer({ name, email })) : undefined;
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO money_receipts (id, customer_id, email, amount_minor, currency, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(sessionId, customer?.id ?? null, email, amountMinor, currency, now);
+  if (customer) addCustomerRevenue(customer.id, amountMinor);
+  recordLeadRevenue({ revenueMinor: amountMinor, currency, capturedAt: now });
+  return {
+    duplicate: false,
+    receipt: mapReceipt(
+      db.prepare(`SELECT * FROM money_receipts WHERE id = ?`).get(sessionId) as unknown as ReceiptRow
+    ),
+  };
 }

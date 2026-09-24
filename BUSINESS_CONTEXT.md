@@ -47,6 +47,9 @@ _Anything not listed here must not be asserted._
   - Multiple agents with isolated workspaces, and agent-to-agent conversations.
   - Outbound actions — posting, messaging, emailing, spending — are gated behind a
     human approval prompt by construction, not by configuration.
+  - Stripe Payment Links for receiving money, with receipts recorded only from
+    signed `checkout.session.completed` webhooks — a link being created or
+    clicked never counts as revenue.
   - Platform credentials are AES-256-GCM encrypted at rest and never returned by the API.
   - Model switching across Sonnet, Opus, Haiku and Fable, mid-conversation.
 - **Proof we can cite:** Only the working software and its own test suite. There are no
