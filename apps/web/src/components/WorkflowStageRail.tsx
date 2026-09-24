@@ -231,9 +231,9 @@ export function WorkflowStageRail({
 }
 
 /**
- * Automates *when* approved content goes out, never whether it goes out.
- * Publishing still hits the outbound approval gate, and a paused workflow
- * schedules nothing — so this is a convenience switch, not an autonomy switch.
+ * Automates *when* approved content goes out, and — only under the separate
+ * auto-publish switch — whether the per-post tap is needed. A paused
+ * workflow schedules nothing either way.
  */
 function AutopilotControl({
   workflow,
@@ -242,7 +242,7 @@ function AutopilotControl({
 }: {
   workflow: WorkflowRecord;
   busy: boolean;
-  onChange: (patch: { autopilot?: boolean; autopilotIntervalHours?: number }) => void;
+  onChange: (patch: { autopilot?: boolean; autopilotIntervalHours?: number; autopilotPublish?: boolean }) => void;
 }) {
   const paused = workflow.status !== "active";
 
@@ -257,7 +257,9 @@ function AutopilotControl({
           {workflow.autopilot
             ? paused
               ? `On, but this workflow is ${workflow.status} — nothing will be scheduled.`
-              : `Approved content is scheduled every ${workflow.autopilotIntervalHours}h. Publishing still asks.`
+              : workflow.autopilotPublish
+                ? `Approved X content is scheduled every ${workflow.autopilotIntervalHours}h and publishes on its own under this policy. Any failure switches publishing back off and tells you.`
+                : `Approved content is scheduled every ${workflow.autopilotIntervalHours}h. Publishing still asks.`
             : "Off. You pick a time for each post."}
         </p>
       </div>
@@ -290,6 +292,21 @@ function AutopilotControl({
         >
           {workflow.autopilot ? "On" : "Off"}
         </Button>
+        {workflow.autopilot && (
+          <Button
+            type="button"
+            size="sm"
+            variant={workflow.autopilotPublish ? "secondary" : "ghost"}
+            className={`h-7 rounded-xl px-2.5 text-micro ${workflow.autopilotPublish ? "text-accent-bright" : "text-muted"}`}
+            role="switch"
+            aria-checked={workflow.autopilotPublish}
+            disabled={busy}
+            title="Due scheduled X posts publish without asking, under daily caps and duplicate checks. Any failure switches this back off."
+            onClick={() => onChange({ autopilotPublish: !workflow.autopilotPublish })}
+          >
+            {workflow.autopilotPublish ? "Auto-publish on" : "Auto-publish off"}
+          </Button>
+        )}
       </div>
     </div>
   );

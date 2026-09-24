@@ -161,6 +161,7 @@ for (const migration of [
   { table: "workflow_generation_runs", column: "character_version", sql: "ALTER TABLE workflow_generation_runs ADD COLUMN character_version INTEGER" },
   { table: "connections", column: "daily_action_cap", sql: "ALTER TABLE connections ADD COLUMN daily_action_cap INTEGER" },
   { table: "workflows", column: "autopilot", sql: "ALTER TABLE workflows ADD COLUMN autopilot INTEGER NOT NULL DEFAULT 0" },
+  { table: "workflows", column: "autopilot_publish", sql: "ALTER TABLE workflows ADD COLUMN autopilot_publish INTEGER NOT NULL DEFAULT 0" },
   { table: "workflows", column: "autopilot_interval_hours", sql: "ALTER TABLE workflows ADD COLUMN autopilot_interval_hours INTEGER NOT NULL DEFAULT 24" },
   { table: "workflows", column: "onboarding_stage", sql: "ALTER TABLE workflows ADD COLUMN onboarding_stage INTEGER NOT NULL DEFAULT 0" },
   { table: "customer_reply_drafts", column: "confidence", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN confidence REAL" },

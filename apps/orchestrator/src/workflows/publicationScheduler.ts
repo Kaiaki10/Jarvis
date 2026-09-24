@@ -1,8 +1,8 @@
 import { getSettings } from "../db/repo.js";
-import { listDueContentItems, listContentItems, listWorkflows, updateContentItem } from "../db/workflowRepo.js";
+import { getWorkflow, listDueContentItems, listContentItems, listWorkflows, updateContentItem } from "../db/workflowRepo.js";
 import { notify } from "../notifications/notifier.js";
 import { globalBus } from "../events/globalBus.js";
-import { startContentPublication, contentPublishingReadiness } from "./publicationService.js";
+import { autoPublishContent, startContentPublication, contentPublishingReadiness } from "./publicationService.js";
 
 const CHECK_INTERVAL_MS = 60_000;
 
@@ -14,7 +14,7 @@ const CHECK_INTERVAL_MS = 60_000;
  */
 const reportedBlocked = new Set<string>();
 
-export function tickContentPublishing(now = new Date()): boolean {
+export async function tickContentPublishing(now = new Date()): Promise<boolean> {
   if (!getSettings().automationsEnabled) return false;
   for (const item of listDueContentItems(now.toISOString())) {
     const readiness = contentPublishingReadiness(item);
@@ -35,6 +35,25 @@ export function tickContentPublishing(now = new Date()): boolean {
       continue;
     }
     reportedBlocked.delete(item.id);
+    const workflow = getWorkflow(item.workflowId);
+    if (workflow?.autopilot && workflow.autopilotPublish && workflow.status === "active") {
+      try {
+        const outcome = await autoPublishContent(item, now.toISOString());
+        if (!outcome.published && !reportedBlocked.has(item.id)) {
+          reportedBlocked.add(item.id);
+          notify({
+            type: "automation_failed",
+            severity: "warning",
+            title: "Autopilot publish failed",
+            body: `"${item.title}": ${outcome.reason}${outcome.tripped ? " Autopilot publishing was switched off." : ""}`,
+          });
+        }
+        return outcome.published;
+      } catch (error) {
+        console.error(`[workflows] autopilot publish threw for "${item.title}":`, error);
+        return false;
+      }
+    }
     try {
       startContentPublication(item);
       return true;
@@ -49,10 +68,10 @@ export function tickContentPublishing(now = new Date()): boolean {
 /**
  * Autopilot: gives approved content a publish time without a human choosing one.
  *
- * Off by default, and it automates *timing only* — an item still has to be
- * moved to `review` by a person, and publishing still hits the outbound
- * approval gate. What this removes is the chore of picking a datetime for every
- * post, not the consent step.
+ * Off by default, and timing-only unless the workflow's auto-publish switch
+ * is also on — in which case due scheduled X posts go out under the stored
+ * policy (same caps, duplicates, locks, and ledger as the approval path)
+ * instead of waiting for a tap. A failure switches auto-publish back off.
  *
  * Only `active` workflows are considered, so pausing stops new scheduling as
  * well as publishing.
@@ -97,10 +116,10 @@ export function tickAutopilot(now = new Date()): number {
 }
 
 export function startContentPublishingScheduler(): void {
-  tickContentPublishing();
+  void tickContentPublishing();
   tickAutopilot();
   setInterval(() => {
     tickAutopilot();
-    tickContentPublishing();
+    void tickContentPublishing();
   }, CHECK_INTERVAL_MS);
 }

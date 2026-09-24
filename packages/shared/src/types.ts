@@ -786,6 +786,14 @@ export interface WorkflowRecord {
   /** Off by default. Automates publish timing, never the approval itself. */
   autopilot: boolean;
   autopilotIntervalHours: number;
+  /**
+   * Off by default. When on (with autopilot), due scheduled X content
+   * publishes without the per-post approval tap, under the same caps,
+   * duplicate checks, locks, and ledger as the approval path. Any failure
+   * switches it back off and notifies. Stored operator consent, visible in
+   * the UI — never a silent bypass.
+   */
+  autopilotPublish: boolean;
   missionId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -876,6 +884,8 @@ export interface UpdateWorkflowRequest {
   /** Schedules approved content on a cadence. Never bypasses the approval gate. */
   autopilot?: boolean;
   autopilotIntervalHours?: number;
+  /** Lets due scheduled X content publish under stored policy consent. Off unless deliberately enabled. */
+  autopilotPublish?: boolean;
   missionId?: string | null;
 }
 

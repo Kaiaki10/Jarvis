@@ -180,6 +180,109 @@ async function uploadImageToX(creds: Creds, fileName: string): Promise<string> {
   return mediaId;
 }
 
+export type XPostOutcome =
+  | { ok: true; externalPostId: string | null; parsed: boolean }
+  | { ok: false; code: "capped" | "duplicate" | "credits" | "forbidden" | "rate_limited" | "http"; detail: string };
+
+/**
+ * The X send, shared by the approval-gated tool and the autopilot path.
+ *
+ * Everything billable and stateful still flows through `guarded()` — daily
+ * caps, duplicate detection, per-platform lock, and the ledger write happen
+ * identically whichever caller arrives. The only difference between callers
+ * is where consent came from: a human approval, or a workflow's stored
+ * autopilot policy. Returns a machine-readable outcome; each caller renders
+ * its own message from the code.
+ */
+export async function sendXPost(
+  creds: Creds,
+  connectionId: string | undefined,
+  input: { text: string; imageFile?: string },
+  sessionId: string | null
+): Promise<XPostOutcome> {
+  let outcome: XPostOutcome = { ok: false, code: "http", detail: "No response from X." };
+  // Checked here as well as inside guarded(): the autopilot path needs to
+  // tell "over the daily cap" (retry tomorrow, stay enabled) apart from
+  // failures that will never succeed (tripwire off), and guarded() folds
+  // both into the same refusal shape. Same functions, same answer — the
+  // inner check remains the enforcement.
+  const cap = checkDailyCap("x", connectionId);
+  if (!cap.allowed) {
+    return { ok: false, code: "capped", detail: cap.message ?? "Daily limit reached for x." };
+  }
+  if (isDuplicate("x", input.text)) {
+    return {
+      ok: false,
+      code: "duplicate",
+      detail: "This exact text was already posted to x within the last 30 days.",
+    };
+  }
+  await guarded("x", "post_to_x", connectionId, async () => {
+    const url = "https://api.x.com/2/tweets";
+
+    let mediaId: string | null = null;
+    if (input.imageFile) {
+      try {
+        mediaId = await uploadImageToX(creds, input.imageFile);
+      } catch (err) {
+        // Fail rather than silently posting without the image the user expected.
+        const detail = err instanceof Error ? err.message : String(err);
+        outcome = { ok: false, code: "http", detail };
+        return fail(detail);
+      }
+    }
+    const header = oauth1Header("POST", url, {
+      apiKey: creds.apiKey,
+      apiSecret: creds.apiSecret,
+      accessToken: creds.accessToken,
+      accessTokenSecret: creds.accessTokenSecret,
+    });
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: header, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: input.text,
+        ...(mediaId ? { media: { media_ids: [mediaId] } } : {}),
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    const body = await res.text();
+
+    // X bills per post and stops at zero rather than overdrawing. Without
+    // naming the cause this surfaces as a bare 402 that looks like a bug.
+    if (res.status === 402) {
+      outcome = { ok: false, code: "credits", detail: body };
+      return fail("credits");
+    }
+    if (res.status === 403) {
+      outcome = { ok: false, code: "forbidden", detail: body };
+      return fail("forbidden");
+    }
+    if (res.status === 429) {
+      outcome = { ok: false, code: "rate_limited", detail: body };
+      return fail("rate_limited");
+    }
+    if (!res.ok) {
+      outcome = { ok: false, code: "http", detail: `HTTP ${res.status}: ${body}` };
+      return fail("http");
+    }
+    try {
+      const parsed = JSON.parse(body) as { data?: { id?: string } };
+      outcome = { ok: true, externalPostId: parsed.data?.id ?? null, parsed: true };
+      // Returned as data as well as prose. The prose is for the model; the
+      // field is what gets stored, and without it the post is unmeasurable.
+      return {
+        ...ok(`Posted to X${mediaId ? ` with image ${input.imageFile}` : ""}. Post id: ${parsed.data?.id ?? "unknown"}`),
+        externalPostId: parsed.data?.id ?? null,
+      };
+    } catch {
+      outcome = { ok: true, externalPostId: null, parsed: false };
+      return ok("Posted to X.");
+    }
+  }, input.text, sessionId ?? undefined);
+  return outcome;
+}
+
 function buildXTools(creds: Creds, sessionId?: string, connectionId?: string): AnyTool[] {
   return erase([
     tool(
@@ -219,67 +322,54 @@ function buildXTools(creds: Creds, sessionId?: string, connectionId?: string): A
             "Optional filename of an image from the Jarvis images folder, as returned by list_available_images. Plain filename only."
           ),
       },
-      async (args) => guarded("x", "post_to_x", connectionId, async () => {
-        const url = "https://api.x.com/2/tweets";
-
-        let mediaId: string | null = null;
-        if (args.imageFile) {
-          try {
-            mediaId = await uploadImageToX(creds, args.imageFile);
-          } catch (err) {
-            // Fail rather than silently posting without the image the user expected.
-            return fail(err instanceof Error ? err.message : String(err));
-          }
-        }
-        const header = oauth1Header("POST", url, {
-          apiKey: creds.apiKey,
-          apiSecret: creds.apiSecret,
-          accessToken: creds.accessToken,
-          accessTokenSecret: creds.accessTokenSecret,
-        });
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { Authorization: header, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: args.text,
-            ...(mediaId ? { media: { media_ids: [mediaId] } } : {}),
-          }),
-          signal: AbortSignal.timeout(TIMEOUT_MS),
-        });
-        const body = await res.text();
-
-        // X bills per post and stops at zero rather than overdrawing. Without
-        // naming the cause this surfaces as a bare 402 that looks like a bug.
-        if (res.status === 402) {
-          return fail(
-            "X rejected the post: your API credits are depleted. Buy credits in the X " +
-              "Developer Console under Billing, and set a spending cap while you are there."
-          );
-        }
-        if (res.status === 403) {
-          return fail(
-            "X accepted the credentials but refused to post (403). The access token is " +
-              "probably read-only — set App permissions to Read and write, then regenerate " +
-              "the access token and secret, since tokens keep the permission they were born with."
-          );
-        }
-        if (res.status === 429) {
-          return fail("X rate limit reached. Wait for the window to reset and try again.");
-        }
-        if (!res.ok) return fail(`X refused the post (HTTP ${res.status}): ${body}`);
-        try {
-          const parsed = JSON.parse(body) as { data?: { id?: string } };
-          const withImage = mediaId ? ` with image ${args.imageFile}` : "";
-          // Returned as data as well as prose. The prose is for the model; the
-          // field is what gets stored, and without it the post is unmeasurable.
+      async (args) => {
+        const outcome = await sendXPost(
+          creds,
+          connectionId,
+          { text: args.text, imageFile: args.imageFile },
+          sessionId ?? null
+        );
+        if (outcome.ok) {
+          // A post whose response did not parse is reported bare, exactly as
+          // before, rather than inventing an id for it.
+          if (!outcome.parsed) return ok("Posted to X.");
           return {
-            ...ok(`Posted to X${withImage}. Post id: ${parsed.data?.id ?? "unknown"}`),
-            externalPostId: parsed.data?.id ?? null,
+            ...ok(`Posted to X${args.imageFile ? ` with image ${args.imageFile}` : ""}. Post id: ${outcome.externalPostId ?? "unknown"}`),
+            externalPostId: outcome.externalPostId,
           };
-        } catch {
-          return ok("Posted to X.");
         }
-      }, args.text, sessionId)
+        switch (outcome.code) {
+          case "capped":
+            notify({
+              type: "session_failed",
+              severity: "warning",
+              title: "Daily platform limit reached",
+              body: outcome.detail,
+            });
+            return fail(outcome.detail);
+          case "duplicate":
+            return fail(
+              `This exact text was already posted to x within the last 30 days. ` +
+                `X rejects duplicates and still bills the attempt. ` +
+                `Write something different rather than reposting.`
+            );
+          case "credits":
+            return fail(
+              "X rejected the post: your API credits are depleted. Buy credits in the X " +
+                "Developer Console under Billing, and set a spending cap while you are there."
+            );
+          case "forbidden":
+            return fail(
+              "X accepted the credentials but refused to post (403). The access token is " +
+                "probably read-only — set App permissions to Read and write, then regenerate " +
+                "the access token and secret, since tokens keep the permission they were born with."
+            );
+          case "rate_limited":
+            return fail("X rate limit reached. Wait for the window to reset and try again.");
+          default:
+            return fail(`X refused the post: ${outcome.detail}`);
+        }
+      }
     ),
   ]);
 }

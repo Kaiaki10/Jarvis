@@ -231,6 +231,7 @@ export const updateWorkflowSchema = z.object({
   autopilot: z.boolean().optional(),
   // One post an hour is already aggressive; a week is the sane upper bound.
   autopilotIntervalHours: z.number().int().min(1).max(168).optional(),
+  autopilotPublish: z.boolean().optional(),
   missionId: z.string().uuid().nullable().optional(),
 }).strict();
 

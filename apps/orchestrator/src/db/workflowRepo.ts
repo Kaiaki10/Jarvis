@@ -28,6 +28,7 @@ interface CampaignRow {
   onboarding_stage: number;
   autopilot: number;
   autopilot_interval_hours: number;
+  autopilot_publish: number;
   mission_id: string | null;
   created_at: string;
   updated_at: string;
@@ -49,6 +50,7 @@ function mapCampaign(row: CampaignRow): WorkflowRecord {
     onboardingStage: row.onboarding_stage,
     autopilot: row.autopilot === 1,
     autopilotIntervalHours: row.autopilot_interval_hours,
+    autopilotPublish: row.autopilot_publish === 1,
     missionId: row.mission_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -103,6 +105,7 @@ export function updateWorkflow(id: string, patch: Partial<{
   onboardingStage: number;
   autopilot: boolean;
   autopilotIntervalHours: number;
+  autopilotPublish?: boolean;
   missionId: string | null;
 }>): WorkflowRecord | undefined {
   const current = getWorkflow(id);
@@ -113,7 +116,7 @@ export function updateWorkflow(id: string, patch: Partial<{
     ? now
     : status === "completed" ? current.completedAt : null;
   db.prepare(
-    `UPDATE workflows SET name = ?, objective = ?, audience = ?, offer = ?, channels = ?, primary_metric = ?, approval_policy = ?, status = ?, onboarding_stage = ?, autopilot = ?, autopilot_interval_hours = ?, mission_id = ?, updated_at = ?, completed_at = ? WHERE id = ?`
+    `UPDATE workflows SET name = ?, objective = ?, audience = ?, offer = ?, channels = ?, primary_metric = ?, approval_policy = ?, status = ?, onboarding_stage = ?, autopilot = ?, autopilot_interval_hours = ?, autopilot_publish = ?, mission_id = ?, updated_at = ?, completed_at = ? WHERE id = ?`
   ).run(
     patch.name ?? current.name,
     patch.objective ?? current.objective,
@@ -126,6 +129,7 @@ export function updateWorkflow(id: string, patch: Partial<{
     patch.onboardingStage !== undefined ? patch.onboardingStage : current.onboardingStage,
     (patch.autopilot !== undefined ? patch.autopilot : current.autopilot) ? 1 : 0,
     patch.autopilotIntervalHours !== undefined ? patch.autopilotIntervalHours : current.autopilotIntervalHours,
+    (patch.autopilotPublish !== undefined ? patch.autopilotPublish : current.autopilotPublish) ? 1 : 0,
     patch.missionId !== undefined ? patch.missionId : current.missionId,
     now,
     completedAt,

@@ -394,6 +394,7 @@ CREATE TABLE IF NOT EXISTS workflows (
   -- gate -- this automates timing, not consent.
   autopilot INTEGER NOT NULL DEFAULT 0,
   autopilot_interval_hours INTEGER NOT NULL DEFAULT 24,
+  autopilot_publish INTEGER NOT NULL DEFAULT 0,
   mission_id TEXT REFERENCES missions(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,

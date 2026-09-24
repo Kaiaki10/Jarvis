@@ -1,13 +1,17 @@
 import { CHANNEL_BODY_LIMITS, type ContentItemRecord } from "@jarvis/shared";
-import { createSession } from "../db/repo.js";
+import { appendSessionEvent, createSession, updateSession } from "../db/repo.js";
 import {
   createContentPublicationRun,
+  finishContentPublicationRun,
   getWorkflow,
   latestContentPublicationRun,
+  updateContentItem,
+  updateWorkflow,
 } from "../db/workflowRepo.js";
-import { getConnection, getConnectionById } from "../db/connectionsRepo.js";
+import { getConnection, getConnectionById, getConnectionCredentialsById } from "../db/connectionsRepo.js";
 import { workflowAccountIds } from "../db/workflowAccountsRepo.js";
 import { atConcurrencyLimit, startSession } from "../sessions/sessionManager.js";
+import { sendXPost } from "../platforms/actions.js";
 import { globalBus } from "../events/globalBus.js";
 
 export function platformForContent(item: ContentItemRecord): string | null {
@@ -130,4 +134,124 @@ export function startContentPublication(item: ContentItemRecord): { sessionId: s
     connectionId: readiness.connectionId,
   });
   return { sessionId: session.id, runId: run.id };
+}
+
+export interface AutopilotPublishOutcome {
+  published: boolean;
+  /** True when the failure should switch the workflow's auto-publish off. */
+  tripped: boolean;
+  reason: string;
+  externalPostId?: string | null;
+}
+
+/**
+ * Publishes due scheduled content without a per-post approval tap, under a
+ * workflow's stored autopilot policy — the consent the operator gave once in
+ * the UI rather than silence. Deliberately NOT a session: no model is
+ * consulted, so there is no prompt to inject into, no per-turn cost, and the
+ * exact reviewed text is what goes out (a session is only ever asked to
+ * preserve it; this path cannot do otherwise).
+ *
+ * Every billable and stateful step still flows through the same guards as
+ * the approval path — readiness preflight, daily caps, duplicate detection,
+ * the per-platform lock, and the ledger write all run identically. The only
+ * thing the policy replaces is the human tap, and any failure flips the
+ * policy back off (except an exhausted daily cap, which clears overnight)
+ * and notifies loudly. Text only: items needing images stay on the manual
+ * path by construction, since there is nowhere to attach one here.
+ */
+export async function autoPublishContent(item: ContentItemRecord, nowIso?: string): Promise<AutopilotPublishOutcome> {
+  const startedAt = Date.now();
+  const now = nowIso ?? new Date().toISOString();
+  const workflow = getWorkflow(item.workflowId);
+  if (!workflow || !workflow.autopilot || !workflow.autopilotPublish || workflow.status !== "active") {
+    return { published: false, tripped: false, reason: "Autopilot publishing is not enabled for this workflow." };
+  }
+  if (item.status !== "scheduled" || !item.scheduledFor || item.scheduledFor > now) {
+    return { published: false, tripped: false, reason: "This content is not due." };
+  }
+  const readiness = contentPublishingReadiness(item);
+  if (!readiness.ready || !readiness.platformId || !readiness.connectionId) {
+    return { published: false, tripped: false, reason: readiness.reason ?? "Publishing is not ready." };
+  }
+  const previous = latestContentPublicationRun(item.id);
+  if (previous?.status === "running") {
+    return { published: false, tripped: false, reason: "A publishing run is already active for this content." };
+  }
+  if (previous?.status === "published") {
+    return { published: false, tripped: false, reason: "This content already has a confirmed publication." };
+  }
+  const creds = getConnectionCredentialsById(readiness.connectionId);
+  if (!creds) {
+    return { published: false, tripped: true, reason: "The pinned account's credentials are unavailable." };
+  }
+
+  // The audit session: a plain row recording that the policy published this,
+  // never a model turn. It renders in Brain runs like any other run, with no
+  // turns and no cost, so unattended publishing stays visible.
+  const session = createSession({
+    title: `Autopilot publish: ${item.title}`,
+    cwd: process.cwd(),
+    permissionMode: "default",
+    allowedTools: [],
+  });
+  createContentPublicationRun({
+    contentItemId: item.id,
+    sessionId: session.id,
+    platformId: readiness.platformId,
+  });
+  globalBus.emit("session_updated", session.id);
+  appendSessionEvent(session.id, "user", {
+    message: {
+      role: "user",
+      content: `Autopilot publish of "${item.title}" under the "${workflow.name}" policy (${item.body.length} characters).`,
+    },
+  });
+
+  const finish = (ok: boolean, text: string, externalPostId?: string | null) => {
+    appendSessionEvent(session.id, "result", {
+      is_error: !ok,
+      duration_ms: Date.now() - startedAt,
+      ...(ok ? { result: text } : { errors: [text] }),
+      model: "autopilot",
+    });
+    updateSession(session.id, {
+      status: ok ? "completed" : "error",
+      summary: text.replace(/\s+/g, " ").slice(0, 280),
+      ...(ok ? {} : { errorMessage: text }),
+      currentActivity: null,
+    });
+    globalBus.emit("session_updated", session.id);
+    globalBus.emit("workflows_changed");
+  };
+
+  const outcome = await sendXPost(creds, readiness.connectionId, { text: item.body }, session.id);
+  if (outcome.ok) {
+    updateContentItem(item.id, { status: "published" });
+    finishContentPublicationRun(session.id, "published", undefined, outcome.externalPostId);
+    finish(true, `Posted to X. Post id: ${outcome.externalPostId ?? "unknown"}.`, outcome.externalPostId);
+    return { published: true, tripped: false, reason: "Posted.", externalPostId: outcome.externalPostId };
+  }
+
+  const failure = (() => {
+    switch (outcome.code) {
+      case "capped":
+        return { message: "Daily X limit reached — will retry after the cap resets.", trip: false };
+      case "duplicate":
+        return { message: "This exact text was already posted within the last 30 days; it will never succeed.", trip: true };
+      case "credits":
+        return { message: "X API credits are depleted — fund them in the X Developer Console, then re-enable autopilot publishing.", trip: true };
+      case "forbidden":
+        return { message: "X refused with 403 — the access token is probably read-only.", trip: true };
+      case "rate_limited":
+        // Retrying every 60 seconds into a rate limit only deepens it.
+        return { message: "X rate limit reached.", trip: true };
+      default:
+        return { message: `X refused the post: ${outcome.detail}`, trip: true };
+    }
+  })();
+  finishContentPublicationRun(session.id, "failed", failure.message);
+  finish(false, failure.message);
+  if (failure.trip) updateWorkflow(workflow.id, { autopilotPublish: false });
+  return { published: false, tripped: failure.trip, reason: failure.message };
 }
