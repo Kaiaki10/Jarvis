@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   codex_thread_id TEXT,
   model TEXT NOT NULL DEFAULT 'claude',
   claude_model TEXT NOT NULL DEFAULT 'default',
+  local_model TEXT,
   auto_approve_local_tools INTEGER NOT NULL DEFAULT 0,
   title TEXT NOT NULL,
   status TEXT NOT NULL,

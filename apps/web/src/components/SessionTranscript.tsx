@@ -54,6 +54,12 @@ function firstLine(value: unknown, max = 60): string | null {
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }
 
+function formatTokens(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "?";
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  return String(n);
+}
+
 /** Mirrors the phrasing of the live "…" activity line, past tense for history. */
 function toolCallLabel(name: string, input: Record<string, unknown>): string {
   if (name.startsWith("mcp__jarvis__")) {
@@ -65,6 +71,18 @@ function toolCallLabel(name: string, input: Record<string, unknown>): string {
       const command = firstLine(input.command, 60);
       return command ? `Ran ${command}` : "Ran a command";
     }
+    case "run_command": {
+      const command = firstLine(input.command, 60);
+      return command ? `Ran ${command}` : "Ran a command";
+    }
+    case "read_file":
+      return `Read ${shortenPath(input.path) ?? "a file"}`;
+    case "list_dir":
+      return `Listed ${shortenPath(input.path) ?? "a folder"}`;
+    case "grep":
+      return `Searched for "${firstLine(input.pattern, 40) ?? "a pattern"}"`;
+    case "glob":
+      return "Searched the codebase";
     case "Read":
       return `Read ${shortenPath(input.file_path) ?? "a file"}`;
     case "Write":
@@ -479,22 +497,45 @@ function TranscriptEntry({
     );
   }
   if (event.type === "result") {
-    const payload = event.payload as { is_error: boolean; duration_ms: number };
-    // In chat, a clean turn ending is not news — but a failed one still is.
-    if (compact && !payload.is_error) return null;
+    const payload = event.payload as {
+      is_error: boolean;
+      duration_ms: number;
+      errors?: string[];
+      usage?: { promptTokens: number; completionTokens: number; contextTokenLimit: number; contextPercent: number };
+    };
+    const errors = Array.isArray(payload.errors) ? payload.errors.filter(Boolean).join("\n") : "";
+    const seconds = (payload.duration_ms / 1000).toFixed(1);
+    const usage = payload.usage
+      ? `${formatTokens(payload.usage.promptTokens)} in · ${formatTokens(payload.usage.completionTokens)} out · ${payload.usage.contextPercent}% of ${formatTokens(payload.usage.contextTokenLimit)} ctx`
+      : null;
+    // In chat, a clean turn ending is not news — its token usage is. A failed one still needs the headline.
+    if (compact && !payload.is_error && !usage) return null;
     return (
-      <div className={`px-1 text-label ${payload.is_error ? "text-danger" : "text-muted"}`}>
-        {payload.is_error ? "Turn ended with an error" : "Turn complete"} ·{" "}
-        {(payload.duration_ms / 1000).toFixed(1)}s
+      <div className={`px-1 ${payload.is_error ? "text-danger" : "text-muted"}`}>
+        <div className={`text-label ${payload.is_error ? "" : "flex flex-wrap items-baseline gap-x-2"}`}>
+          {payload.is_error ? "Turn ended with an error" : usage ? null : "Turn complete"} · {seconds}s
+          {!payload.is_error && usage && <span className="text-micro tabular-nums">{usage}</span>}
+        </div>
+        {payload.is_error && errors && (
+          <details className="mt-1 text-micro">
+            <summary className="cursor-pointer text-danger/80">Why it failed</summary>
+            <pre className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-danger/20 bg-black/15 px-2 py-1.5 text-danger/90">
+              {errors}
+            </pre>
+          </details>
+        )}
       </div>
     );
   }
   if (event.type === "system") {
-    const payload = event.payload as { subtype?: string; model?: string };
+    const payload = event.payload as { subtype?: string; model?: string; message?: string };
     if (payload.subtype === "init" && !compact) {
       return (
         <div className="px-1 text-label text-muted">Session started · {payload.model}</div>
       );
+    }
+    if (payload.subtype === "context_compressed" && payload.message && !compact) {
+      return <div className="px-1 text-label text-muted">{payload.message}</div>;
     }
     return null;
   }

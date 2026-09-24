@@ -72,6 +72,45 @@ export const CLAUDE_MODELS: Array<{ value: ClaudeModel; label: string; descripti
   },
 ];
 
+/** A local Ollama model installed on this machine, as advertised by Ollama's `/api/tags`. */
+export interface LocalModelInfo {
+  name: string;
+  sizeBytes: number;
+}
+
+export interface LocalModelsStatus {
+  /** False when Ollama isn't reachable or has no models, in which case `models` is empty. */
+  reachable: boolean;
+  models: LocalModelInfo[];
+}
+
+/**
+ * An OpenCode Inference model id, as served by `GET /inference/v1/models`.
+ * These are the bare inference ids (not the `opencode/…` provider-qualified
+ * ids the SDK uses) — verified live against the endpoint.
+ */
+export type OpenCodeModel =
+  | "muse-spark-1.3-contributor-free"
+  | "mimo-v2.6-flash-free"
+  | "ling-3.0-flash-fin-free";
+
+export const OPENCODE_MODELS: Array<{ value: OpenCodeModel; label: string; description: string }> = [
+  { value: "muse-spark-1.3-contributor-free", label: "Muse Spark 1.3", description: "Free · via OpenCode Inference" },
+  { value: "mimo-v2.6-flash-free", label: "MiMo V2.6 Flash", description: "Free · via OpenCode Inference" },
+  { value: "ling-3.0-flash-fin-free", label: "Ling 3.0 Flash", description: "Free · via OpenCode Inference" },
+];
+
+export interface OpenCodeModelInfo {
+  id: string;
+  label: string;
+}
+
+export interface OpenCodeModelsStatus {
+  /** False when the Inference API isn't reachable, in which case `models` is empty. */
+  reachable: boolean;
+  models: OpenCodeModelInfo[];
+}
+
 export interface SessionRecord {
   id: string;
   /** Which agent owns this. Null only for rows that predate the agent migration. */
@@ -127,6 +166,18 @@ export interface SessionEventRecord {
   type: SessionEventType;
   payload: unknown;
   createdAt: string;
+}
+
+/** Per-turn token accounting for local-model chats. Tokens, never cost figures. */
+export interface ChatTurnUsage {
+  /** Prompt tokens sent, peaked across any tool rounds in the turn. */
+  promptTokens: number;
+  /** Completion tokens generated across all tool rounds in the turn. */
+  completionTokens: number;
+  /** Context window size the chat runs under. */
+  contextTokenLimit: number;
+  /** Roughly how full the context window is after this turn, 0-100. */
+  contextPercent: number;
 }
 
 export type MemoryKind = "preference" | "business" | "relationship" | "decision" | "fact";
