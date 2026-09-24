@@ -162,6 +162,14 @@ for (const migration of [
   { table: "customer_reply_drafts", column: "auto_send", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN auto_send INTEGER NOT NULL DEFAULT 0" },
   { table: "paid_growth_campaigns", column: "external_budget_entity_id", sql: "ALTER TABLE paid_growth_campaigns ADD COLUMN external_budget_entity_id TEXT" },
   { table: "paid_growth_decisions", column: "experiment_id", sql: "ALTER TABLE paid_growth_decisions ADD COLUMN experiment_id TEXT REFERENCES campaign_experiments(id) ON DELETE SET NULL" },
+  // Cross-channel attribution (GAPS.md high priority): add acquisition
+  // and revenue columns to customers so reads can surface channel data
+  // even before the inbound path captures UTM/referrer end-to-end.
+  { table: "customers", column: "acquisition_channel", sql: "ALTER TABLE customers ADD COLUMN acquisition_channel TEXT" },
+  { table: "customers", column: "utm_source", sql: "ALTER TABLE customers ADD COLUMN utm_source TEXT" },
+  { table: "customers", column: "utm_medium", sql: "ALTER TABLE customers ADD COLUMN utm_medium TEXT" },
+  { table: "customers", column: "utm_campaign", sql: "ALTER TABLE customers ADD COLUMN utm_campaign TEXT" },
+  { table: "customers", column: "revenue_minor", sql: "ALTER TABLE customers ADD COLUMN revenue_minor INTEGER" },
   // v2: which agent owns the row. Only root tables carry it — everything else
   // (deliverables, content_items, customer_messages, …) reaches its agent
   // through an existing foreign key, so ten columns cover full isolation.

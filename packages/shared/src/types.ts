@@ -1030,6 +1030,10 @@ export type CustomerMessageDirection = "inbound" | "outbound" | "internal";
 export type CustomerMessageSender = "customer" | "jarvis" | "operator" | "system";
 export type CustomerReplyDraftStatus = "running" | "ready" | "used" | "failed";
 
+/** Where a customer first entered the funnel. Populated by the inbound
+ * path (widget/webhook) when available; filled manually otherwise. */
+export type AcquisitionChannel = "website" | "email" | "x" | "instagram" | "facebook" | "referral" | "direct" | null;
+
 export interface CustomerRecord {
   id: string;
   agentId: string | null;
@@ -1037,6 +1041,11 @@ export interface CustomerRecord {
   email: string | null;
   company: string | null;
   notes: string | null;
+  acquisitionChannel: AcquisitionChannel;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  revenueMinor: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1143,6 +1152,13 @@ export interface CreateCustomerConversationRequest {
   subject: string;
   message: string;
   priority?: CustomerPriority;
+  /** Where the customer entered the funnel. For website chats this is filled from the page's referrer and URL params. */
+  acquisitionChannel?: AcquisitionChannel;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  /** The full referrer URL the customer came from (e.g. the page they were on before clicking the widget). */
+  referrer?: string | null;
 }
 
 export interface UpdateCustomerConversationRequest {
@@ -1165,6 +1181,11 @@ export interface UpdateCustomerRequest {
   email?: string | null;
   company?: string | null;
   notes?: string | null;
+  acquisitionChannel?: AcquisitionChannel;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  revenueMinor?: number | null;
 }
 
 export type AgentConversationStatus =

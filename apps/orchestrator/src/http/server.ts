@@ -163,6 +163,8 @@ import {
   createWebsiteConversationSchema,
   websiteMessageSchema,
   mintAgentTokenSchema,
+  attributionChannelSchema,
+  listCustomersAttributionSchema,
 } from "./validation.js";
 import {
   createPaidGrowthCampaign,
@@ -262,6 +264,9 @@ import {
   updateCustomer,
   updateCustomerConversation,
   updateCustomerServicePolicy,
+  attributionByChannel,
+  listCustomersWithAttribution,
+  attributionRevenueTotals,
 } from "../db/customerRepo.js";
 import { authorizeWebsiteConversation, createWebsiteConversation, sendCustomerReply } from "../customers/channelGateway.js";
 import { customerWidgetDemo, customerWidgetScript } from "../customers/widget.js";
@@ -1297,6 +1302,30 @@ app.post("/customer-conversations/:id/follow-up", (req: Request, res: Response) 
   res.status(201).json(task);
 });
 
+// ---- Attribution reads (GAPS.md: cross-channel attribution) ----
+
+app.get("/attribution/channels", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(attributionByChannel(agentId));
+});
+
+app.get("/attribution/revenue", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json(attributionRevenueTotals(agentId));
+});
+
+app.get("/attribution/customers", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const body = validatedBody(listCustomersAttributionSchema, req, res);
+  if (!body) return;
+  const customers = listCustomersWithAttribution(
+    agentId,
+    body.limit ?? 50,
+    body.offset ?? 0,
+  );
+  res.json(customers);
+});
+
 app.get("/events", (req: Request, res: Response) => {
   sseHeaders(res);
 
@@ -1365,7 +1394,9 @@ app.post("/sessions/:id/messages", (req: Request, res: Response) => {
   const session = getSession(req.params.id);
   const outcome = session?.model === "gpt-5.6-sol"
     ? sendCodexFollowUp(req.params.id, text)
-    : sendFollowUp(req.params.id, text);
+    : session?.model === "opencode"
+      ? sendOpencodeFollowUp(req.params.id, text)
+      : sendFollowUp(req.params.id, text);
   if (outcome.ok) {
     res.status(202).json({ ok: true, resumed: outcome.resumed });
     return;

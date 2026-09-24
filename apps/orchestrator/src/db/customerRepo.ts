@@ -20,6 +20,7 @@ import type {
   UpdateCustomerServicePolicyRequest,
   UpdateCustomerConversationRequest,
   UpdateCustomerRequest,
+  AcquisitionChannel,
 } from "@jarvis/shared";
 import { db, DEFAULT_AGENT_ID } from "./db.js";
 
@@ -30,6 +31,11 @@ interface CustomerRow {
   email: string | null;
   company: string | null;
   notes: string | null;
+  acquisition_channel: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  revenue_minor: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -101,6 +107,11 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
     email: row.email,
     company: row.company,
     notes: row.notes,
+    acquisitionChannel: row.acquisition_channel as AcquisitionChannel,
+    utmSource: row.utm_source,
+    utmMedium: row.utm_medium,
+    utmCampaign: row.utm_campaign,
+    revenueMinor: row.revenue_minor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -270,7 +281,7 @@ export function listCustomerMessages(conversationId: string): CustomerMessageRec
   return rows.map(mapMessage);
 }
 
-function findOrCreateCustomer(input: Pick<CreateCustomerConversationRequest, "customerName" | "customerEmail" | "company"> & { agentId?: string | null }): CustomerRecord {
+function findOrCreateCustomer(input: Pick<CreateCustomerConversationRequest, "customerName" | "customerEmail" | "company" | "acquisitionChannel" | "utmSource" | "utmMedium" | "utmCampaign" | "referrer"> & { agentId?: string | null }): CustomerRecord {
   const email = input.customerEmail?.trim() || null;
   if (email) {
     const existing = (input.agentId
@@ -286,10 +297,14 @@ function findOrCreateCustomer(input: Pick<CreateCustomerConversationRequest, "cu
 
   const id = randomUUID();
   const now = new Date().toISOString();
+  const acq = input.acquisitionChannel ?? null;
+  const utmSrc = input.utmSource ?? null;
+  const utmMed = input.utmMedium ?? null;
+  const utmCamp = input.utmCampaign ?? null;
   db.prepare(
-    `INSERT INTO customers (id, agent_id, name, email, company, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`
-  ).run(id, input.agentId ?? null, input.customerName.trim(), email, input.company?.trim() || null, now, now);
+    `INSERT INTO customers (id, agent_id, name, email, company, notes, acquisition_channel, utm_source, utm_medium, utm_campaign, revenue_minor, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?)`
+  ).run(id, input.agentId ?? null, input.customerName.trim(), email, input.company?.trim() || null, acq, utmSrc, utmMed, utmCamp, now, now);
   return getCustomer(id)!;
 }
 
@@ -298,7 +313,7 @@ export function createCustomerConversation(input: CreateCustomerConversationRequ
   conversation: CustomerConversationRecord;
   message: CustomerMessageRecord;
 } {
-  const customer = findOrCreateCustomer({ ...input, agentId: input.agentId ?? DEFAULT_AGENT_ID });
+  const customer = findOrCreateCustomer(input);
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
@@ -352,16 +367,26 @@ export function deleteCustomerConversation(id: string): void {
 export function updateCustomer(id: string, patch: UpdateCustomerRequest): CustomerRecord | undefined {
   const current = getCustomer(id);
   if (!current) return undefined;
-  db.prepare(
-    `UPDATE customers SET name = ?, email = ?, company = ?, notes = ?, updated_at = ? WHERE id = ?`
-  ).run(
-    patch.name ?? current.name,
-    patch.email !== undefined ? patch.email : current.email,
-    patch.company !== undefined ? patch.company : current.company,
-    patch.notes !== undefined ? patch.notes : current.notes,
-    new Date().toISOString(),
-    id
-  );
+  const sets: string[] = [];
+  const vals: Array<string | number | null> = [];
+
+  if (patch.name !== undefined && patch.name !== current.name) { sets.push("name = ?"); vals.push(patch.name); }
+  else if (patch.name !== undefined) { /* same value, skip */ }
+  if (patch.email !== undefined && patch.email !== current.email) { sets.push("email = ?"); vals.push(patch.email); }
+  if (patch.company !== undefined && patch.company !== current.company) { sets.push("company = ?"); vals.push(patch.company); }
+  if (patch.notes !== undefined && patch.notes !== current.notes) { sets.push("notes = ?"); vals.push(patch.notes); }
+  if (patch.acquisitionChannel !== undefined && patch.acquisitionChannel !== current.acquisitionChannel) { sets.push("acquisition_channel = ?"); vals.push(patch.acquisitionChannel); }
+  if (patch.utmSource !== undefined && patch.utmSource !== current.utmSource) { sets.push("utm_source = ?"); vals.push(patch.utmSource); }
+  if (patch.utmMedium !== undefined && patch.utmMedium !== current.utmMedium) { sets.push("utm_medium = ?"); vals.push(patch.utmMedium); }
+  if (patch.utmCampaign !== undefined && patch.utmCampaign !== current.utmCampaign) { sets.push("utm_campaign = ?"); vals.push(patch.utmCampaign); }
+  if (patch.revenueMinor !== undefined && patch.revenueMinor !== current.revenueMinor) { sets.push("revenue_minor = ?"); vals.push(patch.revenueMinor); }
+
+  if (sets.length === 0) return current;
+
+  sets.push("updated_at = ?");
+  vals.push(new Date().toISOString(), id);
+
+  db.prepare(`UPDATE customers SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
   return getCustomer(id);
 }
 
@@ -504,4 +529,85 @@ export function countAutomaticReplies(conversationId: string): number {
     `SELECT COUNT(*) AS count FROM customer_reply_drafts WHERE conversation_id = ? AND auto_send = 1 AND status IN ('running', 'ready', 'used')`
   ).get(conversationId) as unknown as { count: number };
   return row.count;
+}
+
+// ---- Attribution reads ----
+
+/** Aggregate attribution counts by acquisition channel, for the dashboard */
+export function attributionByChannel(agentId?: string): Array<{
+  channel: string;
+  count: number;
+}> {
+  if (agentId) {
+    const rows = db.prepare(
+      `SELECT acquisition_channel AS channel, COUNT(*) AS count FROM customers WHERE agent_id = ? AND acquisition_channel IS NOT NULL GROUP BY acquisition_channel ORDER BY count DESC`
+    ).all(agentId) as unknown as Array<{ channel: string; count: number }>;
+    return rows;
+  }
+  const rows = db.prepare(
+    `SELECT acquisition_channel AS channel, COUNT(*) AS count FROM customers WHERE acquisition_channel IS NOT NULL GROUP BY acquisition_channel ORDER BY count DESC`
+  ).all() as unknown as Array<{ channel: string; count: number }>;
+  return rows;
+}
+
+/** Customers with any attribution data, paginated */
+export function listCustomersWithAttribution(
+  agentId?: string,
+  limit = 50,
+  offset = 0,
+): Array<{
+  id: string;
+  name: string;
+  email: string | null;
+  acquisitionChannel: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  revenueMinor: number | null;
+}> {
+  const agentWhere = agentId ? "AND agent_id = ?" : "";
+  const params: Array<string | number> = agentId ? [agentId, limit, offset] : [limit, offset];
+  const rows = db.prepare(
+    `SELECT id, name, email, acquisition_channel, utm_source, utm_medium, utm_campaign, revenue_minor
+     FROM customers
+     WHERE acquisition_channel IS NOT NULL OR utm_source IS NOT NULL OR revenue_minor IS NOT NULL
+     ${agentWhere}
+     ORDER BY updated_at DESC
+     LIMIT ? OFFSET ?`
+  ).all(...params) as unknown as Array<{
+    id: string;
+    name: string;
+    email: string | null;
+    acquisitionChannel: string | null;
+    utmSource: string | null;
+    utmMedium: string | null;
+    utmCampaign: string | null;
+    revenueMinor: number | null;
+  }>;
+  return rows;
+}
+
+/** Revenue totals across customers, optionally filtered by agent */
+export function attributionRevenueTotals(agentId?: string): {
+  totalRevenueMinor: number;
+  customerCount: number;
+  customersWithRevenue: number;
+} {
+  const agentWhere = agentId ? "AND agent_id = ?" : "";
+  const rows = agentId
+    ? db.prepare(
+        `SELECT COUNT(DISTINCT id) AS customerCount,
+                COUNT(revenue_minor) AS customersWithRevenue,
+                COALESCE(SUM(revenue_minor), 0) AS totalRevenueMinor
+         FROM customers
+         WHERE revenue_minor IS NOT NULL AND agent_id = ?`
+      ).all(agentId)
+    : db.prepare(
+        `SELECT COUNT(DISTINCT id) AS customerCount,
+                COUNT(revenue_minor) AS customersWithRevenue,
+                COALESCE(SUM(revenue_minor), 0) AS totalRevenueMinor
+         FROM customers
+         WHERE revenue_minor IS NOT NULL`
+      ).all();
+  return rows as unknown as { customerCount: number; customersWithRevenue: number; totalRevenueMinor: number };
 }

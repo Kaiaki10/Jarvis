@@ -321,6 +321,16 @@ export const abandonCampaignExperimentSchema = z.object({
 
 const customerChannel = z.enum(["website", "email", "x", "instagram", "facebook"]);
 const customerPriority = z.enum(["low", "normal", "high", "urgent"]);
+const acquisitionChannel = z.enum(["website", "email", "x", "instagram", "facebook", "referral", "direct"]).nullable().optional();
+
+export const attributionChannelSchema = z.object({
+  channel: acquisitionChannel,
+}).strict().refine((patch) => Object.keys(patch).length > 0, "at least one field is required");
+
+export const listCustomersAttributionSchema = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  offset: z.number().int().min(0).optional(),
+}).strict();
 
 export const createCustomerConversationSchema = z.object({
   customerName: z.string().trim().min(1).max(300),
@@ -352,6 +362,11 @@ export const updateCustomerSchema = z.object({
   email: z.union([z.literal(""), z.string().email().max(320)]).nullable().optional(),
   company: z.string().trim().max(300).nullable().optional(),
   notes: z.string().trim().max(20_000).nullable().optional(),
+  acquisitionChannel: z.enum(["website", "email", "x", "instagram", "facebook", "referral", "direct"]).nullable().optional(),
+  utmSource: z.string().trim().max(200).nullable().optional(),
+  utmMedium: z.string().trim().max(200).nullable().optional(),
+  utmCampaign: z.string().trim().max(200).nullable().optional(),
+  revenueMinor: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
 }).strict().refine((patch) => Object.keys(patch).length > 0, "at least one field is required");
 
 export const updateCustomerServicePolicySchema = z.object({
@@ -375,6 +390,11 @@ export const createWebsiteConversationSchema = z.object({
   customerEmail: z.union([z.literal(""), z.string().email().max(320)]).optional(),
   subject: z.string().trim().max(500).optional(),
   body: z.string().trim().min(1).max(20_000),
+  acquisitionChannel: z.enum(["website", "email", "x", "instagram", "facebook", "referral", "direct"]).optional(),
+  utmSource: z.string().trim().max(200).optional(),
+  utmMedium: z.string().trim().max(200).optional(),
+  utmCampaign: z.string().trim().max(200).optional(),
+  referrer: z.string().max(2000).optional(),
 }).strict();
 
 export const websiteMessageSchema = z.object({
@@ -416,6 +436,14 @@ export const startPlatformSignupSchema = z
 
 export const issueStripeCardSchema = z
   .object({ purposeLabel: z.string().trim().min(1).max(200), monthlyLimitMinor: z.number().int().positive() })
+  .strict();
+
+export const createPaymentLinkSchema = z
+  .object({
+    label: z.string().trim().min(1).max(200),
+    amountMinor: z.number().int().positive().max(1_000_000_000),
+    currency: z.enum(["USD", "GBP"]),
+  })
   .strict();
 
 export const stripeRevealSessionSchema = z.object({ nonce: z.string().min(1).max(2000) }).strict();

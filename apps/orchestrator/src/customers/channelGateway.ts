@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import type { CustomerChannel, CustomerMessageRecord } from "@jarvis/shared";
+import type { AcquisitionChannel, CustomerChannel, CustomerMessageRecord } from "@jarvis/shared";
 import { getConnection, getConnectionCredentials } from "../db/connectionsRepo.js";
 import {
   bindCustomerChannelThread,
@@ -32,6 +32,12 @@ export interface InboundCustomerMessage {
   body: string;
   replyTo?: string;
   metadata?: Record<string, unknown>;
+  /** Where the customer entered the funnel. */
+  acquisitionChannel?: AcquisitionChannel;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  referrer?: string | null;
 }
 
 export function ingestCustomerMessage(input: InboundCustomerMessage): {
@@ -51,6 +57,11 @@ export function ingestCustomerMessage(input: InboundCustomerMessage): {
       channel: input.provider,
       subject: input.subject.trim() || "Customer conversation",
       message: input.body,
+      acquisitionChannel: input.acquisitionChannel,
+      utmSource: input.utmSource,
+      utmMedium: input.utmMedium,
+      utmCampaign: input.utmCampaign,
+      referrer: input.referrer,
     });
     bindCustomerChannelThread({
       provider: input.provider,
@@ -84,6 +95,11 @@ export function createWebsiteConversation(input: {
   customerEmail?: string;
   subject?: string;
   body: string;
+  acquisitionChannel?: AcquisitionChannel;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  referrer?: string | null;
 }): { conversationId: string; token: string; message: CustomerMessageRecord } {
   const token = randomBytes(32).toString("base64url");
   const externalThreadId = randomUUID();
@@ -93,6 +109,11 @@ export function createWebsiteConversation(input: {
     channel: "website",
     subject: input.subject?.trim() || "Website chat",
     message: input.body,
+    acquisitionChannel: input.acquisitionChannel,
+    utmSource: input.utmSource,
+    utmMedium: input.utmMedium,
+    utmCampaign: input.utmCampaign,
+    referrer: input.referrer,
   });
   bindCustomerChannelThread({
     provider: "website",
