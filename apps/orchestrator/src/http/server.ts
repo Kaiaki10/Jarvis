@@ -215,6 +215,7 @@ import {
   listConversationMessages,
   listConversations,
   listParticipants,
+  updateConversation,
 } from "../db/conversationRepo.js";
 import {
   isConversationRunning,
@@ -968,6 +969,17 @@ app.post("/conversations/:id/start", (req: Request, res: Response) => {
       error: "This conversation has used all of its turns. Create a new one to continue.",
     });
     return;
+  }
+  // A room that ended (error, completed) starts a fresh attempt, not a
+  // continuation of yesterday's clock: without this, restarting a room that
+  // died yesterday completes instantly on its long-expired budget without a
+  // single turn. A deliberately stopped (paused) room keeps its budget.
+  if (conversation.status !== "stopped") {
+    updateConversation(conversation.id, {
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      stopReason: null,
+    });
   }
   // Fire-and-forget: the room runs for as long as its caps allow, independent
   // of this request.

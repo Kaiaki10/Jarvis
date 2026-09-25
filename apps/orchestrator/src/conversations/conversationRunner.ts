@@ -91,10 +91,14 @@ function awaitTurn(sessionId: string, lane: ChatModel): Promise<{ ok: boolean; t
       });
     };
 
+    // Self-hosted models answer on shared CPU inference, where a
+    // tool-using turn takes minutes, not seconds. Same timeout for every lane
+    // would hold them to a budget only hosted-subscription models can meet.
+    const timeoutMs = lane === "local" || lane === "opencode" ? 10 * 60_000 : TURN_TIMEOUT_MS;
     const timer = setTimeout(() => {
       interruptRoomTurn(sessionId, lane);
       finish({ ok: false, text: "" });
-    }, TURN_TIMEOUT_MS);
+    }, timeoutMs);
 
     globalBus.on("session_event", onEvent);
   });

@@ -601,6 +601,10 @@ async function requestChat(
       ...(withTools ? { tools: readOnly ? LOCAL_READONLY_TOOLS : LOCAL_TOOLS } : {}),
       stream: true,
       num_ctx: OLLAMA_NUM_CTX,
+      // Room chatter does not need chain-of-thought: thinking traces are what
+      // make CPU turns blow past the room's 5-minute budget. Ignored by
+      // non-thinking models.
+      ...(readOnly ? { think: false } : {}),
     }),
     signal: controller.signal,
   });
@@ -689,12 +693,15 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
     const session = getSession(params.id);
     const agent = params.agentId ? getAgent(params.agentId) : undefined;
     const agentContext = agent?.systemPrompt?.trim() || getSettings().businessContext;
-    const memory = buildMemoryContext(40, params.agentId ?? null);
+    // Room turns run against a 5-minute clock on shared CPU inference, so
+    // they carry a fraction of the context: the topic and recent turns are
+    // what a room turn actually reasons from, not the full memory pool.
+    const memory = buildMemoryContext(params.readOnly ? 10 : 40, params.agentId ?? null);
     const root = repoRootOf(params.cwd);
     const system = [
       "You are Jarvis, a local AI assistant running on the user's computer.",
       "You can genuinely inspect this workspace with your local tools (list_dir, glob, grep, read_file) and run shell commands (run_command, always user-approved). You do NOT have Jarvis's outbound platform tools (no posting, messaging, or spending). Be truthful: when you have not checked a file, say so; do not claim to have explored something you have not.",
-      params.readOnly ? "You are speaking in a multi-agent room: inspect files freely, but you have no shell — do not ask to run commands, answer from what you can read." : "",
+      params.readOnly ? "You are speaking in a multi-agent room: inspect files freely, but you have no shell — do not ask to run commands, answer from what you can read. Work fast: use at most two tool calls, then answer from what you have. Long deliberation will exceed your turn." : "",
       session?.title ? `Conversation: ${session.title}` : "",
       agentContext?.trim() ?? "",
       memory ? `Durable memory:\n${memory}` : "",
@@ -710,7 +717,10 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
 
     const messages: unknown[] = [
       { role: "system", content: system },
-      ...replayedHistory.slice(-40),
+      // Rooms are short-lived by design (a handful of turns), so cap the
+      // replay: every extra history turn is prompt tokens billed on every
+      // round, and on CPU inference that is wall-clock minutes per turn.
+      ...(params.readOnly ? replayedHistory.slice(-12) : replayedHistory.slice(-40)),
       { role: "user", content: params.prompt },
     ];
 
