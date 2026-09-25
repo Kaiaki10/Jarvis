@@ -133,6 +133,41 @@ export async function syncPaidGrowthCampaign(id: string, agentId?: string) {
   return { campaign: updated, decisions };
 }
 
+/**
+ * Applies a pause decision, from a human approval or from the monitor's
+ * automatic loss-cutting below. Pausing only ever stops spend, so it is the
+ * one decision allowed to apply itself: launches, increases, and
+ * reallocations always wait for a person.
+ *
+ * Consent is structural, not assumed: the campaign must be active with a
+ * stamped approved budget, meaning a human launched it through the normal
+ * flow. Anything else stays proposed for a person. Resuming is never
+ * automatic — cutting spend unattended is recoverable, restarting it is a
+ * judgement call.
+ *
+ * Deliberately separate from decidePaidGrowthRecommendation's own pause
+ * branch rather than sharing it: a human explicitly approving must always
+ * work, even for old campaigns without a stamped budget, while the
+ * automatic path is gated more strictly.
+ */
+export async function applyPauseDecision(id: string) {
+  const current = getPaidGrowthDecision(id);
+  if (!current) throw new Error("Paid growth decision not found");
+  if (current.status !== "proposed") throw new Error("This decision has already been reviewed");
+  if (current.kind !== "pause") throw new Error("Only pause decisions apply automatically.");
+  const campaign = getPaidGrowthCampaign(current.paidCampaignId);
+  if (!campaign) throw new Error("Paid campaign not found");
+  if (campaign.status !== "active" || !(campaign.approvedBudgetMinor > 0)) {
+    throw new Error("Automatic pausing only covers active campaigns with an approved budget.");
+  }
+  if (getConnection(campaign.platform)?.status !== "connected") {
+    throw new Error(`Reconnect ${campaign.platform} before applying this decision`);
+  }
+  await executePaidGrowthAction(campaign, { status: "paused" });
+  updatePaidGrowthCampaign(campaign.id, { status: "paused" });
+  return reviewPaidGrowthDecision(id, "applied")!;
+}
+
 export async function decidePaidGrowthRecommendation(id: string, decision: "approve" | "reject") {
   const current = getPaidGrowthDecision(id);
   if (!current) throw new Error("Paid growth decision not found");
