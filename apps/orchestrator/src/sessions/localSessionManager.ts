@@ -841,6 +841,7 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
 }
 
 export function activeLocalSessionCount(): number { return active.size; }
+export function activeLocalSessionIds(): string[] { return [...active.keys()]; }
 export function startLocalSession(params: { id: string; prompt: string; cwd: string; title?: string; agentId?: string | null; localModel?: string | null; readOnly?: boolean }): void {
   void runTurn(params);
 }

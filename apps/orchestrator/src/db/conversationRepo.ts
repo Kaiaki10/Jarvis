@@ -141,7 +141,7 @@ export function listParticipants(conversationId: string): AgentConversationParti
 export function setParticipantSession(
   conversationId: string,
   agentId: string,
-  sessionId: string
+  sessionId: string | null
 ): void {
   db.prepare(
     `UPDATE agent_conversation_participants SET session_id = ? WHERE conversation_id = ? AND agent_id = ?`

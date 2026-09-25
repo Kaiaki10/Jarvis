@@ -906,6 +906,7 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
 }
 
 export function activeOpencodeSessionCount(): number { return active.size; }
+export function activeOpencodeSessionIds(): string[] { return [...active.keys()]; }
 export function startOpencodeSession(params: { id: string; prompt: string; cwd: string; title?: string; agentId?: string | null; opencodeModel?: string | null; readOnly?: boolean }): void {
   void runTurn(params);
 }

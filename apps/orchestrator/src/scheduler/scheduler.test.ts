@@ -9,11 +9,32 @@ const sessionManagerMocks = vi.hoisted(() => ({
 
 vi.mock("../sessions/sessionManager.js", () => sessionManagerMocks);
 
+const localMocks = vi.hoisted(() => ({
+  startLocalSession: vi.fn(),
+}));
+
+vi.mock("../sessions/localSessionManager.js", () => localMocks);
+
+const opencodeMocks = vi.hoisted(() => ({
+  startOpencodeSession: vi.fn(),
+}));
+
+vi.mock("../sessions/opencodeSessionManager.js", () => opencodeMocks);
+
+const codexMocks = vi.hoisted(() => ({
+  startCodexSession: vi.fn(),
+}));
+
+vi.mock("../sessions/codexSessionManager.js", () => codexMocks);
+
 describe("tick", () => {
   beforeEach(async () => {
     sessionManagerMocks.atConcurrencyLimit.mockReturnValue(false);
     sessionManagerMocks.isCwdBusy.mockReturnValue(false);
     sessionManagerMocks.startSession.mockClear();
+    localMocks.startLocalSession.mockClear();
+    opencodeMocks.startOpencodeSession.mockClear();
+    codexMocks.startCodexSession.mockClear();
     const { db } = await import("../db/db.js");
     db.exec("DELETE FROM scheduled_tasks");
   });
@@ -103,6 +124,56 @@ describe("tick", () => {
     // The session record createSession wrote — what the dashboard reads back.
     const sessionId = listEnabledScheduledTasks().find((t) => t.id === task.id)?.lastSessionId;
     expect(getSession(sessionId!)?.autoApproveLocalTools).toBe(true);
+  });
+
+  it("runs a task on its owner's brain lane instead of always Claude", async () => {
+    const { createAgent } = await import("../db/agentRepo.js");
+    const { createScheduledTask, getSession } = await import("../db/repo.js");
+    const { tick } = await import("./scheduler.js");
+
+    const agent = createAgent({ name: "Night Owl", brainLane: "local", brainModel: "llama3.2:latest" });
+    const task = createScheduledTask({
+      prompt: "Nightly local review",
+      cwd: "C:/jarvis-night",
+      permissionMode: "default",
+      timeOfDay: "09:00",
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      nextRunAt: past(),
+      agentId: agent.id,
+    });
+
+    tick();
+
+    expect(localMocks.startLocalSession).toHaveBeenCalledTimes(1);
+    expect(localMocks.startLocalSession.mock.calls[0][0]).toMatchObject({
+      localModel: "llama3.2:latest",
+      agentId: agent.id,
+    });
+    expect(sessionManagerMocks.startSession).not.toHaveBeenCalled();
+    expect(opencodeMocks.startOpencodeSession).not.toHaveBeenCalled();
+    expect(codexMocks.startCodexSession).not.toHaveBeenCalled();
+    const { listEnabledScheduledTasks } = await import("../db/repo.js");
+    const sessionId = listEnabledScheduledTasks().find((t) => t.id === task.id)?.lastSessionId;
+    expect(getSession(sessionId!)?.model).toBe("local");
+  });
+
+  it("falls back to Claude for tasks with no owner", async () => {
+    const { createScheduledTask } = await import("../db/repo.js");
+    const { tick } = await import("./scheduler.js");
+
+    createScheduledTask({
+      prompt: "Ownerless automation",
+      cwd: "C:/jarvis-ownerless",
+      permissionMode: "default",
+      timeOfDay: "09:00",
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      nextRunAt: past(),
+    });
+
+    tick();
+
+    expect(sessionManagerMocks.startSession).toHaveBeenCalledTimes(1);
+    expect(localMocks.startLocalSession).not.toHaveBeenCalled();
   });
 });
 

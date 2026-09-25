@@ -40,7 +40,9 @@ _Anything not listed here must not be asserted._
     per-token API billing. Usage is included rather than metered per token, but it is
     **not** unlimited — heavy use hits the plan's rate limits, and setting
     `ANTHROPIC_API_KEY` switches it to pay-per-token. Never say cost is fixed, free,
-    or unmetered without that caveat.
+    or unmetered without that caveat. Chat and automations can also run on local
+    Ollama models with no subscription at all — each agent's brain picks its lane,
+    and anything Claude-specific simply waits until a subscription exists.
   - Missions, campaigns and a content pipeline, customer operations across web chat,
     email and social DMs, durable memory, scheduled automations, and an evolution
     centre that tracks its own gaps.

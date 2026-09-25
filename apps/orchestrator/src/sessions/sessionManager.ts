@@ -17,6 +17,9 @@ import type { ClaudeModel, SessionEventRecord, SessionRecord } from "@jarvis/sha
 import { createPushable, type Pushable } from "./pushableIterable.js";
 import { recordRateLimit } from "./claudeUsage.js";
 import { createDeferredWithTimeout } from "./deferredWithTimeout.js";
+import { activeCodexSessionCount, activeCodexSessionIds } from "./codexSessionManager.js";
+import { activeLocalSessionCount, activeLocalSessionIds } from "./localSessionManager.js";
+import { activeOpencodeSessionCount, activeOpencodeSessionIds } from "./opencodeSessionManager.js";
 import { describeActivity, extractSummary } from "./describeActivity.js";
 import { globalBus } from "../events/globalBus.js";
 import { buildPlatformToolset } from "../platforms/actions.js";
@@ -81,11 +84,13 @@ function publishSessionEvent(sessionId: string, event: SessionEventRecord): void
   globalBus.emit("session_event", event);
 }
 
-/** Sessions actively mid-turn. Idle ones are excluded — they aren't doing work. */
+/** Sessions actively mid-turn, on any lane. Idle ones are excluded — they aren't doing work. */
 export function activeSessionCount(): number {
   let count = 0;
   for (const handle of sessions.values()) if (handle.working) count++;
-  return count;
+  return (
+    count + activeLocalSessionCount() + activeOpencodeSessionCount() + activeCodexSessionCount()
+  );
 }
 
 export function atConcurrencyLimit(): boolean {
@@ -104,6 +109,13 @@ export function atConcurrencyLimit(): boolean {
 export function isCwdBusy(cwd: string): boolean {
   for (const [id, handle] of sessions) {
     if (handle.working && getSession(id)?.cwd === cwd) return true;
+  }
+  // Local, OpenCode, and Codex runs keep their own active sets — a cwd guard
+  // that only sees Claude sessions would let two lanes collide in one git
+  // worktree. Every lane stores its sessions in the same table, so one lookup
+  // covers them all.
+  for (const id of [...activeLocalSessionIds(), ...activeOpencodeSessionIds(), ...activeCodexSessionIds()]) {
+    if (getSession(id)?.cwd === cwd) return true;
   }
   return false;
 }

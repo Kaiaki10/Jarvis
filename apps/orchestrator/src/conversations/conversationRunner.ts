@@ -290,6 +290,15 @@ export async function runConversation(conversationId: string): Promise<void> {
       let outcome: { ok: boolean; text: string };
       const lane: ChatModel = agent.brainLane;
       const laneModel = agent.brainModel;
+      if (live && live.model !== lane) {
+        // The agent's brain changed since this session started (or the room
+        // predates per-agent brains): resuming a Claude thread on Ollama, or
+        // vice versa, can only fail the room. Drop the stale pointer and
+        // start a fresh thread on the current brain below.
+        setParticipantSession(conversationId, agent.id, null);
+        speaker.sessionId = null;
+        sessionId = null;
+      }
 
       if (!sessionId || !live) {
         const cwd = agent.cwd.trim() || process.cwd();

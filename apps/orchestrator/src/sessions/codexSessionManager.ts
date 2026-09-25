@@ -63,6 +63,9 @@ const replySchema = {
 export function activeCodexSessionCount(): number {
   return active.size;
 }
+export function activeCodexSessionIds(): string[] {
+  return [...active.keys()];
+}
 
 function publish(sessionId: string, event: SessionEventRecord): void {
   globalBus.emit("session_event", event);

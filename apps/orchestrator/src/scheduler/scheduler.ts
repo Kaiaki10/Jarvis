@@ -5,7 +5,11 @@ import {
   listEnabledScheduledTasks,
   updateScheduledTask,
 } from "../db/repo.js";
+import { getAgent } from "../db/agentRepo.js";
 import { atConcurrencyLimit, isCwdBusy, startSession } from "../sessions/sessionManager.js";
+import { startLocalSession } from "../sessions/localSessionManager.js";
+import { startOpencodeSession } from "../sessions/opencodeSessionManager.js";
+import { startCodexSession } from "../sessions/codexSessionManager.js";
 import { getUsageSnapshot } from "../sessions/claudeUsage.js";
 import { globalBus } from "../events/globalBus.js";
 import { computeNextRun } from "./scheduleTime.js";
@@ -42,6 +46,13 @@ export function nextRetryAt(): Date {
 }
 
 function fireScheduledTask(task: ScheduledTaskRecord): void {
+  // The run speaks with its owner's brain: an agent assigned to Ollama runs
+  // unattended on Ollama, which is what keeps automations alive when the
+  // Claude lane is down (expired login, no subscription). Unknown or missing
+  // owners fall back to Claude, as before.
+  const owner = task.agentId ? getAgent(task.agentId) : undefined;
+  const lane = owner?.brainLane ?? "claude";
+  const laneModel = owner?.brainModel ?? null;
   const session = createSession({
     title: `[Scheduled] ${task.prompt.slice(0, 100)}`,
     cwd: task.cwd,
@@ -50,6 +61,9 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
     // The run belongs to whichever agent owns the automation, so its persona
     // and its history stay with that agent rather than landing in a shared pile.
     agentId: task.agentId,
+    model: lane,
+    localModel: lane === "local" ? laneModel ?? undefined : undefined,
+    opencodeModel: lane === "opencode" ? laneModel ?? undefined : undefined,
     // Nobody is watching a cron firing at 5am — a local-work approval prompt
     // (e.g. PowerShell, which fell through this gap on 2026-08-24 and stalled
     // two runs for hours) would just sit until the timeout auto-denies it.
@@ -59,34 +73,47 @@ function fireScheduledTask(task: ScheduledTaskRecord): void {
   });
   globalBus.emit("session_updated", session.id);
 
-  void startSession({
-    id: session.id,
-    prompt: task.prompt,
-    cwd: task.cwd,
-    permissionMode: task.permissionMode,
-    allowedTools: task.allowedTools ?? undefined,
-    title: `Automation "${task.prompt.split("\n")[0].slice(0, 60)}"`,
-    agentId: task.agentId,
-    autoApproveLocalTools: true,
-    onTurnFinished: (ok) => {
-      if (ok) {
-        if (task.retryCount) {
-          updateScheduledTask(task.id, { retryCount: 0 });
-          globalBus.emit("automations_changed");
+  const turnTitle = `Automation "${task.prompt.split("\n")[0].slice(0, 60)}"`;
+  // Only the Claude lane reports back for the bounded retry below; other
+  // lanes surface failures through the normal session-failed path and retry
+  // on their next scheduled occurrence. Wiring every lane into the retry
+  // callback is future work, not a silent behavior change.
+  if (lane === "local") {
+    startLocalSession({ id: session.id, prompt: task.prompt, cwd: task.cwd, title: turnTitle, agentId: task.agentId, localModel: laneModel });
+  } else if (lane === "opencode") {
+    startOpencodeSession({ id: session.id, prompt: task.prompt, cwd: task.cwd, title: turnTitle, agentId: task.agentId, opencodeModel: laneModel });
+  } else if (lane === "gpt-5.6-sol") {
+    startCodexSession({ id: session.id, prompt: task.prompt, cwd: task.cwd, title: turnTitle, agentId: task.agentId });
+  } else {
+    void startSession({
+      id: session.id,
+      prompt: task.prompt,
+      cwd: task.cwd,
+      permissionMode: task.permissionMode,
+      allowedTools: task.allowedTools ?? undefined,
+      title: turnTitle,
+      agentId: task.agentId,
+      autoApproveLocalTools: true,
+      onTurnFinished: (ok) => {
+        if (ok) {
+          if (task.retryCount) {
+            updateScheduledTask(task.id, { retryCount: 0 });
+            globalBus.emit("automations_changed");
+          }
+          return;
         }
-        return;
-      }
-      if (task.retryCount < MAX_RETRIES) {
-        updateScheduledTask(task.id, {
-          retryCount: task.retryCount + 1,
-          nextRunAt: nextRetryAt().toISOString(),
-        });
-      } else {
-        updateScheduledTask(task.id, { retryCount: 0 });
-      }
-      globalBus.emit("automations_changed");
-    },
-  });
+        if (task.retryCount < MAX_RETRIES) {
+          updateScheduledTask(task.id, {
+            retryCount: task.retryCount + 1,
+            nextRunAt: nextRetryAt().toISOString(),
+          });
+        } else {
+          updateScheduledTask(task.id, { retryCount: 0 });
+        }
+        globalBus.emit("automations_changed");
+      },
+    });
+  }
 
   const now = new Date();
   const next = computeNextRun(task.timeOfDay, task.daysOfWeek, now);
