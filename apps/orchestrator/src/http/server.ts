@@ -62,6 +62,7 @@ import {
   startIdleReaper,
 } from "../sessions/sessionManager.js";
 import { getUsageSnapshot } from "../sessions/claudeUsage.js";
+import { startAuthWatchdog } from "../sessions/authWatchdog.js";
 import { listEnvelopes, listSpendLedger, removeEnvelope, setEnvelope } from "../billing/envelopes.js";
 import { characterBrief, getCharacter, listCharacters, saveCharacter } from "../db/characterRepo.js";
 import {
@@ -3013,6 +3014,7 @@ const server = app.listen(PORT, HOST, () => {
     startIdleReaper();
     startMaintenance();
     startPaidGrowthMonitor();
+    startAuthWatchdog();
     startSlackAgentBridge();
     startApproveServer();
   } else {
