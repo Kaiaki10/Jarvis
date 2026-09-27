@@ -201,7 +201,20 @@ async function handleEvent(envelope: SlackSocketEnvelope, botToken: string, work
   });
 
   enqueue(route.agent.id, async () => {
-    const outcome = sendAgentChat(route.agent!.id, route.text);
+    // The turn runs on the agent's own brain — same rule as the scheduler
+    // and rooms. Calling sendAgentChat without a lane would silently
+    // default every Slack turn to Claude, stranding local/OpenCode-brained
+    // agents (and failing them outright with no subscription).
+    const lane = route.agent!.brainLane;
+    const outcome = sendAgentChat(
+      route.agent!.id,
+      route.text,
+      lane,
+      undefined,
+      undefined,
+      lane === "local" ? route.agent!.brainModel : undefined,
+      lane === "opencode" ? route.agent!.brainModel : undefined,
+    );
     if (!outcome.ok) {
       await postMessage(botToken, event.channel!, outcome.message, replyThreadTs);
       return;
