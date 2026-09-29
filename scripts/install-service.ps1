@@ -47,11 +47,21 @@ function Register-JarvisTask {
     [string]$TaskName,
     [string]$WorkingDirectory,
     [string]$Command,
-    [string]$LogFile
+    [string]$LogFile,
+    [int[]]$OwnedPorts = @()
   )
 
+  # Pre-kill stale holders of this task's ports first: stopping the task
+  # kills the PowerShell wrapper, but orphaned node grandchildren survive
+  # and EADDRINUSE the fresh instance while the stale build keeps serving
+  # (observed on HussleSol: dashboard without new code despite green build
+  # + cycled task). Same task identity can stop its own orphans.
+  $prekill = if ($OwnedPorts.Count -gt 0) {
+    $list = ($OwnedPorts | ForEach-Object { "$_" }) -join ","
+    "Get-NetTCPConnection -LocalPort $list -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id `$_ -Force -ErrorAction SilentlyContinue }; "
+  } else { "" }
   # Wrap in PowerShell so the console window stays hidden and output is captured.
-  $inner = "Set-Location '$WorkingDirectory'; $Command *>> '$LogFile'"
+  $inner = "Set-Location '$WorkingDirectory'; $prekill$Command *>> '$LogFile'"
   $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"$inner`""
 
@@ -97,6 +107,7 @@ Register-JarvisTask -TaskName "Jarvis Orchestrator" `
 Register-JarvisTask -TaskName "Jarvis Dashboard" `
   -WorkingDirectory $webDir `
   -Command "& '$npm' run start" `
+  -OwnedPorts @(3000) `
   -LogFile (Join-Path $logDir "dashboard.log")
 
 Write-Host ""
