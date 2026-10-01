@@ -170,16 +170,6 @@ const OPENCODE_TOOLS: ChatFunctionSpec[] = [
   },
 ];
 
-/**
- * The read-only subset offered to room participants. `run_command` is
- * deliberately absent: its approval gate would stall the room's 5-minute
- * turn the same way the Claude approval gate once did (see GAPS.md), so
- * rooms get file reads only and commands stay a chat-lane privilege.
- */
-const OPENCODE_READONLY_TOOLS: ChatFunctionSpec[] = OPENCODE_TOOLS.filter((tool) =>
-  ["read_file", "list_dir", "glob", "grep"].includes(tool.function.name)
-);
-
 // ---- Transcript plumbing -----------------------------------------------------
 
 function publish(sessionId: string, event: SessionEventRecord): void {
@@ -631,8 +621,7 @@ async function requestChat(
   messages: unknown[],
   controller: AbortController,
   withTools: boolean,
-  onDelta?: (text: string) => void,
-  readOnly?: boolean
+  onDelta?: (text: string) => void
 ): Promise<{ content: string; calls: OpencodeToolCall[]; finishReason: string; usage: TurnChatUsage }> {
   const response = await fetch(OPENCODE_API_URL, {
     method: "POST",
@@ -640,7 +629,7 @@ async function requestChat(
     body: JSON.stringify({
       model,
       messages,
-      ...(withTools ? { tools: readOnly ? OPENCODE_READONLY_TOOLS : OPENCODE_TOOLS } : {}),
+      ...(withTools ? { tools: OPENCODE_TOOLS } : {}),
       stream: true,
       stream_options: { include_usage: true },
     }),
@@ -734,7 +723,7 @@ function toolUnsupportedError(error: unknown): boolean {
   return /tool[s]?.*?(not supported|not enabled|unsupported)|function calling|unsupported_function|does not support/i.test(message);
 }
 
-async function runTurn(params: { id: string; prompt: string; cwd: string; agentId?: string | null; opencodeModel?: string | null; readOnly?: boolean }): Promise<void> {
+async function runTurn(params: { id: string; prompt: string; cwd: string; agentId?: string | null; opencodeModel?: string | null }): Promise<void> {
   const controller = new AbortController();
   active.set(params.id, { abort: controller });
   const startedAt = Date.now();
@@ -753,7 +742,6 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
     const system = [
       "You are Jarvis, an AI assistant running on the user's computer, answering through an OpenCode-hosted model.",
       "You can genuinely inspect this workspace with your tools (list_dir, glob, grep, read_file) and run shell commands (run_command, always user-approved). You do NOT have Jarvis's outbound platform tools (no posting, messaging, or spending). Be truthful: when you have not checked a file, say so; do not claim to have explored something you have not.",
-      params.readOnly ? "You are speaking in a multi-agent room: inspect files freely, but you have no shell — do not ask to run commands, answer from what you can read. Work fast: use at most two tool calls, then answer from what you have. Long deliberation will exceed your turn." : "",
       session?.title ? `Conversation: ${session.title}` : "",
       agentContext?.trim() ?? "",
       memory ? `Durable memory:\n${memory}` : "",
@@ -801,7 +789,7 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
               delta: { type: "text_delta", text: piece },
             },
           });
-        }, params.readOnly);
+        });
       } catch (err) {
         if (accessDeniedError(err)) throw err;
         if (toolsEnabled && toolUnsupportedError(err)) {
@@ -907,14 +895,14 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
 
 export function activeOpencodeSessionCount(): number { return active.size; }
 export function activeOpencodeSessionIds(): string[] { return [...active.keys()]; }
-export function startOpencodeSession(params: { id: string; prompt: string; cwd: string; title?: string; agentId?: string | null; opencodeModel?: string | null; readOnly?: boolean }): void {
+export function startOpencodeSession(params: { id: string; prompt: string; cwd: string; title?: string; agentId?: string | null; opencodeModel?: string | null }): void {
   void runTurn(params);
 }
-export function sendOpencodeFollowUp(sessionId: string, text: string, opencodeModel?: string | null, readOnly?: boolean): OpencodeFollowUpOutcome {
+export function sendOpencodeFollowUp(sessionId: string, text: string, opencodeModel?: string | null): OpencodeFollowUpOutcome {
   if (active.has(sessionId)) return { ok: false, reason: "busy" };
   const session = getSession(sessionId);
   if (!session || session.model !== "opencode") return { ok: false, reason: "not_resumable" };
-  void runTurn({ id: session.id, prompt: text, cwd: session.cwd, agentId: session.agentId, opencodeModel, readOnly });
+  void runTurn({ id: session.id, prompt: text, cwd: session.cwd, agentId: session.agentId, opencodeModel });
   return { ok: true, resumed: true };
 }
 export function interruptOpencodeSession(sessionId: string): boolean {

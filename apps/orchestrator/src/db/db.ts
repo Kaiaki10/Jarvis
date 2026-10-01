@@ -187,7 +187,7 @@ for (const migration of [
   // (deliverables, content_items, customer_messages, …) reaches its agent
   // through an existing foreign key, so ten columns cover full isolation.
   // `memories` is deliberately absent: splitting it needs a table rebuild to
-  // change a UNIQUE constraint, which is sequenced separately (see V2_PLAN.md).
+  // change a UNIQUE constraint, which is handled by its own rebuild below.
   ...AGENT_SCOPED_TABLES.map((table) => ({
     table,
     column: "agent_id",

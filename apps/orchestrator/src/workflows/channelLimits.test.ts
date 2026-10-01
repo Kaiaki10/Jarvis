@@ -21,7 +21,7 @@ describe("channel body limits", () => {
   });
 
   it("warns that the disclosure counts toward the limit", () => {
-    // A character sheet appends a disclosure line to every post, and it is not
+    // An AI disclosure line on a post is not
     // free — on X it is a meaningful slice of the 280.
     expect(prompt(["x"])).toMatch(/including any disclosure line/);
   });

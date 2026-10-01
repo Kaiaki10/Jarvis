@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, CircleDashed, Lock, MessageSquareQuote, Plus, Timer, X } from "lucide-react";
+import { Check, CircleDashed, Lock, Plus, Timer, X } from "lucide-react";
 import {
   workflowStages,
   type ConnectionRecord,
@@ -14,7 +14,6 @@ import { useConnections } from "@/lib/hooks";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
-import { CharacterSheetEditor } from "@/components/CharacterSheetEditor";
 import { AnimatedItem, AnimatedList, CountUp, Crossfade, Meter } from "@/components/motion";
 
 /** Platforms whose spend belongs to stage 4. */
@@ -51,7 +50,6 @@ export function WorkflowStageRail({
 }) {
   const { platforms, connections } = useConnections();
   const [attaching, setAttaching] = useState(false);
-  const [editingCharacter, setEditingCharacter] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,10 +89,7 @@ export function WorkflowStageRail({
     });
   }, [overview, workflow.id, attached, connections, adPlatformIds]);
 
-  /** Accounts this agent may attach: not already attached, and reachable by it. */
-  const character =
-    (overview?.characters ?? []).find((c) => c.workflowId === workflow.id) ?? null;
-
+  /** Accounts this campaign may attach: not already attached, and reachable by it. */
   const attachable = connections.filter(
     (connection) =>
       !attachedIds.includes(connection.id) &&
@@ -191,35 +186,6 @@ export function WorkflowStageRail({
           ))}
         </AnimatedList>
       )}
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-label font-medium text-foreground">
-            <MessageSquareQuote className="h-3.5 w-3.5 text-muted" strokeWidth={1.75} />
-            Voice
-          </div>
-          <p className="mt-0.5 truncate text-micro text-muted">
-            {character
-              ? `${character.name} — ${character.exemplars.length} example${character.exemplars.length === 1 ? "" : "s"}`
-              : "No character set. Drafts use the business context alone."}
-          </p>
-        </div>
-        <Button type="button" size="sm" variant="ghost" className="h-7 text-micro text-muted" disabled={busy} onClick={() => setEditingCharacter(true)}>
-          {character ? "Edit" : "Create"}
-        </Button>
-      </div>
-
-      {/* Keyed by the saved version so the form re-initialises after a save,
-          but mounted either way — unmounting on close is what would deny it an
-          exit animation. */}
-      <CharacterSheetEditor
-        key={character ? `${character.workflowId}:${character.version}` : "new"}
-        open={editingCharacter}
-        workflow={workflow}
-        character={character}
-        onClose={() => setEditingCharacter(false)}
-        onSaved={onChanged}
-      />
 
       <div className="mt-4 border-t border-border pt-4">
         <AutopilotControl workflow={workflow} busy={busy} onChange={(patch) => act(() => api.updateWorkflow(workflow.id, patch))} />

@@ -40,17 +40,13 @@ export function workflowGenerationPrompt(input: {
   formats: ContentFormat[];
   channels: MarketingChannel[];
   direction?: string;
-  /** The workflow's voice, when it has one. See CHARACTER_PLAN.md. */
-  characterBrief?: string;
 }): string {
   const { campaign } = input;
 
   /**
    * Stated numerically, and as a hard limit rather than a style note.
    * "Match the channel's constraints" produced drafts of 300–800 characters
-   * against X's 280 — every one rejected by the publish gate. A voice sample
-   * makes this worse rather than better, since matching an over-long exemplar
-   * faithfully reproduces its length.
+   * against X's 280 — every one rejected by the publish gate.
    */
   const limited = input.channels
     .map((channel) => [channel, CHANNEL_BODY_LIMITS[channel]] as const)
@@ -64,16 +60,6 @@ export function workflowGenerationPrompt(input: {
         .join("")
     : "";
 
-  const voice = input.characterBrief?.trim()
-    ? `
-
----
-
-${input.characterBrief.trim()}
-
----
-`
-    : "";
   return `You are Jarvis's campaign content strategist. Create exactly ${input.count} polished, meaningfully distinct content drafts.
 
 The campaign brief below is complete and authoritative. Do not seek more context, inspect files, delegate work, or explain what information you wish you had. Where the brief is intentionally high-level, write useful high-level copy without inventing details.
@@ -85,7 +71,7 @@ Offer: ${campaign.offer}
 Primary success metric: ${campaign.primaryMetric}
 Allowed channels: ${input.channels.join(", ")}
 Requested formats: ${input.formats.join(", ")}
-Additional direction: ${input.direction?.trim() || "Use the strongest angle for this audience and objective."}${voice}
+Additional direction: ${input.direction?.trim() || "Use the strongest angle for this audience and objective."}
 
 Requirements:
 ${limits}- Match each channel's natural voice and constraints.

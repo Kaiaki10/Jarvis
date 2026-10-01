@@ -6,7 +6,6 @@ import {
   Brain,
   CalendarClock,
   Flag,
-  FlaskConical,
   Headphones,
   Megaphone,
   Orbit,
@@ -14,7 +13,6 @@ import {
 import {
   useWorkflows,
   useCustomerOperations,
-  useEvolution,
   useMemories,
   useMissionsList,
   useScheduledTasksList,
@@ -29,7 +27,6 @@ export function CapabilityMap() {
   const { overview: customerOperations } = useCustomerOperations();
   const { memories } = useMemories();
   const { tasks: automations } = useScheduledTasksList();
-  const { evolution } = useEvolution();
   const { overview: paidGrowth } = usePaidGrowth();
 
   const capabilities = [
@@ -42,7 +39,7 @@ export function CapabilityMap() {
       icon: Flag,
     },
     {
-      href: "/under-the-hood/workflows",
+      href: "/campaigns",
       title: "Growth engine",
       description: "Create content, manage paid investment, publish, measure, and learn.",
       status: `${campaigns?.workflows.filter((campaign) => campaign.status === "active").length ?? 0} owned · ${paidGrowth?.totals.active ?? 0} paid`,
@@ -58,7 +55,7 @@ export function CapabilityMap() {
       icon: Headphones,
     },
     {
-      href: "/memory",
+      href: "/under-the-hood/brain/memory",
       title: "Durable memory",
       description: "Keep business context current through automatic turn reflection.",
       status: `${memories.filter((memory) => memory.status === "active").length} memories`,
@@ -66,20 +63,12 @@ export function CapabilityMap() {
       icon: Brain,
     },
     {
-      href: "/automations",
+      href: "/under-the-hood/automations",
       title: "Unattended work",
       description: "Run recurring work on schedule, with rehearsal and safeguards.",
       status: `${automations.filter((automation) => automation.enabled).length}/${automations.length} enabled`,
       tone: "success" as const,
       icon: CalendarClock,
-    },
-    {
-      href: "/evolution",
-      title: "Safe evolution",
-      description: "Build improvements in the Lab, verify them, then promote safely.",
-      status: evolution?.readiness.labAvailable ? "Lab ready" : "Lab unavailable",
-      tone: evolution?.readiness.labAvailable ? ("success" as const) : ("warning" as const),
-      icon: FlaskConical,
     },
   ];
 
@@ -88,7 +77,7 @@ export function CapabilityMap() {
       <Card>
         <CardHeader
           title="Jarvis operating system"
-          description="One operating loop across six capabilities, working from shared context."
+          description="One operating loop across five capabilities, working from shared context."
         />
         <div className="grid grid-cols-1 gap-3 px-5 pb-5 md:grid-cols-2 xl:grid-cols-3">
           <Link href="/operate" className="group block md:col-span-2 xl:col-span-3">

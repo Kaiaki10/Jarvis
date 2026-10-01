@@ -6,8 +6,7 @@ import { existsSync, rm, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { join } from "node:path";
 import type { Request, Response } from "express";
 import {
   createSession,
@@ -45,12 +44,6 @@ import {
   getMissionUpdate,
   listMissionUpdates,
   reviewMissionUpdate,
-  createEvolutionProposal,
-  getEvolutionProposal,
-  listEvolutionPolicies,
-  listEvolutionProposals,
-  updateEvolutionPolicy,
-  updateEvolutionProposal,
 } from "../db/repo.js";
 import {
   startSession,
@@ -64,7 +57,6 @@ import {
 import { getUsageSnapshot } from "../sessions/claudeUsage.js";
 import { startAuthWatchdog } from "../sessions/authWatchdog.js";
 import { listEnvelopes, listSpendLedger, removeEnvelope, setEnvelope } from "../billing/envelopes.js";
-import { characterBrief, getCharacter, listCharacters, saveCharacter } from "../db/characterRepo.js";
 import {
   attachWorkflowAccount,
   detachWorkflowAccount,
@@ -142,7 +134,6 @@ import {
   issueStripeCardSchema,
   createPaymentLinkSchema,
   saveConnectionSchema,
-  startPlatformSignupSchema,
   stripeRevealSessionSchema,
   updateScheduledTaskSchema,
   walletSpendSchema,
@@ -154,11 +145,7 @@ import {
   createDeliverableSchema,
   updateDeliverableSchema,
   reviewMissionUpdateSchema,
-  createEvolutionProposalSchema,
-  updateEvolutionPolicySchema,
-  updateEvolutionProposalSchema,
   attachWorkflowAccountSchema,
-  saveWorkflowCharacterSchema,
   setConnectionCapSchema,
   setSpendEnvelopeSchema,
   createWorkflowSchema,
@@ -172,11 +159,7 @@ import {
   createContentItemSchema,
   updateContentItemSchema,
   generateWorkflowContentSchema,
-  createAgentSchema,
   updateAgentSchema,
-  setBrainPresetSchema,
-  createConversationSchema,
-  conversationMessageSchema,
   createMemorySchema,
   updateMemorySchema,
   createCustomerConversationSchema,
@@ -192,7 +175,6 @@ import {
   abandonCampaignExperimentSchema,
   createWebsiteConversationSchema,
   websiteMessageSchema,
-  mintAgentTokenSchema,
   attributionChannelSchema,
   listCustomersAttributionSchema,
 } from "./validation.js";
@@ -216,10 +198,6 @@ import { startPaidGrowthMonitor } from "../paidGrowth/monitor.js";
 import { trendsOverview } from "../insights/trendsService.js";
 import { apiToken, isValidToken, tokenFromRequest } from "../security/apiToken.js";
 import { isAllowedOrigin, isUnauthenticatedPath } from "./authGuard.js";
-import { authenticate, resolveScopedAgentId, type AuthContext } from "./agentAuth.js";
-import { createAgentToken, getValidAgentToken, touchAgentToken } from "../db/agentTokenRepo.js";
-
-type AuthedRequest = Request & { auth?: AuthContext };
 import {
   beginAuthentication,
   beginRegistration,
@@ -233,37 +211,8 @@ import {
   startOperatorSession,
 } from "../security/operatorAuth.js";
 import { countOperators } from "../db/operatorRepo.js";
-import {
-  appendConversationMessage,
-  createConversation,
-  deleteConversation,
-  getConversation,
-  listConversationMessages,
-  listConversations,
-  listParticipants,
-  updateConversation,
-} from "../db/conversationRepo.js";
-import {
-  isConversationRunning,
-  runConversation,
-  stopConversation,
-} from "../conversations/conversationRunner.js";
 import { listMemories, listMemoryReflections, remember, updateMemory } from "../db/memoryRepo.js";
-import {
-  archiveAgent,
-  createAgent,
-  getAgent,
-  getDefaultAgent,
-  listAgents,
-  setBrainPreset,
-  updateAgent,
-} from "../db/agentRepo.js";
-import {
-  ensureEvolutionBootstrap,
-  evolutionReadiness,
-  labBuildPrompt,
-  LAB_PATH,
-} from "../evolution/evolutionService.js";
+import { getAgent, getDefaultAgent, updateAgent } from "../db/agentRepo.js";
 import {
   createWorkflow,
   createWorkflowGenerationRun,
@@ -305,14 +254,6 @@ import { customerWidgetDemo, customerWidgetScript } from "../customers/widget.js
 import { handleCustomerInbound, startCustomerReplyDraft } from "../customers/customerService.js";
 import { handleMetaWebhook, handleXWebhook, ingestResendCustomerEmail, verifyAndFetchResendEmail, verifyMetaWebhook, verifyXWebhook, xCrcResponse } from "../customers/webhooks.js";
 import {
-  advanceSignupStep,
-  clearSignupProgress,
-  getSignupProgress,
-  handleSignupConfirmationEmail,
-  listSignupEmailEvents,
-  startPlatformSignup,
-} from "../platforms/signupInbox.js";
-import {
   cancelStripeCard,
   createCardRevealSession,
   createPaymentLink,
@@ -337,17 +278,10 @@ import { sendAgentChat } from "../agents/agentChat.js";
 import { interruptCodexSession, sendCodexFollowUp } from "../sessions/codexSessionManager.js";
 import { listLocalModels, interruptLocalSession, resolveLocalPermission } from "../sessions/localSessionManager.js";
 import { listOpencodeModels, interruptOpencodeSession, resolveOpencodePermission, sendOpencodeFollowUp } from "../sessions/opencodeSessionManager.js";
-import {
-  refreshSlackAgentBridge,
-  startSlackAgentBridge,
-  stopSlackAgentBridge,
-} from "../slack/slackAgentBridge.js";
 import { startApproveServer } from "./approveServer.js";
 
 const PORT = Number(process.env.PORT ?? 4317);
 const HOST = process.env.HOST ?? "127.0.0.1";
-/** Short enough that a leaked token dies within the hour; long enough that minting a fresh one on every agent switch never reads as a re-auth. */
-const AGENT_TOKEN_TTL_MS = 60 * 60_000;
 /**
  * "localhost" resolves to both `127.0.0.1` and `::1` on a normal dual-stack
  * machine, and a browser that tries the IPv6 address first has no guarantee
@@ -450,12 +384,7 @@ app.use((req: Request, res: Response, next) => {
   // already decided whether the origin may proceed to the real request.
   if (req.method === "OPTIONS") return next();
   const token = tokenFromRequest(req);
-  const auth = authenticate(token, isValidToken, getValidAgentToken);
-  if (auth) {
-    (req as AuthedRequest).auth = auth;
-    if (auth.kind === "agent") touchAgentToken(token!);
-    return next();
-  }
+  if (token && isValidToken(token)) return next();
   res.status(401).json({
     error:
       "Missing or invalid API token. The dashboard reads it automatically; a script must send it as a Bearer token.",
@@ -549,29 +478,6 @@ app.post("/auth/logout", (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-/**
- * Mints a short-lived credential scoped to exactly one agent. Master-token
- * only: a per-agent token must never be able to mint another one, or a
- * short-lived credential could renew itself indefinitely and defeat the TTL.
- * Called server-to-server by the Next.js dashboard's `/api/token` route, which
- * already holds the master token and has already resolved the operator's
- * session (same-origin, unlike this request).
- */
-app.post("/agent-tokens", (req: Request, res: Response) => {
-  if ((req as AuthedRequest).auth?.kind !== "master") {
-    res.status(403).json({ error: "Only the master token may mint agent tokens" });
-    return;
-  }
-  const body = validatedBody(mintAgentTokenSchema, req, res);
-  if (!body) return;
-  if (!getAgent(body.agentId)) {
-    res.status(400).json({ error: "Unknown agent" });
-    return;
-  }
-  const record = createAgentToken({ agentId: body.agentId, operatorId: body.operatorId ?? null, ttlMs: AGENT_TOKEN_TTL_MS });
-  res.status(201).json({ token: record.token, expiresAt: record.expiresAt });
-});
-
 app.post("/auth/webauthn/register/options", async (req: Request, res: Response) => {
   try {
     // Bootstrapping the first operator has no session yet; adding a second
@@ -642,29 +548,21 @@ app.post("/auth/webauthn/login/verify", async (req: Request, res: Response) => {
 // ---- Sessions ----
 
 /**
- * The agent a request is scoped to.
+ * An optional `agentId` filter.
  *
- * Absent means "every agent" for listings, and the default agent for creates —
- * so a caller that predates v2, or a script that does not care, still works.
- * An unknown id is rejected rather than silently widened to everything, which
- * would turn a typo into a cross-agent data leak.
+ * Jarvis 2.0 is a single assistant, so the dashboard never sends one: absent
+ * means "everything" for listings and Jarvis for creates. It remains accepted
+ * so a script can still narrow to rows a pre-2.0 agent owned. An unknown id is
+ * rejected rather than silently widened to everything.
  */
 function scopedAgentId(req: Request, res: Response): string | undefined | null {
   const raw = req.query.agentId ?? (req.body as { agentId?: unknown } | undefined)?.agentId;
-  const requestedAgentId = raw === undefined || raw === "" ? undefined : typeof raw === "string" ? raw : "";
-  // Set by the auth middleware above on every request that reaches here — every
-  // route calling this has already passed that gate, so this is always present.
-  const auth = (req as AuthedRequest).auth!;
-  const result = resolveScopedAgentId({
-    requestedAgentId,
-    agentExists: (id) => Boolean(getAgent(id)),
-    auth,
-  });
-  if (!result.ok) {
-    res.status(result.status).json({ error: result.error });
+  if (raw === undefined || raw === "") return undefined;
+  if (typeof raw !== "string" || !getAgent(raw)) {
+    res.status(400).json({ error: "Unknown agent" });
     return null;
   }
-  return result.agentId;
+  return raw;
 }
 
 /** Creates fall back to the default agent so nothing is ever left unowned. */
@@ -870,28 +768,20 @@ app.get("/sessions/:id/stream", (req: Request, res: Response) => {
   });
 });
 
-// ---- Agents ----
+// ---- Jarvis ----
 
-app.get("/agents", (req: Request, res: Response) => {
-  const status = req.query.status;
-  if (status !== undefined && status !== "active" && status !== "archived") {
-    res.status(400).json({ error: "status must be active or archived" });
-    return;
-  }
-  res.json(listAgents(status as "active" | "archived" | undefined));
-});
-
-app.get("/agents/:id", (req: Request, res: Response) => {
-  const agent = getAgent(req.params.id);
-  if (!agent) {
-    res.status(404).json({ error: "agent not found" });
-    return;
-  }
+/**
+ * Jarvis's own settings: persona, working directory, and which brain (lane and
+ * model) chat and automations run on. One assistant, so one record.
+ */
+app.get("/agent", (_req: Request, res: Response) => {
+  const agent = getDefaultAgent();
+  if (!agent) { res.status(503).json({ error: "Jarvis's agent record is missing; the database migration did not run." }); return; }
   res.json(agent);
 });
 
-app.post("/agents", (req: Request, res: Response) => {
-  const body = validatedBody(createAgentSchema, req, res);
+app.patch("/agent", (req: Request, res: Response) => {
+  const body = validatedBody(updateAgentSchema, req, res);
   if (!body) return;
   // Same check the session launcher makes, and for the same reason: an unusable
   // cwd surfaces deep inside the SDK transport where it is hard to attribute.
@@ -899,162 +789,11 @@ app.post("/agents", (req: Request, res: Response) => {
     res.status(400).json({ error: `Working directory does not exist: ${body.cwd}` });
     return;
   }
-  const agent = createAgent(body);
+  const agent = getDefaultAgent();
+  if (!agent) { res.status(503).json({ error: "Jarvis's agent record is missing; the database migration did not run." }); return; }
+  const updated = updateAgent(agent.id, body);
   globalBus.emit("agents_changed");
-  res.status(201).json(agent);
-});
-
-app.post("/agents/brain-preset", (req: Request, res: Response) => {
-  const body = validatedBody(setBrainPresetSchema, req, res);
-  if (!body) return;
-  const agents = setBrainPreset(body.lane, body.model ?? null);
-  globalBus.emit("agents_changed");
-  res.json(agents);
-});
-
-app.patch("/agents/:id", (req: Request, res: Response) => {
-  const body = validatedBody(updateAgentSchema, req, res);
-  if (!body) return;
-  if (body.cwd && (!existsSync(body.cwd) || !statSync(body.cwd).isDirectory())) {
-    res.status(400).json({ error: `Working directory does not exist: ${body.cwd}` });
-    return;
-  }
-  const agent = updateAgent(req.params.id, body);
-  if (!agent) {
-    res.status(404).json({ error: "agent not found" });
-    return;
-  }
-  globalBus.emit("agents_changed");
-  res.json(agent);
-});
-
-/**
- * Archives rather than deletes — an agent's runs, missions, and customers point
- * at it, and removing the row would leave that history owned by nobody.
- */
-app.delete("/agents/:id", (req: Request, res: Response) => {
-  const outcome = archiveAgent(req.params.id);
-  if (!outcome.ok) {
-    if (outcome.reason === "unknown_agent") {
-      res.status(404).json({ error: "agent not found" });
-      return;
-    }
-    res.status(409).json({
-      error: "This is the only active agent. Create another before archiving it.",
-    });
-    return;
-  }
-  globalBus.emit("agents_changed");
-  res.json(outcome.agent);
-});
-
-// ---- Agent conversations ----
-
-app.get("/conversations", (_req: Request, res: Response) => {
-  res.json(listConversations());
-});
-
-app.get("/conversations/:id", (req: Request, res: Response) => {
-  const conversation = getConversation(req.params.id);
-  if (!conversation) {
-    res.status(404).json({ error: "conversation not found" });
-    return;
-  }
-  res.json({
-    conversation,
-    participants: listParticipants(conversation.id),
-    messages: listConversationMessages(conversation.id),
-  });
-});
-
-app.post("/conversations", (req: Request, res: Response) => {
-  const body = validatedBody(createConversationSchema, req, res);
-  if (!body) return;
-  const unknown = body.agentIds.filter((id) => !getAgent(id));
-  if (unknown.length) {
-    res.status(400).json({ error: "One or more agents do not exist." });
-    return;
-  }
-  const conversation = createConversation(body);
-  globalBus.emit("conversations_changed");
-  res.status(201).json(conversation);
-});
-
-app.post("/conversations/:id/start", (req: Request, res: Response) => {
-  const conversation = getConversation(req.params.id);
-  if (!conversation) {
-    res.status(404).json({ error: "conversation not found" });
-    return;
-  }
-  if (isConversationRunning(conversation.id)) {
-    res.status(409).json({ error: "This conversation is already running." });
-    return;
-  }
-  if (conversation.turnsUsed >= conversation.turnCap) {
-    res.status(409).json({
-      error: "This conversation has used all of its turns. Create a new one to continue.",
-    });
-    return;
-  }
-  // A room that ended (error, completed) starts a fresh attempt, not a
-  // continuation of yesterday's clock: without this, restarting a room that
-  // died yesterday completes instantly on its long-expired budget without a
-  // single turn. A deliberately stopped (paused) room keeps its budget.
-  if (conversation.status !== "stopped") {
-    updateConversation(conversation.id, {
-      startedAt: new Date().toISOString(),
-      endedAt: null,
-      stopReason: null,
-    });
-  }
-  // Fire-and-forget: the room runs for as long as its caps allow, independent
-  // of this request.
-  void runConversation(conversation.id);
-  res.status(202).json({ ok: true });
-});
-
-app.post("/conversations/:id/stop", async (req: Request, res: Response) => {
-  const conversation = getConversation(req.params.id);
-  if (!conversation) {
-    res.status(404).json({ error: "conversation not found" });
-    return;
-  }
-  await stopConversation(conversation.id);
-  res.json(getConversation(conversation.id));
-});
-
-/** Lets a human interject between turns rather than only watching. */
-app.post("/conversations/:id/messages", (req: Request, res: Response) => {
-  const body = validatedBody(conversationMessageSchema, req, res);
-  if (!body) return;
-  const conversation = getConversation(req.params.id);
-  if (!conversation) {
-    res.status(404).json({ error: "conversation not found" });
-    return;
-  }
-  const message = appendConversationMessage({
-    conversationId: conversation.id,
-    turn: conversation.turnsUsed,
-    speakerAgentId: null,
-    speakerName: "You",
-    body: body.text,
-  });
-  globalBus.emit("conversations_changed");
-  res.status(201).json(message);
-});
-
-app.delete("/conversations/:id", async (req: Request, res: Response) => {
-  const conversation = getConversation(req.params.id);
-  if (!conversation) {
-    res.status(404).json({ error: "conversation not found" });
-    return;
-  }
-  // Stop first: deleting a room out from under a running turn would leave the
-  // loop writing to rows that no longer exist.
-  if (isConversationRunning(conversation.id)) await stopConversation(conversation.id);
-  deleteConversation(conversation.id);
-  globalBus.emit("conversations_changed");
-  res.status(204).end();
+  res.json(updated);
 });
 
 // ---- Durable memory ----
@@ -1163,12 +902,7 @@ app.post("/webhooks/resend", async (req: Request, res: Response) => {
       "svix-signature": String(req.headers["svix-signature"] ?? ""),
     };
     const email = await verifyAndFetchResendEmail(rawBody(req), headers, creds);
-    // One Resend webhook URL covers every address on the connected domain —
-    // an in-progress platform signup claims its own confirmation mail here
-    // before it ever reaches the customer-support path below.
-    if (email && handleSignupConfirmationEmail(email)) {
-      globalBus.emit("platform_signup_changed");
-    } else if (email && ingestResendCustomerEmail(email)) {
+    if (email && ingestResendCustomerEmail(email)) {
       globalBus.emit("customers_changed");
     }
     res.status(200).json({ received: true });
@@ -1434,8 +1168,6 @@ app.get("/events", (req: Request, res: Response) => {
   const onMissions = () => sseSend(res, "missions-changed", {});
   globalBus.on("missions_changed", onMissions);
 
-  const onEvolution = () => sseSend(res, "evolution-changed", {});
-  globalBus.on("evolution_changed", onEvolution);
   const onCampaigns = () => sseSend(res, "workflows-changed", {});
   globalBus.on("workflows_changed", onCampaigns);
   const onBrands = () => sseSend(res, "brands-changed", {});
@@ -1452,10 +1184,6 @@ app.get("/events", (req: Request, res: Response) => {
   globalBus.on("paid_growth_changed", onPaidGrowth);
   const onAgents = () => sseSend(res, "agents-changed", {});
   globalBus.on("agents_changed", onAgents);
-  const onConversations = () => sseSend(res, "conversations-changed", {});
-  globalBus.on("conversations_changed", onConversations);
-  const onPlatformSignup = () => sseSend(res, "platform-signup-changed", {});
-  globalBus.on("platform_signup_changed", onPlatformSignup);
   const onClaudeUsage = () => sseSend(res, "claude-usage-changed", getUsageSnapshot());
   globalBus.on("claude_usage_changed", onClaudeUsage);
 
@@ -1466,7 +1194,6 @@ app.get("/events", (req: Request, res: Response) => {
     globalBus.off("session_updated", onUpdate);
     globalBus.off("notifications_changed", onNotifications);
     globalBus.off("missions_changed", onMissions);
-    globalBus.off("evolution_changed", onEvolution);
     globalBus.off("workflows_changed", onCampaigns);
     globalBus.off("brands_changed", onBrands);
     globalBus.off("memories_changed", onMemories);
@@ -1475,8 +1202,6 @@ app.get("/events", (req: Request, res: Response) => {
     globalBus.off("customers_changed", onCustomers);
     globalBus.off("paid_growth_changed", onPaidGrowth);
     globalBus.off("agents_changed", onAgents);
-    globalBus.off("conversations_changed", onConversations);
-    globalBus.off("platform_signup_changed", onPlatformSignup);
     globalBus.off("claude_usage_changed", onClaudeUsage);
   });
 });
@@ -1805,30 +1530,10 @@ app.get("/workflows", (req: Request, res: Response) => {
     generationRuns: listWorkflowGenerationRuns(undefined, agentId),
     publicationRuns: listContentPublicationRuns(undefined, agentId),
     accounts: listWorkflowAccounts(agentId),
-    characters: listCharacters(agentId),
     adCampaignCounts: adCampaignCountsByWorkflow(agentId),
     metricCounts: metricCountsByWorkflow(agentId),
     insightCounts: insightCountsByWorkflow(agentId),
   });
-});
-
-/** The voice a workflow writes in. One character per workflow. */
-app.put("/workflows/:id/character", (req: Request, res: Response) => {
-  const body = validatedBody(saveWorkflowCharacterSchema, req, res);
-  if (!body) return;
-  const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  const workflow = getWorkflow(req.params.id, agentId);
-  if (!workflow) { res.status(404).json({ error: "Workflow not found" }); return; }
-  const character = saveCharacter({ workflowId: workflow.id, ...body });
-  globalBus.emit("workflows_changed");
-  res.json(character);
-});
-
-app.get("/workflows/:id/character", (req: Request, res: Response) => {
-  const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  const workflow = getWorkflow(req.params.id, agentId);
-  if (!workflow) { res.status(404).json({ error: "Workflow not found" }); return; }
-  res.json({ character: getCharacter(workflow.id) ?? null });
 });
 
 /**
@@ -2074,9 +1779,6 @@ app.post("/workflows/:id/generate", (req: Request, res: Response) => {
     workflowId: campaign.id,
     sessionId: session.id,
     requestedCount: body.count,
-    // Captured now rather than at reconcile time: editing the sheet while a
-    // run is in flight must not relabel text the previous version wrote.
-    characterVersion: getCharacter(campaign.id)?.version ?? null,
   });
   if (campaign.status === "draft") updateWorkflow(campaign.id, { status: "active" });
   globalBus.emit("session_updated", session.id);
@@ -2088,17 +1790,14 @@ app.post("/workflows/:id/generate", (req: Request, res: Response) => {
       campaign,
       ...body,
       channels,
-      characterBrief: characterBrief(getCharacter(campaign.id)),
     }),
     cwd: session.cwd,
     permissionMode: "default",
     allowedTools: [],
     title: session.title,
     isolated: true,
-    // Generation previously passed no model and so ran on the CLI default,
-    // while the model that actually wins voice fidelity sat unused. Congruity
-    // is the whole point of a character, so this is the one place worth
-    // spending the better model by default. See CHARACTER_PLAN.md.
+    // Copy quality is the product here, so generation defaults to the
+    // strongest writing model rather than the CLI default.
     claudeModel: body.claudeModel ?? "opus",
   });
 
@@ -2477,166 +2176,6 @@ app.delete("/scheduled-tasks/:id", (req: Request, res: Response) => {
   res.status(204).send();
 });
 
-// ---- Jarvis evolution and Lab ----
-
-app.get("/evolution", (req: Request, res: Response) => {
-  const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  ensureEvolutionBootstrap();
-  res.json({
-    proposals: listEvolutionProposals(agentId),
-    policies: listEvolutionPolicies(),
-    readiness: evolutionReadiness(),
-  });
-});
-
-app.post("/evolution/proposals", (req: Request, res: Response) => {
-  const body = validatedBody(createEvolutionProposalSchema, req, res);
-  if (!body) return;
-  const agentId = owningAgentId(req, res); if (agentId === null) return;
-  const proposal = createEvolutionProposal({ ...body, agentId });
-  globalBus.emit("evolution_changed");
-  res.status(201).json(proposal);
-});
-
-app.patch("/evolution/proposals/:id", (req: Request, res: Response) => {
-  const body = validatedBody(updateEvolutionProposalSchema, req, res);
-  if (!body) return;
-  const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  if (!getEvolutionProposal(req.params.id, agentId)) { res.status(404).json({ error: "Evolution proposal not found" }); return; }
-  const proposal = updateEvolutionProposal(req.params.id, body);
-  if (!proposal) {
-    res.status(404).json({ error: "Evolution proposal not found" });
-    return;
-  }
-  globalBus.emit("evolution_changed");
-  res.json(proposal);
-});
-
-app.patch("/evolution/policies/:changeClass", (req: Request, res: Response) => {
-  const changeClass = req.params.changeClass;
-  if (!["knowledge", "behavior", "capability", "product", "security"].includes(changeClass)) {
-    res.status(404).json({ error: "Unknown change class" });
-    return;
-  }
-  const body = validatedBody(updateEvolutionPolicySchema, req, res);
-  if (!body) return;
-  if (changeClass === "security" && body.autonomy !== "approval_required") {
-    res.status(400).json({ error: "Security changes always require explicit approval" });
-    return;
-  }
-  if (changeClass === "product" && body.autonomy === "automatic") {
-    res.status(400).json({ error: "Product changes cannot promote automatically until atomic rollback is available" });
-    return;
-  }
-  const policy = updateEvolutionPolicy(
-    changeClass as "knowledge" | "behavior" | "capability" | "product" | "security",
-    body.autonomy
-  );
-  globalBus.emit("evolution_changed");
-  res.json(policy);
-});
-
-app.post("/evolution/proposals/:id/start-build", (req: Request, res: Response) => {
-  const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  const proposal = getEvolutionProposal(req.params.id, agentId);
-  if (!proposal) {
-    res.status(404).json({ error: "Evolution proposal not found" });
-    return;
-  }
-  if (proposal.stage === "building") {
-    res.status(409).json({ error: "This proposal is already building in Lab" });
-    return;
-  }
-  if (!existsSync(LAB_PATH) || !statSync(LAB_PATH).isDirectory()) {
-    res.status(503).json({ error: `Jarvis Lab is not available at ${LAB_PATH}` });
-    return;
-  }
-  if (atConcurrencyLimit()) {
-    res.status(429).json({ error: "Jarvis is at its active-session limit" });
-    return;
-  }
-  const prompt = labBuildPrompt(proposal);
-  const session = createSession({
-    title: `[Lab] ${proposal.title}`,
-    cwd: LAB_PATH,
-    permissionMode: "default",
-    agentId,
-  });
-  updateEvolutionProposal(proposal.id, { stage: "building", labSessionId: session.id });
-  globalBus.emit("session_updated", session.id);
-  globalBus.emit("evolution_changed");
-  void startSession({
-    id: session.id,
-    prompt,
-    cwd: LAB_PATH,
-    permissionMode: "default",
-    title: session.title,
-    onTurnFinished: (ok) => {
-      updateEvolutionProposal(proposal.id, { stage: ok ? "review" : "observed" });
-      globalBus.emit("evolution_changed");
-    },
-  });
-  res.status(201).json({ proposal: getEvolutionProposal(proposal.id), session });
-});
-
-// The merge/build/restart/verify/rollback sequence outlives this process —
-// restart-service.ps1 kills and replaces it partway through — so it has to
-// run as a genuinely independent process, not a child of it. See
-// scripts/promote-lab.ps1 and scripts/promote-lab-launcher.ps1 (the launcher
-// exists because a direct spawn of promote-lab.ps1 was tried first and
-// failed two different ways — see that script's own comment for what was
-// actually observed on this machine before landing on Start-Process).
-const PROMOTE_LAUNCHER_PATH = resolve(process.cwd(), "..", "..", "scripts", "promote-lab-launcher.ps1");
-
-app.post("/evolution/proposals/:id/promote", (req: Request, res: Response) => {
-  const agentId = scopedAgentId(req, res); if (agentId === null) return;
-  const proposal = getEvolutionProposal(req.params.id, agentId);
-  if (!proposal) {
-    res.status(404).json({ error: "Evolution proposal not found" });
-    return;
-  }
-  if (proposal.stage !== "review") {
-    res.status(409).json({
-      error: `This proposal is ${proposal.stage.replace("_", " ")}, not ready for promotion. Only a reviewed build can be promoted.`,
-    });
-    return;
-  }
-  if (!evolutionReadiness().promotionEngineReady) {
-    res.status(503).json({ error: "The promotion engine isn't available on this machine." });
-    return;
-  }
-  if (!existsSync(PROMOTE_LAUNCHER_PATH)) {
-    res.status(503).json({ error: `Promotion launcher not found at ${PROMOTE_LAUNCHER_PATH}` });
-    return;
-  }
-
-  updateEvolutionProposal(proposal.id, { stage: "promoting" });
-  globalBus.emit("evolution_changed");
-
-  // The launcher's own job is just Start-Process and exit — it does not
-  // matter that it is still part of this process's tree, because by the
-  // time anything stops "Jarvis Orchestrator" the real script is already
-  // running independently (Start-Process, not a raw child, is what actually
-  // escapes the scheduled task's process tree here). This spawn call itself
-  // only needs to survive long enough to launch the launcher, so plain
-  // "ignore" stdio is fine — the real script's output goes to
-  // scripts/logs/promote-lab-spawn.log via -RedirectStandardOutput inside
-  // the launcher, not through this process at all.
-  const child = spawn(
-    "powershell.exe",
-    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", PROMOTE_LAUNCHER_PATH, "-ProposalId", proposal.id],
-    { stdio: "ignore", windowsHide: true }
-  );
-  child.on("error", (err) => {
-    console.error("[evolution] could not start the promotion launcher:", err.message);
-    updateEvolutionProposal(proposal.id, { stage: "rolled_back", evidence: `Could not start the promotion launcher: ${err.message}` });
-    globalBus.emit("evolution_changed");
-  });
-  child.unref();
-
-  res.status(202).json({ ok: true, proposal: getEvolutionProposal(proposal.id) });
-});
-
 // ---- Insights ----
 
 app.get("/insights/trends", (req: Request, res: Response) => {
@@ -2928,55 +2467,7 @@ app.put("/connections/:platformId", (req: Request, res: Response) => {
     // shared, so existing installs keep reaching every platform they did.
     agentId: body.createNew ? agentId : undefined,
   });
-  if (platform.definition.id === "slack") refreshSlackAgentBridge();
-  // Saving real credentials means any guided signup for this platform is
-  // over — nothing left for the wizard to track.
-  if (getSignupProgress(platform.definition.id)) {
-    clearSignupProgress(platform.definition.id);
-    globalBus.emit("platform_signup_changed");
-  }
   res.json(connection);
-});
-
-app.get("/platforms/:platformId/signup", (req: Request, res: Response) => {
-  const platform = getPlatform(req.params.platformId);
-  if (!platform) { res.status(404).json({ error: "unknown platform" }); return; }
-  res.json({
-    progress: getSignupProgress(platform.definition.id) ?? null,
-    events: listSignupEmailEvents(platform.definition.id),
-  });
-});
-
-app.post("/platforms/:platformId/signup", (req: Request, res: Response) => {
-  const platform = getPlatform(req.params.platformId);
-  if (!platform) { res.status(404).json({ error: "unknown platform" }); return; }
-  const body = validatedBody(startPlatformSignupSchema, req, res);
-  if (!body) return;
-  const progress = startPlatformSignup(platform.definition.id, body);
-  globalBus.emit("platform_signup_changed");
-  res.status(201).json(progress);
-});
-
-app.post("/platforms/:platformId/signup/step", (req: Request, res: Response) => {
-  const platform = getPlatform(req.params.platformId);
-  if (!platform) { res.status(404).json({ error: "unknown platform" }); return; }
-  const step = Number((req.body as { step?: unknown })?.step);
-  if (!Number.isInteger(step) || step < 0) {
-    res.status(400).json({ error: "step must be a non-negative integer" });
-    return;
-  }
-  const progress = advanceSignupStep(platform.definition.id, step);
-  if (!progress) { res.status(404).json({ error: "no signup in progress for this platform" }); return; }
-  globalBus.emit("platform_signup_changed");
-  res.json(progress);
-});
-
-app.delete("/platforms/:platformId/signup", (req: Request, res: Response) => {
-  const platform = getPlatform(req.params.platformId);
-  if (!platform) { res.status(404).json({ error: "unknown platform" }); return; }
-  clearSignupProgress(platform.definition.id);
-  globalBus.emit("platform_signup_changed");
-  res.status(204).send();
 });
 
 app.post("/connections/:platformId/test", async (req: Request, res: Response) => {
@@ -3015,7 +2506,6 @@ app.post("/connections/:platformId/test", async (req: Request, res: Response) =>
     result.detail ?? null,
     result.ok ? null : (result.message ?? "Connection test failed")
   );
-  if (platform.definition.id === "slack") refreshSlackAgentBridge();
   res.json({ result, connection });
 });
 
@@ -3052,7 +2542,6 @@ app.post("/accounts/:connectionId/test", async (req: Request, res: Response) => 
     result.detail ?? null,
     result.ok ? null : (result.message ?? "Connection test failed")
   );
-  if (connection.platformId === "slack") refreshSlackAgentBridge();
   globalBus.emit("connections_changed");
   res.json({ result, connection: updated });
 });
@@ -3061,7 +2550,6 @@ app.delete("/accounts/:connectionId", (req: Request, res: Response) => {
   const connection = getConnectionById(req.params.connectionId);
   if (!connection) { res.status(404).json({ error: "Account not found" }); return; }
   deleteConnection(connection.id);
-  if (connection.platformId === "slack") stopSlackAgentBridge();
   globalBus.emit("connections_changed");
   res.status(204).send();
 });
@@ -3087,7 +2575,6 @@ app.delete("/connections/:platformId", (req: Request, res: Response) => {
     return;
   }
   deleteConnection(targetId);
-  if (req.params.platformId === "slack") stopSlackAgentBridge();
   res.status(204).send();
 });
 
@@ -3347,14 +2834,32 @@ app.post("/backup/import", (req: Request, res: Response) => {
 
 // ---- Settings ----
 
+/**
+ * Business context and Jarvis's persona are one value in 2.0. Sessions read the
+ * persona first, so reporting the settings row alone would show text that no
+ * longer drives anything; saving writes both so customer replies (which read
+ * the settings row) and every session lane agree.
+ */
+function settingsWithPersona() {
+  const settings = getSettings();
+  const persona = getDefaultAgent()?.systemPrompt;
+  return persona?.trim() ? { ...settings, businessContext: persona } : settings;
+}
+
 app.get("/settings", (_req: Request, res: Response) => {
-  res.json(getSettings());
+  res.json(settingsWithPersona());
 });
 
 app.patch("/settings", (req: Request, res: Response) => {
   const body = validatedBody(updateSettingsSchema, req, res);
   if (!body) return;
-  res.json(updateSettings(body));
+  updateSettings(body);
+  const jarvis = getDefaultAgent();
+  if (body.businessContext !== undefined && jarvis) {
+    updateAgent(jarvis.id, { systemPrompt: body.businessContext });
+    globalBus.emit("agents_changed");
+  }
+  res.json(settingsWithPersona());
 });
 
 // Generated before the port opens, not on the first authenticated request.
@@ -3371,7 +2876,6 @@ const server = app.listen(PORT, HOST, () => {
     startMaintenance();
     startPaidGrowthMonitor();
     startAuthWatchdog();
-    startSlackAgentBridge();
     startApproveServer();
   } else {
     console.log("Passive fallback mode: scheduler, idle reaper, and maintenance are disabled");
@@ -3399,7 +2903,6 @@ let shuttingDown = false;
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
-  stopSlackAgentBridge();
   markInterruptedIfActive();
   server.close(() => process.exit(0));
   // SSE and keep-alive sockets can otherwise keep server.close waiting forever,

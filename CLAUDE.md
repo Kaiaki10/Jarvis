@@ -41,6 +41,20 @@ live service until someone rebuilds.
 - **Icons** are `lucide-react`, `h-4 w-4` at `strokeWidth={1.75}` for most UI.
 - Empty states follow the pattern in `AutomationHealth`: icon, short message, action link.
 
+## Jarvis 2.0: one assistant
+
+Multi-agent support, agent rooms, the Evolution Center, the Slack agent bridge, character
+sheets, and the signup-email watcher were removed in 2.0. Keep it that way unless asked.
+
+- Jarvis is the default agent row (`DEFAULT_AGENT_ID`). Its persona, cwd, and brain are
+  served by `GET/PATCH /agent`; Settings → Business context writes the persona too.
+- The `agent_id` columns and repo-level `agentId` filters remain so pre-2.0 rows stay
+  readable. The dashboard never sends `agentId`; creates default to Jarvis.
+- Tables for removed features (`agent_conversations*`, `evolution_*`,
+  `workflow_character*`, `slack_*`, `platform_signup_progress`, `signup_email_events`,
+  `agent_tokens`) are left in `schema.sql` on purpose — the live DB keeps its data.
+  Don't drop them.
+
 ## Session and permission model
 
 - `sessionManager.ts` wraps the SDK's `query()` with streaming input, so sessions stay open

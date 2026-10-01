@@ -20,11 +20,6 @@ const daysOfWeek = z
 /** Which agent owns a newly created row. Absent means the default agent. */
 const agentId = z.string().uuid().optional();
 
-export const mintAgentTokenSchema = z.object({
-  agentId: z.string().uuid(),
-  operatorId: z.string().uuid().optional(),
-}).strict();
-
 export const createSessionSchema = z
   .object({
     agentId,
@@ -52,23 +47,6 @@ export const chatMessageSchema = z
   })
   .strict();
 
-export const createAgentSchema = z
-  .object({
-    name: z.string().trim().min(1).max(120),
-    role: z.string().trim().max(200).optional(),
-    systemPrompt: z.string().max(100_000).optional(),
-    cwd: z.string().trim().max(2_000).optional(),
-    // One or two characters: a letter or a single emoji, sized for the sidebar
-    // badge. Anything longer overflows it rather than shrinking.
-    avatar: z.string().trim().min(1).max(2).optional(),
-    color: z.string().trim().max(40).optional(),
-    permissionMode: permissionMode.optional(),
-    allowedTools: allowedTools.optional(),
-    brainLane: z.enum(["claude", "gpt-5.6-sol", "local", "opencode"]).optional(),
-    brainModel: z.string().trim().min(1).max(200).nullable().optional(),
-  })
-  .strict();
-
 export const updateAgentSchema = z
   .object({
     name: z.string().trim().min(1).max(120).optional(),
@@ -81,23 +59,9 @@ export const updateAgentSchema = z
     allowedTools: allowedTools.nullable().optional(),
     brainLane: z.enum(["claude", "gpt-5.6-sol", "local", "opencode"]).optional(),
     brainModel: z.string().trim().min(1).max(200).nullable().optional(),
-    status: z.enum(["active", "archived"]).optional(),
   })
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, "at least one field is required");
-
-/**
- * Applies one lane to every active agent at once ("go completely local").
- * Each agent keeps the specific model it already has; otherwise the preset's
- * model wins, otherwise the lane default (null). A null model means no
- * opinion — specifics are kept, never cleared.
- */
-export const setBrainPresetSchema = z
-  .object({
-    lane: z.enum(["claude", "gpt-5.6-sol", "local", "opencode"]),
-    model: z.string().trim().min(1).max(200).nullable().optional(),
-  })
-  .strict();
 
 const memoryKind = z.enum(["preference", "business", "relationship", "decision", "fact"]);
 export const createMemorySchema = z.object({
@@ -173,34 +137,6 @@ export const updateDeliverableSchema = z.object({
 
 export const reviewMissionUpdateSchema = z.object({
   decision: z.enum(["apply", "dismiss"]),
-}).strict();
-
-const evolutionChangeClass = z.enum(["knowledge", "behavior", "capability", "product", "security"]);
-const evolutionRisk = z.enum(["low", "medium", "high", "critical"]);
-
-export const createEvolutionProposalSchema = z.object({
-  title: z.string().trim().min(1).max(500),
-  problem: z.string().trim().min(1).max(20_000),
-  expectedValue: z.string().trim().min(1).max(20_000),
-  changeClass: evolutionChangeClass,
-  risk: evolutionRisk,
-  evidence: z.string().max(20_000).optional(),
-  rollbackPlan: z.string().max(20_000).optional(),
-}).strict();
-
-export const updateEvolutionProposalSchema = z.object({
-  title: z.string().trim().min(1).max(500).optional(),
-  problem: z.string().trim().min(1).max(20_000).optional(),
-  expectedValue: z.string().trim().min(1).max(20_000).optional(),
-  changeClass: evolutionChangeClass.optional(),
-  risk: evolutionRisk.optional(),
-  stage: z.enum(["observed", "planned"]).optional(),
-  evidence: z.string().max(20_000).nullable().optional(),
-  rollbackPlan: z.string().max(20_000).nullable().optional(),
-}).strict();
-
-export const updateEvolutionPolicySchema = z.object({
-  autonomy: z.enum(["automatic", "after_checks", "approval_required"]),
 }).strict();
 
 const marketingChannel = z.enum(["x", "linkedin", "instagram", "facebook", "email", "blog"]);
@@ -506,10 +442,6 @@ export const saveConnectionSchema = z
   })
   .strict();
 
-export const startPlatformSignupSchema = z
-  .object({ signupEmail: z.string().email().max(320), autoFollow: z.boolean().optional() })
-  .strict();
-
 export const issueStripeCardSchema = z
   .object({ purposeLabel: z.string().trim().min(1).max(200), monthlyLimitMinor: z.number().int().positive() })
   .strict();
@@ -571,43 +503,8 @@ export function formatValidationError(error: z.ZodError): string {
     .join("; ");
 }
 
-export const createConversationSchema = z
-  .object({
-    title: z.string().trim().min(1).max(200),
-    topic: z.string().trim().min(1).max(20_000),
-    // Two is the minimum for a conversation; the upper bound keeps one room
-    // from monopolising the machine and makes the transcript readable.
-    agentIds: z
-      .array(z.string().uuid())
-      .min(2)
-      .max(5)
-      .refine((ids) => new Set(ids).size === ids.length, "an agent cannot appear twice"),
-    // Bounded here as well as in the runner: these are what stop two agents
-    // talking all night, so an out-of-range value is rejected rather than
-    // clamped somewhere the caller cannot see.
-    turnCap: z.number().int().min(2).max(40).optional(),
-    budgetSeconds: z.number().int().min(60).max(3_600).optional(),
-  })
-  .strict();
-
-export const conversationMessageSchema = z
-  .object({ text: z.string().trim().min(1).max(20_000) })
-  .strict();
-
 export const attachWorkflowAccountSchema = z
   .object({ connectionId: z.string().trim().min(1).max(200) })
-  .strict();
-
-export const saveWorkflowCharacterSchema = z
-  .object({
-    name: z.string().trim().min(1).max(120),
-    persona: z.string().max(20_000).optional(),
-    voiceRules: z.string().max(20_000).optional(),
-    exemplars: z.array(z.string().trim().min(1).max(10_000)).max(20).optional(),
-    appearance: z.string().max(20_000).optional(),
-    // Required, never optional — see CHARACTER_PLAN.md.
-    disclosure: z.string().trim().min(1).max(2_000),
-  })
   .strict();
 
 /** Null clears the per-account override; the global default then applies. */

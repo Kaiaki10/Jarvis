@@ -35,7 +35,7 @@ const slack: Platform = {
   definition: {
     id: "slack",
     name: "Slack",
-    tagline: "Talk to any Jarvis agent from Slack while Jarvis stays local.",
+    tagline: "Post updates and images to your Slack channels, with approval first.",
     category: "messaging",
     docsUrl: "https://api.slack.com/apps",
     fields: [
@@ -47,47 +47,21 @@ const slack: Platform = {
         placeholder: "xoxb-…",
         secret: true,
       },
-      {
-        key: "appToken",
-        label: "Socket Mode App Token",
-        help: "Starts with xapp-. Create it under Basic Information → App-Level Tokens with connections:write.",
-        expectedPrefix: "xapp-",
-        placeholder: "xapp-…",
-        secret: true,
-      },
-      {
-        key: "allowedUserIds",
-        label: "Allowed Slack user IDs",
-        help: "Comma-separated list of Slack user IDs allowed to operate your agents (for example U012ABCDEF, find yours under your Slack profile → More → Copy member ID). Required — anyone else in the workspace could otherwise chat with your agents and read local files through them.",
-        placeholder: "U012ABCDEF, U045GHIJKL",
-        secret: false,
-      },
     ],
-    capabilities: ["Agent conversations", "Thread continuity", "Local-only Socket Mode"],
-    dataFreshness: "Real-time while the local orchestrator is running",
     steps: [
       {
         title: "Create a Slack app",
         body: [
           "Open Slack's app dashboard and choose Create New App → From scratch.",
-          "Give it a name (Jarvis works) and pick the workspace you want it to act in.",
+          "Give it a name (Jarvis works) and pick the workspace you want it to post in.",
         ],
         linkUrl: "https://api.slack.com/apps",
         linkLabel: "Open Slack app dashboard",
       },
       {
-        title: "Enable Socket Mode",
+        title: "Add posting scopes",
         body: [
-          "Open Socket Mode in the app sidebar and turn it on.",
-          "When Slack asks for an app-level token, name it Jarvis Socket and give it connections:write. Copy the xapp- token below.",
-        ],
-      },
-      {
-        title: "Subscribe to messages",
-        body: [
-          "Under OAuth & Permissions add bot scopes chat:write, app_mentions:read, im:history, and files:write (needed to attach images).",
-          "Under Event Subscriptions enable events, then subscribe to app_mention and message.im.",
-          "Under App Home keep the Messages tab enabled and allow users to send messages so direct messages reach Jarvis.",
+          "Under OAuth & Permissions add the bot scopes chat:write and files:write (needed to attach images).",
         ],
         warning: "After changing scopes, reinstall the app to the workspace so the new permissions take effect.",
       },
@@ -95,31 +69,21 @@ const slack: Platform = {
         title: "Install and connect",
         body: [
           "Still under OAuth & Permissions, click Install to Workspace and approve.",
-          "Copy the xoxb- Bot User OAuth Token below. In Slack, open your profile → More → Copy member ID and paste it into Allowed Slack user IDs, then save and test.",
-          "Invite the app to any channel where you want to mention it. In Slack, mention the bot normally, send `agents` to list choices, or write `Agent Name: your message`. Direct messages work too.",
+          "Copy the xoxb- Bot User OAuth Token below, then save and test.",
+          "Invite the app to every channel Jarvis should post in (/invite @Jarvis).",
         ],
-        warning: "The allowlist is required — without it, anyone in the workspace could chat with your agents and read local files through them.",
       },
     ],
   },
   async test(creds) {
-    const [bot, socket] = await Promise.all([
-      fetchJson("https://slack.com/api/auth.test", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${creds.botToken}` },
-      }),
-      fetchJson("https://slack.com/api/apps.connections.open", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${creds.appToken}` },
-      }),
-    ]);
-    const botData = bot.body as { ok?: boolean; error?: string; team?: string; user?: string };
-    const socketData = socket.body as { ok?: boolean; error?: string; url?: string };
-    if (bot.status !== 200) return failure(`Slack bot authentication returned HTTP ${bot.status}.`);
-    if (!botData?.ok) return failure(`Slack rejected the bot token: ${botData?.error ?? "unknown error"}`);
-    if (socket.status !== 200) return failure(`Slack Socket Mode returned HTTP ${socket.status}.`);
-    if (!socketData?.ok || !socketData.url) return failure(`Slack rejected the app token: ${socketData?.error ?? "unknown error"}`);
-    return { ok: true, detail: `Connected to ${botData.team} as ${botData.user}; real-time agent chat is ready` };
+    const { status, body } = await fetchJson("https://slack.com/api/auth.test", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.botToken}` },
+    });
+    const data = body as { ok?: boolean; error?: string; team?: string; user?: string };
+    if (status !== 200) return failure(`Slack bot authentication returned HTTP ${status}.`);
+    if (!data?.ok) return failure(`Slack rejected the bot token: ${data?.error ?? "unknown error"}`);
+    return { ok: true, detail: `Connected to ${data.team} as ${data.user}` };
   },
 };
 
@@ -344,10 +308,7 @@ const x: Platform = {
     ],
     // The account-creation steps below are guided, not automated: Jarvis
     // never touches X's own signup form (CAPTCHA/human-verification is
-    // squarely X's defense against exactly that), and only ever detects and
-    // surfaces the confirmation email that follows — never clicks it unless
-    // the operator explicitly turns auto-follow on for this one attempt.
-    confirmationLinkPattern: ["https?://(?:www\\.)?(?:x|twitter)\\.com/\\S*(?:confirm|verify)\\S*", "i"],
+    // squarely X's defense against exactly that).
     steps: [
       {
         title: "Create your X account",
@@ -355,7 +316,7 @@ const x: Platform = {
         body: [
           "If you don't already have an X account for this business, go to x.com and sign up.",
           "Pick a handle and name that match what you want to post as — Jarvis can suggest bio copy once the account exists, but the account itself has to be created by hand.",
-          "Verify with an email address rather than a phone number if X offers the choice, and use one on a domain you've connected to Jarvis's Resend inbound — that's what lets the next step happen automatically.",
+          "Verify with an email address rather than a phone number if X offers the choice.",
           "X will very likely show a CAPTCHA or similar human-verification step here. That part needs you — it exists specifically to stop this kind of automation.",
         ],
         linkUrl: "https://x.com/signup",
@@ -366,7 +327,7 @@ const x: Platform = {
         humanAction: "email_confirm",
         body: [
           "X emails a confirmation link (or code) to finish activating the account.",
-          "Once Jarvis detects it, the link is surfaced here — click it yourself unless you've explicitly turned on auto-follow for this signup.",
+          "Open it from your inbox to finish, then come back here for the developer credentials.",
         ],
       },
       {

@@ -1,18 +1,15 @@
 import {
   Banknote,
-  Bot,
   Brain,
   CalendarClock,
   Coins,
   CreditCard,
   Receipt,
-  FlaskConical,
   Megaphone,
   Plug,
   Settings,
   Terminal,
   Wallet,
-  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -43,16 +40,6 @@ export interface UnderTheHoodModule {
  * generated surfaces cannot disagree about what exists.
  */
 export const UNDER_THE_HOOD_MODULES: UnderTheHoodModule[] = [
-  {
-    slug: "workflows",
-    label: "Workflows",
-    icon: Workflow,
-    description: "One operation per business, from accounts to what it learned",
-    enabled: true,
-    // Single page until onboarding lands; the five stages are surfaces of a
-    // workflow, not siblings of it — see WORKFLOW_PLAN.md.
-    features: [],
-  },
   {
     slug: "social",
     label: "Social",
@@ -116,13 +103,11 @@ export const UNDER_THE_HOOD_MODULES: UnderTheHoodModule[] = [
     slug: "brain",
     label: "Brain",
     icon: Brain,
-    description: "Memory, agents, runs, and self-improvement",
+    description: "Memory and run history",
     enabled: true,
     features: [
       { slug: "memory", label: "Memory", icon: Brain },
-      { slug: "agents", label: "Agents", icon: Bot },
       { slug: "runs", label: "Runs", icon: Terminal },
-      { slug: "evolution", label: "Evolution", icon: FlaskConical },
     ],
   },
   {

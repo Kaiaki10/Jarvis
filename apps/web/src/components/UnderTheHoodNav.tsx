@@ -12,16 +12,16 @@ import { featureHref, moduleForPath } from "@/lib/underTheHood";
  */
 export function UnderTheHoodNav() {
   const pathname = usePathname();
-  const module = moduleForPath(pathname);
-  if (!module || module.features.length === 0) return null;
+  const current = moduleForPath(pathname);
+  if (!current || current.features.length === 0) return null;
 
   return (
     <nav
       className="flex items-center gap-1 overflow-x-auto border-b border-border px-8 pb-3"
-      aria-label={`${module.label} sections`}
+      aria-label={`${current.label} sections`}
     >
-      {module.features.map((feature) => {
-        const href = featureHref(module, feature);
+      {current.features.map((feature) => {
+        const href = featureHref(current, feature);
         const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link

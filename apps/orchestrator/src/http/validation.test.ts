@@ -5,13 +5,10 @@ import {
   updateSettingsSchema,
   createMissionSchema,
   updateDeliverableSchema,
-  createEvolutionProposalSchema,
-  updateEvolutionPolicySchema,
   createPaidGrowthCampaignSchema,
   updatePaidGrowthPerformanceSchema,
   createPaymentLinkSchema,
   updateAgentSchema,
-  setBrainPresetSchema,
   chatMessageSchema,
 } from "./validation.js";
 
@@ -95,25 +92,6 @@ describe("HTTP validation", () => {
     expect(updateDeliverableSchema.safeParse({ status: "published" }).success).toBe(false);
   });
 
-  it("validates evolution proposals and autonomy values", () => {
-    expect(createEvolutionProposalSchema.safeParse({
-      title: "Improve approvals",
-      problem: "The scope is unclear",
-      expectedValue: "People decide faster",
-      changeClass: "product",
-      risk: "medium",
-    }).success).toBe(true);
-    expect(createEvolutionProposalSchema.safeParse({
-      title: "Improve approvals",
-      problem: "",
-      expectedValue: "People decide faster",
-      changeClass: "unknown",
-      risk: "medium",
-    }).success).toBe(false);
-    expect(updateEvolutionPolicySchema.safeParse({ autonomy: "approval_required" }).success).toBe(true);
-    expect(updateEvolutionPolicySchema.safeParse({ autonomy: "unlimited" }).success).toBe(false);
-  });
-
   it("bounds paid budgets and cumulative performance", () => {
     expect(createPaidGrowthCampaignSchema.safeParse({
       name: "Acquisition",
@@ -164,13 +142,11 @@ describe("HTTP validation", () => {
     expect(createPaymentLinkSchema.safeParse({ label: "Retainer", amountMinor: 25000 }).success).toBe(false);
   });
 
-  it("accepts brain lanes and models on agents, and lanes on the fleet preset", () => {
+  it("accepts brain lanes and models on Jarvis", () => {
     expect(updateAgentSchema.safeParse({ brainLane: "local", brainModel: "qwen3:14b" }).success).toBe(true);
     expect(updateAgentSchema.safeParse({ brainLane: "opencode", brainModel: null }).success).toBe(true);
     expect(updateAgentSchema.safeParse({ brainLane: "made-up" }).success).toBe(false);
     expect(updateAgentSchema.safeParse({}).success).toBe(false);
-    expect(setBrainPresetSchema.safeParse({ lane: "local" }).success).toBe(true);
-    expect(setBrainPresetSchema.safeParse({ lane: "gpt-5.6-sol", model: null }).success).toBe(true);
-    expect(setBrainPresetSchema.safeParse({ lane: "made-up" }).success).toBe(false);
+    expect(updateAgentSchema.safeParse({ status: "archived" }).success).toBe(false);
   });
 });

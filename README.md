@@ -1,7 +1,27 @@
-# Jarvis
+# Jarvis 2.0
 
-An autonomous business operating system for turning goals into missions, campaigns,
-content, decisions, automations, tasks, and measurable deliverables from one place.
+A local marketing command center. One assistant, Jarvis, turns an objective into
+campaigns, content, paid growth, customer replies, and scheduled automations, and
+pauses for your approval before anything leaves the machine.
+
+## What changed in 2.0
+
+2.0 is a simplification pass. It removes features that added surface area without
+helping run marketing:
+
+- **Multiple agents and agent-to-agent rooms.** Jarvis is one assistant again. Its
+  persona is **Settings → Business context**; its brain (Claude, Codex, local Ollama, or
+  OpenCode) is the model picker on the chat composer.
+- **Evolution Center and Lab promotion** (and `scripts/promote-lab*.ps1`).
+- **Slack agent chat.** Slack remains a posting destination (`post_to_slack`).
+- **Character sheets** on campaigns, and the **platform-signup email watcher**.
+
+Nothing was dropped from the database. Tables those features used are left in place
+and simply unused, so an existing `jarvis.db` upgrades with no migration and no data
+loss. Campaigns moved out of Under the Hood to a top-level **Campaigns** page.
+
+To upgrade a running install: delete `apps/web/.next/dev` (Next keeps route validators
+for the removed pages there), then run `.\scripts\restart-service.ps1`.
 
 ## Product flow
 
@@ -16,15 +36,14 @@ content, decisions, automations, tasks, and measurable deliverables from one pla
   consequence, recovery options, and whether approval applies only once.
 - **Automation rehearsal** — simulates the next run times and checks prerequisites without
   executing the automation.
-- **Evolution Center** — tracks product gaps through observation, planning, isolated Lab
-  builds, verification, and review. Each proposal carries user value, evidence, risk, and a
-  rollback plan; production promotion remains gated until atomic deploy and rollback exist.
 - **Campaigns + Content Studio** — turns an objective, audience, offer, approved channels,
   and success metric into a coordinated content pipeline. Jarvis generation runs return
   structured drafts directly into Idea → Draft → Review → Scheduled → Published → Measured,
   with durable run evidence and channel guardrails. Reviewed X content can be published
   immediately or dispatched from the calendar; both routes use the same one-time approval,
   duplicate detection, platform cap, and confirmed-action ledger.
+- **Paid growth** — ad campaigns with approval-gated budgets, recommendations, declared
+  experiments, and automatic loss-cutting when a campaign bleeds.
 - **Customer Operations** — unifies durable identity and conversation history across an
   embeddable website chat, received email, X direct messages, Facebook Messenger, and
   Instagram Messaging. Jarvis can answer routine messages automatically under explicit
@@ -131,7 +150,7 @@ To call the API yourself:
 
 ```
 curl -H "Authorization: Bearer $(cat apps/orchestrator/jarvis.token)" \
-  http://127.0.0.1:4317/agents
+  http://127.0.0.1:4317/agent
 ```
 
 ## Connections
@@ -144,26 +163,6 @@ committed) and are never returned to the browser.
 Once a platform is connected and passing its test, sessions get tools for it
 (`post_to_x`, `post_to_slack`, `post_to_discord`, `send_email`). Every outbound action
 pauses for your approval first, where you can edit the draft before it sends.
-
-### Slack agent chat
-
-Slack is also a real-time front door to the same continuous agent conversations used by
-the dashboard. It uses Slack Socket Mode: the local orchestrator opens an outbound WebSocket,
-so no tunnel, public webhook, or remote Jarvis server is required. Configure the two tokens
-and your Slack user ID on Connections → Slack and leave the orchestrator running.
-
-- Mention the Jarvis app in a channel or send it a direct message.
-- Send `agents` to list the active agents.
-- Write `Growth Lead: draft three posts` to select an agent by name. The Slack thread stays
-  bound to that agent afterward, and the turn is appended to that agent's normal Jarvis chat.
-- If a tool needs approval, Slack tells you to decide in the local dashboard and posts the
-  completed answer back into the same thread afterward.
-- The Slack user-ID allowlist is required: only the IDs you list can operate your agents.
-  Anyone else in the workspace is refused, since a Slack turn gets the same tool access as
-  the dashboard, with no per-message approval.
-
-Inbound event IDs are deduplicated across reconnects. Tokens remain encrypted in the local
-SQLite database; decrypted values are never returned by the API.
 
 ## Customer channels
 

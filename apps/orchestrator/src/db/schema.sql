@@ -544,7 +544,7 @@ CREATE TABLE IF NOT EXISTS campaign_experiments (
 );
 
 -- No agent_id of its own -- reached through its variants, same rule as
--- paid_growth_decisions (V2_PLAN.md: only root tables carry agent_id).
+-- paid_growth_decisions (only root tables carry agent_id).
 CREATE TABLE IF NOT EXISTS campaign_experiment_variants (
   experiment_id TEXT NOT NULL REFERENCES campaign_experiments(id) ON DELETE CASCADE,
   paid_campaign_id TEXT NOT NULL REFERENCES paid_growth_campaigns(id) ON DELETE CASCADE,
@@ -833,7 +833,8 @@ CREATE TABLE IF NOT EXISTS workflow_insights (
 
 CREATE INDEX IF NOT EXISTS idx_workflow_insights_workflow ON workflow_insights(workflow_id, created_at DESC);
 
--- The voice a workflow speaks in (see CHARACTER_PLAN.md).
+-- The voice a workflow speaks in. Retired in Jarvis 2.0: nothing reads or
+-- writes this table any more, but it is kept so existing data is not lost.
 --
 -- `exemplars` carries sample posts rather than adjectives: current models match
 -- a voice far better from a writing sample than from a description of one, so

@@ -80,7 +80,7 @@ export function getConnectionById(id: string): ConnectionRecord | undefined {
  * The one account meant by a bare platform name.
  *
  * Callers that predate multi-account — Stripe, Coinbase, push, notification
- * email, the Slack bridge, the ad adapters — ask this way, and there is no
+ * email, the ad adapters — ask this way, and there is no
  * agent in scope to narrow it. The rule:
  *
  *   1. the shared account, if there is one;

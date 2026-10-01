@@ -54,19 +54,21 @@ export function TaskBoard() {
 
   // Drop the optimistic entry once the store agrees with it, so a task that is
   // later moved elsewhere — by another tab, or by Jarvis — is not pinned here.
-  useEffect(() => {
-    setPending((previous) => {
-      const next = { ...previous };
-      let changed = false;
-      for (const task of tasks) {
-        if (next[task.id] === task.status) {
-          delete next[task.id];
-          changed = true;
-        }
+  // Adjusted during render when `tasks` changes (React's documented pattern
+  // for state that follows a prop), not in an effect that renders twice.
+  const [prunedFor, setPrunedFor] = useState(tasks);
+  if (prunedFor !== tasks) {
+    setPrunedFor(tasks);
+    const next = { ...pending };
+    let changed = false;
+    for (const task of tasks) {
+      if (next[task.id] === task.status) {
+        delete next[task.id];
+        changed = true;
       }
-      return changed ? next : previous;
-    });
-  }, [tasks]);
+    }
+    if (changed) setPending(next);
+  }
 
   /**
    * Dragging is an addition, never the only way through.

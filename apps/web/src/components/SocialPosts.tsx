@@ -89,7 +89,7 @@ export function SocialPosts() {
         <div className="flex flex-col items-center gap-3 px-5 py-14 text-center">
           <Megaphone className="h-5 w-5 text-muted" strokeWidth={1.75} />
           <div className="text-body text-muted">Jarvis hasn&apos;t written any content yet.</div>
-          <Link href="/workflows" className="text-label font-medium text-foreground hover:underline">
+          <Link href="/campaigns" className="text-label font-medium text-foreground hover:underline">
             Start a campaign
           </Link>
         </div>

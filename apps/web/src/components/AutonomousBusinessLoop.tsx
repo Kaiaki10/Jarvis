@@ -8,7 +8,6 @@ import {
   Check,
   CheckCircle2,
   CircleDashed,
-  FlaskConical,
   Headphones,
   Orbit,
   Plug,
@@ -30,7 +29,6 @@ import {
   useWorkflows,
   useConnections,
   useCustomerOperations,
-  useEvolution,
   useMemories,
   useMissionsList,
   useSettings,
@@ -66,7 +64,6 @@ export function AutonomousBusinessLoop() {
   const { overview: workflows, refresh: refreshWorkflows } = useWorkflows();
   const { overview: customers, refresh: refreshCustomers } = useCustomerOperations();
   const { memories, reflections } = useMemories();
-  const { evolution } = useEvolution();
   const { connections } = useConnections();
   const { settings, saveSettings } = useSettings();
   const { overview: paidGrowth } = usePaidGrowth();
@@ -80,19 +77,17 @@ export function AutonomousBusinessLoop() {
   const measuredCount = workflows?.content.filter((item) => item.status === "measured").length ?? 0;
   const openCustomers = customers?.conversations.filter((conversation) => conversation.status === "open").length ?? 0;
   const activeMemories = memories.filter((memory) => memory.status === "active").length;
-  const pendingEvolution = evolution?.proposals.filter((proposal) => !["promoted", "rolled_back"].includes(proposal.stage)).length ?? 0;
   const runningGeneration = workflows?.generationRuns.filter((run) => run.status === "running").length ?? 0;
   const connectedPlatforms = connections.filter((connection) => connection.status === "connected").length;
 
   const phases = [
     { href: "/missions", label: "Plan", detail: `${activeMissions.length} active mission${activeMissions.length === 1 ? "" : "s"}`, icon: Target, tone: activeMissions.length ? "accent" : "neutral" },
-    { href: "/under-the-hood/workflows", label: "Create", detail: runningGeneration ? `${runningGeneration} generation run${runningGeneration === 1 ? "" : "s"} live` : `${activeWorkflows.length} active campaign${activeWorkflows.length === 1 ? "" : "s"}`, icon: Sparkles, tone: runningGeneration ? "accent" : activeWorkflows.length ? "success" : "neutral" },
+    { href: "/campaigns", label: "Create", detail: runningGeneration ? `${runningGeneration} generation run${runningGeneration === 1 ? "" : "s"} live` : `${activeWorkflows.length} active campaign${activeWorkflows.length === 1 ? "" : "s"}`, icon: Sparkles, tone: runningGeneration ? "accent" : activeWorkflows.length ? "success" : "neutral" },
     { href: "/paid-growth", label: "Invest", detail: paidGrowth?.totals.waitingApproval ? `${paidGrowth.totals.waitingApproval} decision${paidGrowth.totals.waitingApproval === 1 ? "" : "s"} waiting` : `${paidGrowth?.campaigns.length ?? 0} paid campaign${paidGrowth?.campaigns.length === 1 ? "" : "s"}`, icon: WalletCards, tone: paidGrowth?.totals.waitingApproval ? "warning" : paidGrowth?.campaigns.length ? "accent" : "neutral" },
-    { href: "/under-the-hood/workflows", label: "Approve", detail: reviewCount ? `${reviewCount} asset${reviewCount === 1 ? "" : "s"} waiting` : "Queue clear", icon: ShieldCheck, tone: reviewCount ? "warning" : "success" },
-    { href: "/under-the-hood/workflows", label: "Distribute", detail: `${scheduledCount} scheduled · ${publishedCount} live`, icon: Send, tone: scheduledCount || publishedCount ? "accent" : "neutral" },
+    { href: "/campaigns", label: "Approve", detail: reviewCount ? `${reviewCount} asset${reviewCount === 1 ? "" : "s"} waiting` : "Queue clear", icon: ShieldCheck, tone: reviewCount ? "warning" : "success" },
+    { href: "/campaigns", label: "Distribute", detail: `${scheduledCount} scheduled · ${publishedCount} live`, icon: Send, tone: scheduledCount || publishedCount ? "accent" : "neutral" },
     { href: "/customers", label: "Serve", detail: customers?.policy.enabled ? `${openCustomers} open · autonomy on` : `${openCustomers} open · review only`, icon: Headphones, tone: customers?.policy.enabled ? "success" : openCustomers ? "warning" : "neutral" },
-    { href: "/memory", label: "Learn", detail: `${measuredCount} measured · ${activeMemories} memories`, icon: Brain, tone: reflections[0]?.status === "failed" ? "warning" : activeMemories ? "success" : "neutral" },
-    { href: "/evolution", label: "Improve", detail: `${pendingEvolution} proposal${pendingEvolution === 1 ? "" : "s"} in motion`, icon: FlaskConical, tone: pendingEvolution ? "accent" : "neutral" },
+    { href: "/under-the-hood/brain/memory", label: "Learn", detail: `${measuredCount} measured · ${activeMemories} memories`, icon: Brain, tone: reflections[0]?.status === "failed" ? "warning" : activeMemories ? "success" : "neutral" },
   ] satisfies Array<{ href: string; label: string; detail: string; icon: typeof Target; tone: Tone }>;
 
   return (
@@ -159,7 +154,7 @@ export function AutonomousBusinessLoop() {
             title="Publishing"
             value={reviewCount ? `${reviewCount} approvals waiting` : "Approval gate clear"}
             detail="Generated assets stay in the pipeline. Publishing uses the campaign approval policy and platform gate."
-            href="/under-the-hood/workflows"
+            href="/campaigns"
           />
           <Guardrail
             icon={Headphones}
@@ -321,7 +316,7 @@ function ActiveLoops({ missions, campaigns }: {
                 </div>
                 <div className="flex gap-2">
                   <Link href="/missions" className="text-label text-muted hover:text-foreground">Mission →</Link>
-                  <Link href="/under-the-hood/workflows" className="text-label text-accent-foreground hover:text-white">Campaign →</Link>
+                  <Link href="/campaigns" className="text-label text-accent-foreground hover:text-white">Campaign →</Link>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -508,7 +503,7 @@ function LaunchLoop({ settings, customerAutonomy, onRefresh, onSaveSettings }: {
             <div className="flex items-center gap-2 font-medium text-success"><CheckCircle2 className="h-4 w-4" /> Connected loop created</div>
             <div className="mt-2 flex flex-wrap gap-3">
               <Link href="/missions" className="text-foreground hover:text-white">Open mission →</Link>
-              <Link href="/under-the-hood/workflows" className="text-foreground hover:text-white">Open campaign →</Link>
+              <Link href="/campaigns" className="text-foreground hover:text-white">Open campaign →</Link>
               {result.sessionId && <Link href={`/under-the-hood/brain/runs/${result.sessionId}`} className="text-accent-foreground hover:text-white">Watch Jarvis create →</Link>}
             </div>
           </div>
