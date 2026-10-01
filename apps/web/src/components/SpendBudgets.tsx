@@ -6,7 +6,7 @@ import type { SpendEnvelopeRecord, SpendLedgerEntry, SpendPeriod, SpendRail } fr
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input, Select } from "@/components/ui/Input";
+import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { formatMoney, parseAmount, toInputValue } from "@/lib/money";
 import { AnimatedBody, AnimatedRow, Crossfade, Meter, Stagger } from "@/components/motion";
@@ -52,15 +52,17 @@ export function SpendBudgets() {
   const [ledger, setLedger] = useState<SpendLedgerEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const spend = await api.getSpend();
-      setEnvelopes(spend.envelopes);
-      setLedger(spend.ledger);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
+  const load = useCallback(
+    () =>
+      api.getSpend().then(
+        (spend) => {
+          setEnvelopes(spend.envelopes);
+          setLedger(spend.ledger);
+        },
+        (err) => setError(err instanceof Error ? err.message : String(err))
+      ),
+    []
+  );
 
   useEffect(() => {
     void load();

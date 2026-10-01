@@ -42,12 +42,13 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!browserSupportsWebAuthn()) {
-      setStatus("unsupported");
-      return;
-    }
-    fetchJson<{ hasOperator: boolean }>("/auth/status")
-      .then(({ hasOperator }) => setStatus(hasOperator ? "login" : "register"))
+    const resolved: Promise<Status> = browserSupportsWebAuthn()
+      ? fetchJson<{ hasOperator: boolean }>("/auth/status").then(
+          ({ hasOperator }): Status => (hasOperator ? "login" : "register")
+        )
+      : Promise.resolve<Status>("unsupported");
+    resolved
+      .then(setStatus)
       .catch((err) => setError(err instanceof Error ? err.message : "Could not reach Jarvis"));
   }, []);
 

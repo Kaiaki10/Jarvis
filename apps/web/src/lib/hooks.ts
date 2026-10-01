@@ -10,7 +10,6 @@ export {
   useActivityLog,
   useTasksList,
   useMissionsList,
-  useEvolution,
   useScheduledTasksList,
   useSettings,
   useConnections,

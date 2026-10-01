@@ -9,7 +9,7 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => ({ api: apiMocks }));
 
 vi.mock("@/lib/store", () => ({
-  useAgents: () => ({ activeAgent: null }),
+  useJarvis: () => ({ jarvis: null }),
   useConnectionStatus: () => "connected",
   useMemories: () => ({ memories: [] }),
   useStore: () => ({ primarySessionId: null }),

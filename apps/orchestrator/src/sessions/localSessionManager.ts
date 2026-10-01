@@ -155,16 +155,6 @@ const LOCAL_TOOLS: OllamaFunctionSpec[] = [
   },
 ];
 
-/**
- * The read-only subset offered to room participants. `run_command` is
- * deliberately absent: its approval gate would stall the room's 5-minute
- * turn the same way the Claude approval gate once did (see GAPS.md), so
- * rooms get file reads only and commands stay a chat-lane privilege.
- */
-const LOCAL_READONLY_TOOLS: OllamaFunctionSpec[] = LOCAL_TOOLS.filter((tool) =>
-  ["read_file", "list_dir", "glob", "grep"].includes(tool.function.name)
-);
-
 // ---- Transcript plumbing -----------------------------------------------------
 
 function publish(sessionId: string, event: SessionEventRecord): void {
@@ -589,8 +579,7 @@ async function requestChat(
   messages: unknown[],
   controller: AbortController,
   withTools: boolean,
-  onDelta?: (text: string) => void,
-  readOnly?: boolean
+  onDelta?: (text: string) => void
 ): Promise<{ content: string; reasoning: string; calls: OllamaToolCall[]; doneReason: string; usage: TurnChatUsage }> {
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
@@ -598,13 +587,9 @@ async function requestChat(
     body: JSON.stringify({
       model,
       messages,
-      ...(withTools ? { tools: readOnly ? LOCAL_READONLY_TOOLS : LOCAL_TOOLS } : {}),
+      ...(withTools ? { tools: LOCAL_TOOLS } : {}),
       stream: true,
       num_ctx: OLLAMA_NUM_CTX,
-      // Room chatter does not need chain-of-thought: thinking traces are what
-      // make CPU turns blow past the room's 5-minute budget. Ignored by
-      // non-thinking models.
-      ...(readOnly ? { think: false } : {}),
     }),
     signal: controller.signal,
   });
@@ -679,7 +664,7 @@ function toolUnsupportedError(error: unknown): boolean {
   return /tool[s]?.*?(not supported|not enabled|unsupported)|function calling not supported|does not support tool/i.test(message);
 }
 
-async function runTurn(params: { id: string; prompt: string; cwd: string; agentId?: string | null; localModel?: string | null; readOnly?: boolean }): Promise<void> {
+async function runTurn(params: { id: string; prompt: string; cwd: string; agentId?: string | null; localModel?: string | null }): Promise<void> {
   const controller = new AbortController();
   active.set(params.id, { abort: controller });
   const startedAt = Date.now();
@@ -693,15 +678,11 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
     const session = getSession(params.id);
     const agent = params.agentId ? getAgent(params.agentId) : undefined;
     const agentContext = agent?.systemPrompt?.trim() || getSettings().businessContext;
-    // Room turns run against a 5-minute clock on shared CPU inference, so
-    // they carry a fraction of the context: the topic and recent turns are
-    // what a room turn actually reasons from, not the full memory pool.
-    const memory = buildMemoryContext(params.readOnly ? 10 : 40, params.agentId ?? null);
+    const memory = buildMemoryContext(40, params.agentId ?? null);
     const root = repoRootOf(params.cwd);
     const system = [
       "You are Jarvis, a local AI assistant running on the user's computer.",
       "You can genuinely inspect this workspace with your local tools (list_dir, glob, grep, read_file) and run shell commands (run_command, always user-approved). You do NOT have Jarvis's outbound platform tools (no posting, messaging, or spending). Be truthful: when you have not checked a file, say so; do not claim to have explored something you have not.",
-      params.readOnly ? "You are speaking in a multi-agent room: inspect files freely, but you have no shell — do not ask to run commands, answer from what you can read. Work fast: use at most two tool calls, then answer from what you have. Long deliberation will exceed your turn." : "",
       session?.title ? `Conversation: ${session.title}` : "",
       agentContext?.trim() ?? "",
       memory ? `Durable memory:\n${memory}` : "",
@@ -717,10 +698,7 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
 
     const messages: unknown[] = [
       { role: "system", content: system },
-      // Rooms are short-lived by design (a handful of turns), so cap the
-      // replay: every extra history turn is prompt tokens billed on every
-      // round, and on CPU inference that is wall-clock minutes per turn.
-      ...(params.readOnly ? replayedHistory.slice(-12) : replayedHistory.slice(-40)),
+      ...replayedHistory.slice(-40),
       { role: "user", content: params.prompt },
     ];
 
@@ -753,7 +731,7 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
               delta: { type: "text_delta", text: piece },
             },
           });
-        }, params.readOnly);
+        });
       } catch (err) {
         if (toolsEnabled && toolUnsupportedError(err)) {
           // Nothing tool-shaped has been pushed to messages (the call failed
@@ -852,14 +830,14 @@ async function runTurn(params: { id: string; prompt: string; cwd: string; agentI
 
 export function activeLocalSessionCount(): number { return active.size; }
 export function activeLocalSessionIds(): string[] { return [...active.keys()]; }
-export function startLocalSession(params: { id: string; prompt: string; cwd: string; title?: string; agentId?: string | null; localModel?: string | null; readOnly?: boolean }): void {
+export function startLocalSession(params: { id: string; prompt: string; cwd: string; title?: string; agentId?: string | null; localModel?: string | null }): void {
   void runTurn(params);
 }
-export function sendLocalFollowUp(sessionId: string, text: string, localModel?: string | null, readOnly?: boolean): LocalFollowUpOutcome {
+export function sendLocalFollowUp(sessionId: string, text: string, localModel?: string | null): LocalFollowUpOutcome {
   if (active.has(sessionId)) return { ok: false, reason: "busy" };
   const session = getSession(sessionId);
   if (!session || session.model !== "local") return { ok: false, reason: "not_resumable" };
-  void runTurn({ id: session.id, prompt: text, cwd: session.cwd, agentId: session.agentId, localModel, readOnly });
+  void runTurn({ id: session.id, prompt: text, cwd: session.cwd, agentId: session.agentId, localModel });
   return { ok: true, resumed: true };
 }
 export function interruptLocalSession(sessionId: string): boolean {

@@ -140,12 +140,11 @@ describe("agent scoping", () => {
     expect(getAgentChatSessionId(agent.id, "gpt-5.6-sol")).toBeNull();
   });
 
-  it("isolates marketing, growth, customers, evolution, and notifications with their children", async () => {
+  it("isolates marketing, growth, customers, and notifications with their children", async () => {
     const { createAgent } = await import("./agentRepo.js");
     const { createWorkflow, createContentItem, listWorkflows, listContentItems } = await import("./workflowRepo.js");
     const { createPaidGrowthCampaign, listPaidGrowthCampaigns } = await import("./paidGrowthRepo.js");
     const { createCustomerConversation, listCustomerOperations } = await import("./customerRepo.js");
-    const { createEvolutionProposal, listEvolutionProposals } = await import("./repo.js");
     const { notify, listNotifications, markAllRead, unreadCount } = await import("../notifications/notifier.js");
     const ivy = createAgent({ name: "Ivy" });
     const jude = createAgent({ name: "Jude" });
@@ -158,8 +157,6 @@ describe("agent scoping", () => {
     createPaidGrowthCampaign({ name: "Jude ads", objective: "Trials", platform: "meta_ads", currency: "USD", dailyBudgetMinor: 200, lifetimeBudgetMinor: 2000, startDate: "2026-08-19", agentId: jude.id });
     createCustomerConversation({ customerName: "Ivy Customer", customerEmail: "same@example.com", channel: "email", subject: "Ivy", message: "Hello", agentId: ivy.id });
     createCustomerConversation({ customerName: "Jude Customer", customerEmail: "same@example.com", channel: "email", subject: "Jude", message: "Hello", agentId: jude.id });
-    createEvolutionProposal({ title: "Ivy idea", problem: "P", expectedValue: "V", changeClass: "product", risk: "low", agentId: ivy.id });
-    createEvolutionProposal({ title: "Jude idea", problem: "P", expectedValue: "V", changeClass: "behavior", risk: "medium", agentId: jude.id });
     notify({ type: "session_failed", severity: "error", title: "Ivy alert", body: "Ivy only", agentId: ivy.id });
     notify({ type: "session_failed", severity: "error", title: "Jude alert", body: "Jude only", agentId: jude.id });
 
@@ -168,7 +165,6 @@ describe("agent scoping", () => {
     expect(listPaidGrowthCampaigns(ivy.id).map((item) => item.name)).toEqual(["Ivy ads"]);
     expect(listCustomerOperations(ivy.id).customers.map((item) => item.name)).toEqual(["Ivy Customer"]);
     expect(listCustomerOperations(ivy.id).messages).toHaveLength(1);
-    expect(listEvolutionProposals(ivy.id).map((item) => item.title)).toEqual(["Ivy idea"]);
     expect(listNotifications(100, ivy.id).map((item) => item.title)).toEqual(["Ivy alert"]);
     expect(unreadCount(jude.id)).toBe(1);
     markAllRead(ivy.id);

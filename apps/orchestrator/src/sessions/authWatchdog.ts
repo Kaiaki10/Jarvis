@@ -29,7 +29,7 @@ export function classifyLaneError(
     return {
       lane: "claude",
       title: "Claude login expired",
-      body: "Claude's login on this machine expired, so dashboard chat, automations, and rooms on the Claude lane are failing. Open a terminal here and re-authenticate Claude Code, then retry. Nothing needs rebuilding.",
+      body: "Claude's login on this machine expired, so dashboard chat and automations on the Claude lane are failing. Open a terminal here and re-authenticate Claude Code, then retry. Nothing needs rebuilding.",
     };
   }
   if (/FreeTierError|free tier|OPENCODE_API_KEY/i.test(errorMessage)) {

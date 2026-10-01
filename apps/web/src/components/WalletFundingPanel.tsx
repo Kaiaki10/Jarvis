@@ -29,24 +29,23 @@ export function WalletFundingPanel({ operatorAddress }: { operatorAddress: strin
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function refresh() {
-    try {
-      const [{ address }, perms, sp] = await Promise.all([
-        api.getWalletSpenderAddress(),
-        api.listWalletPermissions(),
-        api.listWalletSpends(),
-      ]);
-      setSpenderAddress(address);
-      setPermissions(perms);
-      setSpends(sp);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
+  function refresh() {
+    return Promise.all([
+      api.getWalletSpenderAddress(),
+      api.listWalletPermissions(),
+      api.listWalletSpends(),
+    ]).then(
+      ([{ address }, perms, sp]) => {
+        setSpenderAddress(address);
+        setPermissions(perms);
+        setSpends(sp);
+      },
+      (err) => setError(err instanceof Error ? err.message : String(err))
+    );
   }
 
   useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void refresh();
   }, []);
 
   function copyAddress() {
@@ -108,7 +107,7 @@ export function WalletFundingPanel({ operatorAddress }: { operatorAddress: strin
         {spenderAddress && (
           <div className="flex items-center gap-2 rounded-lg border border-border bg-surface/60 p-3">
             <div className="min-w-0 flex-1">
-              <div className="text-micro text-muted">Jarvis's spender address — grant permissions to this one</div>
+              <div className="text-micro text-muted">Jarvis&apos;s spender address — grant permissions to this one</div>
               <div className="mt-0.5 truncate font-mono text-label text-foreground">{spenderAddress}</div>
             </div>
             <Button size="sm" variant="ghost" onClick={copyAddress}>

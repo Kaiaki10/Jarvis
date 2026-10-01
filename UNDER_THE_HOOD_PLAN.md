@@ -254,7 +254,7 @@ false one, because the distinction is the insight.
 
 ## Multi-account connections (2026-08-21)
 
-`V2_PLAN.md` deliberately left credentials global: *"Platform credentials
+The multi-agent plan (retired in Jarvis 2.0) deliberately left credentials global: *"Platform credentials
 (`connections`) are global too, but that one is correct and stays — you have one X
 account, not one per agent."* That assumption is now wrong. Jarvis is to run several
 businesses at once, and each needs its own accounts.

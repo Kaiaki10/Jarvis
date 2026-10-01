@@ -1,13 +1,13 @@
 import { WorkflowStudio } from "@/components/WorkflowStudio";
 import { PageHeader } from "@/components/PageHeader";
 
-export default function WorkflowsPage() {
+export default function CampaignsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Under the hood"
-        title="Workflows"
-        description="One operation per business — its accounts, content, and what it learned"
+        eyebrow="Marketing"
+        title="Campaigns"
+        description="Objective in, content out — accounts, drafts, approvals, publishing, and what it learned"
       />
       <div className="px-8 pb-12">
         <WorkflowStudio />

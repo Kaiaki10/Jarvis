@@ -41,7 +41,6 @@ function setOverview(content: ContentItemRecord[], publicationRuns: WorkflowOver
     generationRuns: [],
     publicationRuns,
     accounts: [],
-    characters: [],
     metricCounts: {},
     insightCounts: {}, adCampaignCounts: {},
   };

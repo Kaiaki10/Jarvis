@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
-import { SELECTED_AGENT_KEY, StoreProvider, useStore } from "./store";
+import { StoreProvider, useStore } from "./store";
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -37,18 +37,7 @@ function mockInitialRequests() {
   vi.spyOn(api, "listMissions").mockResolvedValue([]);
   vi.spyOn(api, "listDeliverables").mockResolvedValue([]);
   vi.spyOn(api, "listMissionUpdates").mockResolvedValue([]);
-  vi.spyOn(api, "getEvolution").mockResolvedValue({
-    proposals: [],
-    policies: [],
-    readiness: {
-      labAvailable: true,
-      labPath: "C:\\jarvis-lab",
-      labBranch: "jarvis/auto",
-      promotionEngineReady: false,
-      automaticRollbackReady: false,
-    },
-  });
-  vi.spyOn(api, "getWorkflows").mockResolvedValue({ workflows: [], content: [], generationRuns: [], publicationRuns: [], accounts: [], characters: [], metricCounts: {}, insightCounts: {}, adCampaignCounts: {} });
+  vi.spyOn(api, "getWorkflows").mockResolvedValue({ workflows: [], content: [], generationRuns: [], publicationRuns: [], accounts: [], metricCounts: {}, insightCounts: {}, adCampaignCounts: {} });
   vi.spyOn(api, "getCustomerOperations").mockResolvedValue({
     customers: [], conversations: [], messages: [], drafts: [], deliveries: [],
     policy: {
@@ -68,7 +57,7 @@ function mockInitialRequests() {
   vi.spyOn(api, "listMemories").mockResolvedValue([]);
   vi.spyOn(api, "listMemoryReflections").mockResolvedValue([]);
   vi.spyOn(api, "listScheduledTasks").mockResolvedValue([]);
-  vi.spyOn(api, "listAgents").mockResolvedValue([]);
+  vi.spyOn(api, "getJarvis").mockResolvedValue({ id: "jarvis", name: "Jarvis" } as never);
   vi.spyOn(api, "getChat").mockResolvedValue({ session: null });
 }
 
@@ -148,77 +137,45 @@ describe("StoreProvider", () => {
     expect(FakeEventSource.instances).toHaveLength(1);
   });
 
-  /**
-   * One EventSource serves the whole app, so it carries every agent's sessions.
-   * Observed for real: another agent's scheduled automations streamed in and
-   * filled the run history with work the selected agent had never done.
-   */
-  it("ignores session updates belonging to another agent", async () => {
+  it("loads Jarvis's record and refreshes it when it changes", async () => {
     mockInitialRequests();
     mockTokenEndpoint();
     vi.stubGlobal("EventSource", FakeEventSource);
-    window.localStorage.setItem(SELECTED_AGENT_KEY, "agent-alice");
-    vi.spyOn(api, "listAgents").mockResolvedValue([
-      { id: "agent-alice", name: "Alice", status: "active" } as never,
-    ]);
+
+    function Name() {
+      const { jarvis } = useStore();
+      return <div data-testid="name">{jarvis?.name ?? ""}</div>;
+    }
+    render(<StoreProvider><Name /></StoreProvider>);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    FakeEventSource.instances[0].emit("open");
+    await waitFor(() => expect(screen.getByTestId("name").textContent).toBe("Jarvis"));
+
+    vi.mocked(api.getJarvis).mockResolvedValue({ id: "jarvis", name: "Friday" } as never);
+    FakeEventSource.instances[0].emit("agents-changed");
+    await waitFor(() => expect(screen.getByTestId("name").textContent).toBe("Friday"));
+  });
+
+  it("keeps every streamed session, whichever agent row owns it", async () => {
+    mockInitialRequests();
+    mockTokenEndpoint();
+    vi.stubGlobal("EventSource", FakeEventSource);
 
     function Runs() {
       const { sessions } = useStore();
       return <div data-testid="runs">{sessions.map((s) => s.title).join("|")}</div>;
     }
-
-    render(
-      <StoreProvider>
-        <Runs />
-      </StoreProvider>
-    );
+    render(<StoreProvider><Runs /></StoreProvider>);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
 
     FakeEventSource.instances[0].emitData("session-updated", {
-      id: "s1", agentId: "agent-alice", title: "alice run", status: "idle", updatedAt: "2026-01-02",
+      id: "s1", agentId: "jarvis", title: "jarvis run", status: "idle", updatedAt: "2026-01-02",
     });
     FakeEventSource.instances[0].emitData("session-updated", {
-      id: "s2", agentId: "agent-bob", title: "bob run", status: "idle", updatedAt: "2026-01-03",
+      id: "s2", agentId: "legacy", title: "legacy run", status: "idle", updatedAt: "2026-01-03",
     });
 
-    await waitFor(() =>
-      expect(screen.getByTestId("runs").textContent).toContain("alice run")
-    );
-    expect(screen.getByTestId("runs").textContent).not.toContain("bob run");
-  });
-
-  it("reloads every agent-owned workspace collection when the active agent changes", async () => {
-    mockInitialRequests();
-    mockTokenEndpoint();
-    vi.stubGlobal("EventSource", FakeEventSource);
-    window.localStorage.setItem(SELECTED_AGENT_KEY, "agent-alice");
-    vi.spyOn(api, "listAgents").mockResolvedValue([
-      { id: "agent-alice", name: "Alice", status: "active" } as never,
-      { id: "agent-bob", name: "Bob", status: "active" } as never,
-    ]);
-
-    function Switcher() {
-      const { selectAgent } = useStore();
-      return <button onClick={() => selectAgent("agent-bob")}>switch</button>;
-    }
-    render(<StoreProvider><Switcher /></StoreProvider>);
-    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
-
-    const before = {
-      campaigns: vi.mocked(api.getWorkflows).mock.calls.length,
-      customers: vi.mocked(api.getCustomerOperations).mock.calls.length,
-      growth: vi.mocked(api.getPaidGrowth).mock.calls.length,
-      evolution: vi.mocked(api.getEvolution).mock.calls.length,
-      memories: vi.mocked(api.listMemories).mock.calls.length,
-      notifications: vi.mocked(api.listNotifications).mock.calls.length,
-    };
-    fireEvent.click(screen.getByRole("button", { name: "switch" }));
-
-    await waitFor(() => expect(vi.mocked(api.getWorkflows).mock.calls.length).toBeGreaterThan(before.campaigns));
-    expect(vi.mocked(api.getCustomerOperations).mock.calls.length).toBeGreaterThan(before.customers);
-    expect(vi.mocked(api.getPaidGrowth).mock.calls.length).toBeGreaterThan(before.growth);
-    expect(vi.mocked(api.getEvolution).mock.calls.length).toBeGreaterThan(before.evolution);
-    expect(vi.mocked(api.listMemories).mock.calls.length).toBeGreaterThan(before.memories);
-    expect(vi.mocked(api.listNotifications).mock.calls.length).toBeGreaterThan(before.notifications);
+    await waitFor(() => expect(screen.getByTestId("runs").textContent).toContain("legacy run"));
+    expect(screen.getByTestId("runs").textContent).toContain("jarvis run");
   });
 });

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, AudioLines, Brain, Cpu, Loader2, Mic, MicOff, RefreshCw, ShieldCheck, ShieldOff, Sparkles, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSessionStream } from "@/lib/hooks";
-import { useAgents, useConnectionStatus, useMemories, useStore } from "@/lib/store";
+import { useJarvis, useConnectionStatus, useMemories, useStore } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -37,7 +37,7 @@ function speechRecognitionConstructor(): SpeechRecognitionConstructor | null {
 }
 
 export function SimpleJarvisHome() {
-  const { activeAgent } = useAgents();
+  const { jarvis } = useJarvis();
   const { memories } = useMemories();
   const { primarySessionId } = useStore();
   const connectionStatus = useConnectionStatus();
@@ -68,24 +68,24 @@ export function SimpleJarvisHome() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  // The composer mirrors the active agent's brain — the single source of
-  // truth, shared with the agents page and the fleet presets. Guarded on the
-  // agent id (not the record) so store refreshes mid-typing don't reset it.
+  // The composer mirrors Jarvis's brain — the single source of truth, shared
+  // with automations. Guarded on the id (not the record) so store refreshes
+  // mid-typing don't reset it.
   useEffect(() => {
-    if (!activeAgent || brainInitRef.current === activeAgent.id) return;
-    brainInitRef.current = activeAgent.id;
+    if (!jarvis || brainInitRef.current === jarvis.id) return;
+    brainInitRef.current = jarvis.id;
     const frame = window.requestAnimationFrame(() => {
-      setModel(activeAgent.brainLane);
-      if (activeAgent.brainLane === "claude") {
-        setClaudeModel((activeAgent.brainModel as ClaudeModel) || "default");
-      } else if (activeAgent.brainLane === "local") {
-        setLocalModel(activeAgent.brainModel);
-      } else if (activeAgent.brainLane === "opencode") {
-        setOpencodeModel(activeAgent.brainModel);
+      setModel(jarvis.brainLane);
+      if (jarvis.brainLane === "claude") {
+        setClaudeModel((jarvis.brainModel as ClaudeModel) || "default");
+      } else if (jarvis.brainLane === "local") {
+        setLocalModel(jarvis.brainModel);
+      } else if (jarvis.brainLane === "opencode") {
+        setOpencodeModel(jarvis.brainModel);
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeAgent]);
+  }, [jarvis]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("jarvis-simple-auto-approve");
@@ -128,13 +128,13 @@ export function SimpleJarvisHome() {
 
   useEffect(() => {
     let cancelled = false;
-    const conversationKey = `${activeAgent?.id ?? "default"}:${model}`;
+    const conversationKey = `${jarvis?.id ?? "default"}:${model}`;
     api.getChat(model)
       .then(({ session }) => {
         if (cancelled) return;
         setSentSessions((current) => ({
           ...current,
-          [model]: session ? { agentId: activeAgent?.id ?? null, sessionId: session.id } : undefined,
+          [model]: session ? { agentId: jarvis?.id ?? null, sessionId: session.id } : undefined,
         }));
         if (session && model === "claude") {
           setAutoApproveLocalTools(session.autoApproveLocalTools);
@@ -150,7 +150,7 @@ export function SimpleJarvisHome() {
         if (!cancelled) setLoadedConversationKey(conversationKey);
       });
     return () => { cancelled = true; };
-  }, [activeAgent?.id, model]);
+  }, [jarvis?.id, model]);
 
   const onActivity = useCallback((active: boolean) => setWorking(active), []);
 
@@ -169,7 +169,7 @@ export function SimpleJarvisHome() {
           : await api.sendChat(text, model, claudeModel, autoApproveLocalTools);
       setSentSessions((current) => ({
         ...current,
-        [model]: { agentId: activeAgent?.id ?? null, sessionId: id },
+        [model]: { agentId: jarvis?.id ?? null, sessionId: id },
       }));
       setActivityKey((key) => key + 1);
     } catch (err) {
@@ -222,19 +222,17 @@ export function SimpleJarvisHome() {
   }, [primarySessionId, sentSessions, model]);
 
   const isActive = sending || working || listening;
-  const agentName = activeAgent?.name ?? "Jarvis";
+  const agentName = jarvis?.name ?? "Jarvis";
   const selectedSession = sentSessions[model];
-  const conversationKey = `${activeAgent?.id ?? "default"}:${model}`;
+  const conversationKey = `${jarvis?.id ?? "default"}:${model}`;
   const loadingConversation = loadedConversationKey !== conversationKey;
-  const sessionId = selectedSession?.agentId === (activeAgent?.id ?? null)
+  const sessionId = selectedSession?.agentId === (jarvis?.id ?? null)
     ? selectedSession.sessionId
     : model === "claude" ? primarySessionId : null;
 
-  /** Every composer pick rewrites the active agent's brain — one source of truth. */
+  /** Every composer pick rewrites Jarvis's brain — one source of truth. */
   function writeBrain(brainLane: ChatModel, brainModel: string | null) {
-    const id = activeAgent?.id;
-    if (!id) return;
-    api.updateAgent(id, { brainLane, brainModel }).catch((err) => {
+    api.updateJarvis({ brainLane, brainModel }).catch((err) => {
       setError(err instanceof Error ? err.message : String(err));
     });
   }
@@ -299,7 +297,7 @@ export function SimpleJarvisHome() {
       <header className="relative z-20 flex items-center justify-between gap-4 px-5 py-5 sm:px-8">
         <div className="flex items-center gap-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-label font-semibold text-accent-bright ring-1 ring-inset ring-accent/30">
-            {activeAgent?.avatar ?? "J"}
+            {jarvis?.avatar ?? "J"}
           </span>
           <div>
             <div className="text-label font-semibold text-foreground">{agentName}</div>

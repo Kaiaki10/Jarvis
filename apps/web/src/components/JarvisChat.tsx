@@ -13,7 +13,7 @@ import { SessionTranscript } from "@/components/SessionTranscript";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Crossfade } from "@/components/motion";
-import { useAgents, useConnectionStatus, useMemories } from "@/lib/store";
+import { useJarvis, useConnectionStatus, useMemories } from "@/lib/store";
 
 /**
  * The one ongoing conversation with Jarvis.
@@ -40,22 +40,22 @@ export function JarvisChat() {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const followStreamRef = useRef(true);
   const { memories } = useMemories();
-  const { activeAgent } = useAgents();
+  const { jarvis } = useJarvis();
   const connectionStatus = useConnectionStatus();
 
-  // Mirror the active agent's brain (see SimpleJarvisHome): composer state is
+  // Mirror Jarvis's brain (see SimpleJarvisHome): composer state is
   // a view of it, never a second truth. Guarded on the agent id so store
   // refreshes mid-typing don't reset it.
   useEffect(() => {
-    if (!activeAgent || brainInitRef.current === activeAgent.id) return;
-    brainInitRef.current = activeAgent.id;
+    if (!jarvis || brainInitRef.current === jarvis.id) return;
+    brainInitRef.current = jarvis.id;
     const frame = window.requestAnimationFrame(() => {
-      setModel(activeAgent.brainLane);
-      if (activeAgent.brainLane === "local") setLocalModel(activeAgent.brainModel);
-      else if (activeAgent.brainLane === "opencode") setOpencodeModel(activeAgent.brainModel);
+      setModel(jarvis.brainLane);
+      if (jarvis.brainLane === "local") setLocalModel(jarvis.brainModel);
+      else if (jarvis.brainLane === "opencode") setOpencodeModel(jarvis.brainModel);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeAgent]);
+  }, [jarvis]);
 
   useEffect(() => {
     api
@@ -124,11 +124,9 @@ export function JarvisChat() {
     }
   }
 
-  /** Every pick rewrites the active agent's brain — one source of truth. */
+  /** Every pick rewrites Jarvis's brain — one source of truth. */
   function writeBrain(brainLane: ChatModel, brainModel: string | null) {
-    const id = activeAgent?.id;
-    if (!id) return;
-    api.updateAgent(id, { brainLane, brainModel }).catch(() => {});
+    api.updateJarvis({ brainLane, brainModel }).catch(() => {});
   }
 
   function chooseModel(next: ChatModel) {

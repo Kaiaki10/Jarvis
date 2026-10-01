@@ -25,7 +25,7 @@ export type AgentChatOutcome =
   | { ok: true; sessionId: string; resumed: boolean; afterSeq: number }
   | { ok: false; reason: AgentChatFailureReason; message: string };
 
-/** One continuous agent conversation, regardless of whether the turn came from the dashboard or Slack. */
+/** One continuous agent conversation, whichever lane the turn runs on. */
 export function sendAgentChat(
   agentId: string,
   text: string,

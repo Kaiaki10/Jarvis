@@ -47,13 +47,10 @@ async function resolveOperator(cookieHeader: string | null): Promise<Operator | 
  * orchestrator's generated token, so there is nothing to trace or include.
  */
 export async function GET(request: Request) {
-  const agentId = new URL(request.url).searchParams.get("agentId");
-
   // Same switch the proxy reads, from the same module — the two gates have to
   // agree or the dashboard loads and then fails every request.
-  let operator: Operator | null = null;
   if (loginRequired()) {
-    operator = await resolveOperator(request.headers.get("cookie"));
+    const operator = await resolveOperator(request.headers.get("cookie"));
     if (!operator) return Response.json({ error: "Not logged in" }, { status: 401 });
   }
 
@@ -67,23 +64,6 @@ export async function GET(request: Request) {
   const masterToken = readFileSync(/*turbopackIgnore: true*/ TOKEN_PATH, "utf-8").trim();
   if (!masterToken) {
     return Response.json({ error: "Orchestrator token file is empty." }, { status: 503 });
-  }
-
-  if (agentId) {
-    // Minted server-to-server: this process already legitimately holds the
-    // master token (the file read above), and has already confirmed the
-    // operator session same-origin, which a direct browser request to the
-    // orchestrator never reliably would (different port — see api.ts's own
-    // note on why it doesn't send credentials cross-origin).
-    const mint = await fetch(`${BASE_URL}/agent-tokens`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${masterToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId, ...(operator ? { operatorId: operator.id } : {}) }),
-      cache: "no-store",
-    }).catch(() => null);
-    if (!mint) return Response.json({ error: "Could not reach the orchestrator to mint an agent token." }, { status: 502 });
-    const body = await mint.json().catch(() => ({}));
-    return Response.json(body, { status: mint.status, headers: { "Cache-Control": "no-store" } });
   }
 
   return Response.json(

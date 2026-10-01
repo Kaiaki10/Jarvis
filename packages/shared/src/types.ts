@@ -30,19 +30,6 @@ export interface AgentRecord {
   updatedAt: string;
 }
 
-export interface CreateAgentRequest {
-  name: string;
-  role?: string;
-  systemPrompt?: string;
-  cwd?: string;
-  avatar?: string;
-  color?: string;
-  permissionMode?: string;
-  allowedTools?: string[];
-  brainLane?: ChatModel;
-  brainModel?: string | null;
-}
-
 export interface UpdateAgentRequest {
   name?: string;
   role?: string;
@@ -54,7 +41,6 @@ export interface UpdateAgentRequest {
   allowedTools?: string[] | null;
   brainLane?: ChatModel;
   brainModel?: string | null;
-  status?: AgentStatus;
 }
 
 export type SessionStatus =
@@ -379,49 +365,6 @@ export interface PlatformDefinition {
   capabilities?: string[];
   /** Expected reporting cadence or window, shown without implying fresher data than the API provides. */
   dataFreshness?: string;
-  /**
-   * Matched against a detected confirmation email's body to find the actual
-   * link, for platforms with an `"email_confirm"` step. `[linkPattern, flags]`
-   * rather than a `RegExp` because platform definitions are also serialized
-   * to the browser as plain JSON.
-   */
-  confirmationLinkPattern?: [pattern: string, flags: string];
-}
-
-/**
- * Where a platform account-creation attempt stands. One row per platform
- * (per agent, when agents matter — signup is usually done once per install).
- * Persisted rather than kept in React state because a real signup can sit
- * waiting on a confirmation email for minutes to hours.
- */
-export interface PlatformSignupProgress {
-  platformId: string;
-  currentStep: number;
-  signupEmail: string | null;
-  /**
-   * Off by default. When true, Jarvis fetches a detected confirmation link
-   * itself instead of only surfacing it — an explicit choice the operator
-   * makes for this one signup attempt, not a platform-wide default.
-   */
-  autoFollow: boolean;
-  startedAt: string;
-  updatedAt: string;
-}
-
-export interface StartPlatformSignupRequest {
-  signupEmail: string;
-  autoFollow?: boolean;
-}
-
-/** A confirmation email Jarvis detected for a platform signup in progress. */
-export interface SignupEmailEvent {
-  id: string;
-  platformId: string;
-  sender: string;
-  subject: string;
-  receivedAt: string;
-  matchedLink: string | null;
-  action: "surfaced" | "auto_followed";
 }
 
 /**
@@ -698,66 +641,6 @@ export interface AutomationRehearsal {
   approvalRequired: boolean;
 }
 
-export type EvolutionStage =
-  | "observed"
-  | "planned"
-  | "building"
-  | "review"
-  | "promoting"
-  | "promoted"
-  | "rolled_back";
-
-export type EvolutionRisk = "low" | "medium" | "high" | "critical";
-export type EvolutionChangeClass = "knowledge" | "behavior" | "capability" | "product" | "security";
-export type EvolutionAutonomy = "automatic" | "after_checks" | "approval_required";
-
-export interface EvolutionProposalRecord {
-  id: string;
-  agentId: string | null;
-  title: string;
-  problem: string;
-  expectedValue: string;
-  changeClass: EvolutionChangeClass;
-  risk: EvolutionRisk;
-  stage: EvolutionStage;
-  evidence: string | null;
-  rollbackPlan: string | null;
-  labSessionId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  promotedAt: string | null;
-}
-
-export interface EvolutionPolicyRecord {
-  changeClass: EvolutionChangeClass;
-  autonomy: EvolutionAutonomy;
-  updatedAt: string | null;
-}
-
-export interface EvolutionReadiness {
-  labAvailable: boolean;
-  labPath: string;
-  labBranch: string | null;
-  promotionEngineReady: boolean;
-  automaticRollbackReady: boolean;
-}
-
-export interface EvolutionOverview {
-  proposals: EvolutionProposalRecord[];
-  policies: EvolutionPolicyRecord[];
-  readiness: EvolutionReadiness;
-}
-
-export interface CreateEvolutionProposalRequest {
-  title: string;
-  problem: string;
-  expectedValue: string;
-  changeClass: EvolutionChangeClass;
-  risk: EvolutionRisk;
-  evidence?: string;
-  rollbackPlan?: string;
-}
-
 export type WorkflowStatus = "draft" | "active" | "paused" | "completed" | "archived";
 export type WorkflowApprovalPolicy = "each_item" | "campaign";
 export type MarketingChannel = "x" | "linkedin" | "instagram" | "facebook" | "email" | "blog";
@@ -852,7 +735,6 @@ export interface WorkflowOverview {
   /** Stage 1 links, for every workflow in this list. */
   accounts: WorkflowAccountRecord[];
   /** The voice each workflow writes in, where one is set. */
-  characters: WorkflowCharacterRecord[];
   /** Engagement observations per workflow, for stage 3. Zero until ingestion exists. */
   metricCounts: Record<string, number>;
   /** Stage 5 output per workflow. */
@@ -1255,71 +1137,6 @@ export interface UpdateCustomerRequest {
   revenueMinor?: number | null;
 }
 
-export type AgentConversationStatus =
-  | "idle"
-  | "running"
-  | "completed"
-  | "stopped"
-  | "error";
-
-/**
- * A room where two or more agents talk to each other.
- *
- * The caps live on the record rather than in config: two agents talking is an
- * infinite generator running unattended, and a room carries its own limits so
- * changing a default can never unbound a room already in flight.
- */
-export interface AgentConversationRecord {
-  id: string;
-  title: string;
-  topic: string;
-  status: AgentConversationStatus;
-  turnCap: number;
-  budgetSeconds: number;
-  turnsUsed: number;
-  startedAt: string | null;
-  endedAt: string | null;
-  /** Why it ended, in words, so a finished room explains itself. */
-  stopReason: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AgentConversationParticipantRecord {
-  conversationId: string;
-  agentId: string;
-  /** The session carrying this agent's side of the room. */
-  sessionId: string | null;
-  position: number;
-  name: string;
-  avatar: string;
-}
-
-export interface AgentConversationMessageRecord {
-  id: string;
-  conversationId: string;
-  turn: number;
-  /** Null means the human interjected. */
-  speakerAgentId: string | null;
-  speakerName: string;
-  body: string;
-  createdAt: string;
-}
-
-export interface CreateAgentConversationRequest {
-  title: string;
-  topic: string;
-  agentIds: string[];
-  turnCap?: number;
-  budgetSeconds?: number;
-}
-
-export interface AgentConversationDetail {
-  conversation: AgentConversationRecord;
-  participants: AgentConversationParticipantRecord[];
-  messages: AgentConversationMessageRecord[];
-}
-
 /**
  * Descriptive trend signals across content, workflows, customers, and paid
  * spend — deliberately a read-only summary of what already exists, not a new
@@ -1506,45 +1323,6 @@ export function workflowStages(input: WorkflowStageInput): WorkflowStageStatus[]
             : "Needs measured posts",
     },
   ];
-}
-
-/**
- * The voice a workflow speaks in.
- *
- * `exemplars` are sample posts rather than a description of tone: current
- * models match a voice far better from a writing sample than from adjectives,
- * which makes this the highest-value field on the sheet.
- */
-export interface WorkflowCharacterRecord {
-  workflowId: string;
-  name: string;
-  persona: string;
-  voiceRules: string;
-  exemplars: string[];
-  appearance: string;
-  /** Locked turnaround references. Empty until image generation exists. */
-  referenceImageIds: string[];
-  /**
-   * How this character is disclosed as AI. Required, never optional —
-   * presenting an AI persona as a real person is deceptive under FTC Section 5.
-   */
-  disclosure: string;
-  /**
-   * Bumped on each material change to the voice. Content records the version
-   * that wrote it, so stage 5 can tell a voice change from a topic change.
-   */
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface SaveWorkflowCharacterRequest {
-  name: string;
-  persona?: string;
-  voiceRules?: string;
-  exemplars?: string[];
-  appearance?: string;
-  disclosure: string;
 }
 
 /**

@@ -2,7 +2,7 @@
  * CLI: node backupDatabaseTo.js <destPath>
  *
  * An online, transactionally-consistent SQLite snapshot for
- * `scripts/promote-lab.ps1` to keep as a pre-promotion restore point. Uses
+ * a script that wants a restore point before a risky change. Uses
  * `node:sqlite`'s `backup()` (db/backup.ts) rather than a raw file copy —
  * the live database is WAL-mode, so a plain copy of `jarvis.db` alone can
  * miss committed data still sitting in `-wal`, while this produces a single

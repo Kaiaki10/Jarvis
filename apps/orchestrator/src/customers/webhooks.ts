@@ -48,10 +48,7 @@ function normalizeRecipients(to: unknown): string[] {
 
 /**
  * Verifies a Resend "email.received" webhook and fetches+parses the full
- * message. Shared by the customer-support inbound path (`handleResendWebhook`
- * below) and the signup-confirmation path (`platforms/signupInbox.ts`) — both
- * arrive at the same webhook URL, since Resend has one inbound endpoint per
- * connected domain regardless of which address on it received the mail.
+ * message for the customer-support inbound path below.
  *
  * Returns null for a webhook event that isn't a received email (not an
  * error — Resend's webhook can carry other event types on the same URL).
@@ -90,13 +87,7 @@ export async function verifyAndFetchResendEmail(
   };
 }
 
-/**
- * The customer-support half of Resend inbound handling, operating on an
- * already verified+fetched email — split out from the webhook verification
- * itself so the route can decide, per email, whether it's a platform
- * signup confirmation (`platforms/signupInbox.ts`) instead of a customer
- * message, without fetching the same email from Resend's API twice.
- */
+/** Resend inbound handling for an already verified+fetched email. */
 export function ingestResendCustomerEmail(email: ResendInboundEmail): boolean {
   if (!email.body) return false;
   const ingested = ingestCustomerMessage({
