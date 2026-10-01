@@ -246,11 +246,11 @@ function ShellFrame({ children }: { children: ReactNode }) {
   const { mode } = useExperienceMode();
   const { unread } = useNotifications();
   const simpleHome = pathname === "/" && mode === "simple";
-  const [navOpen, setNavOpen] = useState(false);
-
-  // A route change means the user just picked a destination — the drawer has
-  // done its job and should get out of the way rather than sit open over it.
-  useEffect(() => setNavOpen(false), [pathname]);
+  // The drawer remembers the route it was opened on. A route change means the
+  // user just picked a destination, so it closes itself by derivation rather
+  // than by an effect that would re-render after every navigation.
+  const [navOpenOn, setNavOpenOn] = useState<string | null>(null);
+  const navOpen = navOpenOn === pathname;
 
   return (
     <div className="flex min-h-screen">
@@ -258,9 +258,9 @@ function ShellFrame({ children }: { children: ReactNode }) {
           same thing, far more directly, and two ambient signals for one state
           is one too many. */}
       {!simpleHome && <AmbientState />}
-      {!simpleHome && <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />}
+      {!simpleHome && <Sidebar open={navOpen} onClose={() => setNavOpenOn(null)} />}
       <div className="flex min-w-0 flex-1 flex-col">
-        {!simpleHome && <MobileTopBar unread={unread} onOpenNav={() => setNavOpen(true)} />}
+        {!simpleHome && <MobileTopBar unread={unread} onOpenNav={() => setNavOpenOn(pathname)} />}
         <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>

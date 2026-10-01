@@ -28,22 +28,26 @@ export function CryptoWallet() {
   const [envelope, setEnvelope] = useState<SpendEnvelopeRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
-    try {
-      const [spender, granted, spend] = await Promise.all([
+  const reload = useCallback(
+    () =>
+      Promise.all([
         api.getWalletSpenderAddress(),
         api.listWalletPermissions(),
         api.getSpend(),
-      ]);
-      setAddress(spender.address);
-      setPermissions(granted);
-      setEnvelope(spend.envelopes.find((e) => e.rail === "wallet") ?? null);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setPermissions([]);
-    }
-  }, []);
+      ]).then(
+        ([spender, granted, spend]) => {
+          setAddress(spender.address);
+          setPermissions(granted);
+          setEnvelope(spend.envelopes.find((e) => e.rail === "wallet") ?? null);
+          setError(null);
+        },
+        (err) => {
+          setError(err instanceof Error ? err.message : String(err));
+          setPermissions([]);
+        }
+      ),
+    []
+  );
 
   useEffect(() => {
     void reload();
