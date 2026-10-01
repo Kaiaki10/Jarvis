@@ -7,8 +7,9 @@
   (needed to capture logs) and Task Scheduler does not reliably kill the node child
   it spawns. The orphan keeps holding ports 3000/4317, the freshly started instance
   fails to bind, and the OLD code carries on serving — silently, which is the worst
-  part. So this stops the tasks, kills whatever still owns the ports, then starts
-  them again.
+  part. So this stops the tasks, kills whatever still owns the ports, rebuilds,
+  then starts them again. If a build fails, the previous build is put back and
+  restarted, and the script exits 1.
 
 .PARAMETER SkipBuild
   Restart without rebuilding.
@@ -47,24 +48,18 @@ function Stop-PortOwner {
   }
 }
 
-if (-not $SkipBuild) {
+# A restore puts back a prior build, so building first would only be overwritten.
+$build = -not $SkipBuild -and -not $RestoreFrom
+if ($build) {
   $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
   if (-not $npm) { $npm = (Get-Command npm -ErrorAction SilentlyContinue).Source }
   if (-not $npm) { throw "npm was not found on PATH." }
-
-  Write-Host "Building orchestrator..." -ForegroundColor Cyan
-  Push-Location $orchestratorDir
-  & $npm run build
-  if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Orchestrator build failed - not restarting." }
-  Pop-Location
-
-  Write-Host "Building dashboard..." -ForegroundColor Cyan
-  Push-Location $webDir
-  & $npm run build
-  if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Dashboard build failed - not restarting." }
-  Pop-Location
 }
 
+# Building happens only after the service is stopped. `next start` loads chunk
+# files from .next/ on demand, and `next build` rewrites .next/ in place with new
+# content hashes, so building under a live dashboard crash-loops it with
+# ChunkLoadError (seen 2026-08-24), which then takes the orchestrator down too.
 Write-Host "Stopping..." -ForegroundColor Cyan
 # S4U child processes can be protected from an interactive Stop-Process call.
 # Ask current versions to exit themselves first; the port-owner pass below is a
@@ -107,6 +102,47 @@ if ($RestoreFrom) {
   Copy-Item -Force (Join-Path $RestoreFrom "jarvis.db") (Join-Path $orchestratorDir "jarvis.db")
 }
 
+$buildError = $null
+if ($build) {
+  # Set the running build aside first. Both builds clear their output before
+  # writing, so a failed build would otherwise leave nothing to start, and the
+  # service is already down at this point. On failure the old build goes back
+  # and is restarted, so a broken change costs a restart, not an outage.
+  $lastGood = Join-Path $root "promotion-snapshots\last-good"
+  if (Test-Path $lastGood) { Remove-Item -Recurse -Force $lastGood }
+  New-Item -ItemType Directory -Force $lastGood | Out-Null
+  $outputs = @(
+    @{ Path = (Join-Path $orchestratorDir "dist"); Saved = (Join-Path $lastGood "orchestrator-dist") },
+    @{ Path = (Join-Path $webDir ".next"); Saved = (Join-Path $lastGood "web-next") }
+  )
+  foreach ($o in $outputs) {
+    if (Test-Path $o.Path) { Copy-Item -Recurse -Force $o.Path $o.Saved }
+  }
+
+  foreach ($step in @(@{ Name = "orchestrator"; Dir = $orchestratorDir }, @{ Name = "dashboard"; Dir = $webDir })) {
+    Write-Host "Building $($step.Name)..." -ForegroundColor Cyan
+    Push-Location $step.Dir
+    # Under "Stop", PowerShell 5.1 turns a failing build's stderr into a
+    # terminating NativeCommandError, which would skip the rollback below with
+    # the service already down. Judge the build by its exit code instead.
+    $ErrorActionPreference = "Continue"
+    & $npm run build
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    Pop-Location
+    if ($code -ne 0) { $buildError = "The $($step.Name) build failed"; break }
+  }
+
+  if ($buildError) {
+    Write-Host "$buildError - restoring the previous build and restarting it." -ForegroundColor Red
+    foreach ($o in $outputs) {
+      if (-not (Test-Path $o.Saved)) { continue }
+      if (Test-Path $o.Path) { Remove-Item -Recurse -Force $o.Path }
+      Copy-Item -Recurse -Force $o.Saved $o.Path
+    }
+  }
+}
+
 Write-Host "Starting..." -ForegroundColor Cyan
 foreach ($t in $tasks) {
   if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
@@ -135,5 +171,9 @@ Write-Host ("  orchestrator : " + $(if ($orchestrator) { "up" } else { "NOT RESP
 Write-Host ("  dashboard    : " + $(if ($dashboard) { "up" } else { "NOT RESPONDING" })) -ForegroundColor $(if ($dashboard) { "Green" } else { "Red" })
 if (-not ($orchestrator -and $dashboard)) {
   Write-Host "Check scripts/logs for errors." -ForegroundColor Yellow
+  exit 1
+}
+if ($buildError) {
+  Write-Host "$buildError, so the PREVIOUS build is what's running. Fix the error above and run this again." -ForegroundColor Red
   exit 1
 }
