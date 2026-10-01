@@ -8,20 +8,17 @@ import type { Server } from "node:http";
 /**
  * The first real HTTP-layer integration test in this repo: boots the actual
  * Express app on an OS-assigned ephemeral port (never the live service's
- * :4317) and issues real requests against it. Nothing short of this actually
- * proves the auth middleware and `scopedAgentId`'s cross-check behave
- * correctly *together* -- `agentAuth.test.ts` covers the decision table in
- * isolation, but not that `server.ts` wires it up correctly.
+ * :4317) and issues real requests against it, so the auth middleware and
+ * route wiring are proven together rather than only in isolation.
  */
 let baseUrl: string;
 let masterToken: string;
 let server: Server;
-let agentA: { id: string };
-let agentB: { id: string };
+let legacyAgent: { id: string };
 
 beforeAll(async () => {
   // Importing server.ts pulls in essentially the whole app's module graph
-  // (scheduler, Slack bridge, evolution, paid growth, customers, ...) for the
+  // (scheduler, paid growth, customers, ...) for the
   // first time -- transpiling and evaluating all of it comfortably exceeds
   // vitest's default 10s hook timeout on a cold run.
   const dir = mkdtempSync(join(tmpdir(), "jarvis-http-"));
@@ -36,8 +33,8 @@ beforeAll(async () => {
   const { createAgent } = await import("../db/agentRepo.js");
 
   masterToken = apiToken();
-  agentA = createAgent({ name: "Agent A" });
-  agentB = createAgent({ name: "Agent B" });
+  // A pre-2.0 database can still hold a second agent's rows.
+  legacyAgent = createAgent({ name: "Legacy" });
 
   // `app.listen(...)` binds asynchronously -- the module import settles once
   // it's *called*, not once the OS-level bind actually completes.
@@ -56,71 +53,55 @@ function authed(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}` };
 }
 
-describe("per-agent authorization, end to end", () => {
-  it("rejects a request with no credential at all", async () => {
-    const res = await fetch(`${baseUrl}/sessions`);
-    expect(res.status).toBe(401);
+describe("Jarvis 2.0 HTTP surface", () => {
+  it("refuses a request with no token or a wrong one", async () => {
+    expect((await fetch(`${baseUrl}/sessions`)).status).toBe(401);
+    expect((await fetch(`${baseUrl}/sessions`, { headers: authed("nope") })).status).toBe(401);
   });
 
-  it("still lets the master token read unscoped -- baseline, unchanged", async () => {
+  it("serves unscoped reads with the master token", async () => {
     const res = await fetch(`${baseUrl}/sessions`, { headers: authed(masterToken) });
     expect(res.status).toBe(200);
+    expect(Array.isArray(await res.json())).toBe(true);
   });
 
-  it("refuses a bogus agent id when minting, even with the master token", async () => {
-    const res = await fetch(`${baseUrl}/agent-tokens`, {
-      method: "POST",
+  it("exposes Jarvis as one agent record and patches its brain", async () => {
+    const got = await fetch(`${baseUrl}/agent`, { headers: authed(masterToken) });
+    expect(got.status).toBe(200);
+    expect((await got.json()).name).toBe("Jarvis");
+
+    const patched = await fetch(`${baseUrl}/agent`, {
+      method: "PATCH",
       headers: { ...authed(masterToken), "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId: "00000000-0000-0000-0000-000000000000" }),
+      body: JSON.stringify({ brainLane: "local", brainModel: "qwen3:14b" }),
     });
-    expect(res.status).toBe(400);
+    expect(patched.status).toBe(200);
+    expect(await patched.json()).toMatchObject({ brainLane: "local", brainModel: "qwen3:14b" });
   });
 
-  it("mints a per-agent token for a real agent with the master token", async () => {
-    const res = await fetch(`${baseUrl}/agent-tokens`, {
-      method: "POST",
-      headers: { ...authed(masterToken), "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId: agentA.id }),
+  it("treats business context and Jarvis's persona as one value", async () => {
+    const headers = { ...authed(masterToken), "Content-Type": "application/json" };
+    const saved = await fetch(`${baseUrl}/settings`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ businessContext: "We sell hand-thrown mugs." }),
     });
-    expect(res.status).toBe(201);
-    const body = (await res.json()) as { token: string; expiresAt: string };
-    expect(body.token).toBeTruthy();
-    expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    expect(saved.status).toBe(200);
+    expect((await saved.json()).businessContext).toBe("We sell hand-thrown mugs.");
+    const agent = await (await fetch(`${baseUrl}/agent`, { headers: authed(masterToken) })).json();
+    expect(agent.systemPrompt).toBe("We sell hand-thrown mugs.");
   });
 
-  it("a per-agent token cannot itself mint another token", async () => {
-    const mint = await fetch(`${baseUrl}/agent-tokens`, {
-      method: "POST",
-      headers: { ...authed(masterToken), "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId: agentA.id }),
-    });
-    const { token: agentToken } = (await mint.json()) as { token: string };
-
-    const res = await fetch(`${baseUrl}/agent-tokens`, {
-      method: "POST",
-      headers: { ...authed(agentToken), "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId: agentB.id }),
-    });
-    expect(res.status).toBe(403);
+  it("no longer serves the removed multi-agent, room, and evolution routes", async () => {
+    for (const path of ["/agents", "/conversations", "/evolution"]) {
+      expect((await fetch(`${baseUrl}${path}`, { headers: authed(masterToken) })).status).toBe(404);
+    }
   });
 
-  it("a per-agent token works for its own agent, is refused for another, and is refused unscoped", async () => {
-    const mint = await fetch(`${baseUrl}/agent-tokens`, {
-      method: "POST",
-      headers: { ...authed(masterToken), "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId: agentA.id }),
-    });
-    const { token: agentToken } = (await mint.json()) as { token: string };
-
-    const own = await fetch(`${baseUrl}/sessions?agentId=${agentA.id}`, { headers: authed(agentToken) });
-    expect(own.status).toBe(200);
-
-    const other = await fetch(`${baseUrl}/sessions?agentId=${agentB.id}`, { headers: authed(agentToken) });
-    expect(other.status).toBe(403);
-
-    // This is the crux of the gap being closed: possessing a valid token no
-    // longer means being able to name any agent, or read across all of them.
-    const unscoped = await fetch(`${baseUrl}/sessions`, { headers: authed(agentToken) });
-    expect(unscoped.status).toBe(403);
+  it("still narrows to a legacy agent by id, and rejects an unknown one", async () => {
+    const known = await fetch(`${baseUrl}/sessions?agentId=${legacyAgent.id}`, { headers: authed(masterToken) });
+    expect(known.status).toBe(200);
+    const unknown = await fetch(`${baseUrl}/sessions?agentId=00000000-0000-4000-8000-00000000dead`, { headers: authed(masterToken) });
+    expect(unknown.status).toBe(400);
   });
 });

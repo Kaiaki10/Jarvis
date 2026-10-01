@@ -5,7 +5,6 @@ import { AlertTriangle, CheckCircle2, Loader2, Plus, Trash2, Users } from "lucid
 import type { ConnectionRecord, PlatformDefinition } from "@jarvis/shared";
 import { api } from "@/lib/api";
 import { useConnections } from "@/lib/hooks";
-import { useAgents } from "@/lib/store";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -23,7 +22,6 @@ import { AnimatedItem, AnimatedList, Crossfade } from "@/components/motion";
  */
 export function PlatformAccounts({ platform }: { platform: PlatformDefinition }) {
   const { connections, refresh } = useConnections();
-  const { agents } = useAgents();
   const [adding, setAdding] = useState(false);
 
   const accounts = useMemo(
@@ -64,7 +62,6 @@ export function PlatformAccounts({ platform }: { platform: PlatformDefinition })
           <AnimatedItem key={account.id}>
             <AccountRow
               account={account}
-              agentName={agents.find((a) => a.id === account.agentId)?.name}
               canDelete={accounts.length > 1}
               onChanged={refresh}
             />
@@ -90,12 +87,10 @@ export function PlatformAccounts({ platform }: { platform: PlatformDefinition })
 
 function AccountRow({
   account,
-  agentName,
   canDelete,
   onChanged,
 }: {
   account: ConnectionRecord;
-  agentName?: string;
   canDelete: boolean;
   onChanged: () => Promise<void>;
 }) {
@@ -133,15 +128,7 @@ function AccountRow({
             {account.label ?? account.detail ?? "Original account"}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-micro text-muted">
-            {/* Shared vs owned matters: a shared account is reachable by every
-                agent, which is exactly what you do not want for a second business. */}
-            <span>{account.agentId ? `Owned by ${agentName ?? "an agent"}` : "Shared with every agent"}</span>
-            {account.dailyActionCap !== null && (
-              <>
-                <span className="h-1 w-1 rounded-full bg-border-strong" />
-                <span>{account.dailyActionCap} actions a day</span>
-              </>
-            )}
+            {account.dailyActionCap !== null && <span>{account.dailyActionCap} actions a day</span>}
           </div>
         </div>
 

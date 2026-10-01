@@ -15,8 +15,8 @@
 
 .PARAMETER RestoreFrom
   Restore dist/, .next/, and jarvis.db from a snapshot directory before
-  starting back up — used by scripts/promote-lab.ps1 to roll back a
-  promotion that didn't come back healthy. Restoring happens after the old
+  starting back up — for rolling back an update that didn't come back
+  healthy. Restoring happens after the old
   process has released the port (and therefore its file handles) and before
   the new one opens them, so nothing is swapped out from under a live
   process.

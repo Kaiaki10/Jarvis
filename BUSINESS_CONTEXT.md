@@ -41,12 +41,13 @@ _Anything not listed here must not be asserted._
     **not** unlimited — heavy use hits the plan's rate limits, and setting
     `ANTHROPIC_API_KEY` switches it to pay-per-token. Never say cost is fixed, free,
     or unmetered without that caveat. Chat and automations can also run on local
-    Ollama models with no subscription at all — each agent's brain picks its lane,
+    Ollama models with no subscription at all — Jarvis's brain setting picks the lane,
     and anything Claude-specific simply waits until a subscription exists.
-  - Missions, campaigns and a content pipeline, customer operations across web chat,
-    email and social DMs, durable memory, scheduled automations, and an evolution
-    centre that tracks its own gaps.
-  - Multiple agents with isolated workspaces, and agent-to-agent conversations.
+  - Campaigns and a content pipeline, paid-growth campaigns with approval-gated
+    spend, customer operations across web chat, email and social DMs, missions and
+    tasks, durable memory, and scheduled automations.
+  - A single assistant. (Earlier builds had multiple agents and agent-to-agent
+    conversations; Jarvis 2.0 removed them. Never describe them as current.)
   - Outbound actions — posting, messaging, emailing, spending — are gated behind a
     human approval prompt by construction, not by configuration.
   - Stripe Payment Links for receiving money, with receipts recorded only from

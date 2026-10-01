@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Archive, Brain, CheckCircle2, Plus, RotateCcw, Sparkles, Users } from "lucide-react";
+import { Archive, Brain, CheckCircle2, Plus, RotateCcw, Sparkles } from "lucide-react";
 import type { MemoryKind, MemoryRecord } from "@jarvis/shared";
 import { api } from "@/lib/api";
-import { useAgents, useMemories } from "@/lib/store";
+import { useMemories } from "@/lib/store";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -23,8 +23,6 @@ export function MemoryCenter() {
   const { memories, reflections, refresh } = useMemories();
   const [content, setContent] = useState("");
   const [kind, setKind] = useState<MemoryKind>("preference");
-  const [shared, setShared] = useState(false);
-  const { activeAgent } = useAgents();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const active = memories.filter((memory) => memory.status === "active");
@@ -35,7 +33,7 @@ export function MemoryCenter() {
     setSaving(true);
     setError(null);
     try {
-      await api.createMemory({ kind, content: content.trim(), shared });
+      await api.createMemory({ kind, content: content.trim() });
       setContent("");
       await refresh();
     } catch (err) {
@@ -114,21 +112,6 @@ export function MemoryCenter() {
               placeholder="Example: I prefer launch reviews on Tuesdays."
               maxLength={1000}
             />
-            <label className="flex items-start gap-2.5 rounded-lg border border-border bg-black/15 px-3 py-2.5">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
-                checked={shared}
-                onChange={(event) => setShared(event.target.checked)}
-              />
-              <span className="min-w-0">
-                <span className="block text-label text-foreground">Share with every agent</span>
-                <span className="block text-micro text-muted">
-                  For facts about the business itself. Leave off to keep it to{" "}
-                  {activeAgent?.name ?? "this agent"}.
-                </span>
-              </span>
-            </label>
             <Button className="w-full" onClick={addMemory} disabled={saving || content.trim().length < 3}>
               <Plus className="h-4 w-4" strokeWidth={1.75} />
               {saving ? "Remembering…" : "Remember this"}
@@ -158,14 +141,6 @@ function MemoryRow({
       <div className="min-w-0">
         <span className="inline-flex flex-wrap items-center gap-1.5">
           <Badge tone={active ? "accent" : "neutral"}>{KIND_LABELS[memory.kind]}</Badge>
-          {/* Whether a fact is this agent's alone or common ground changes what
-              it means to edit or archive it, so it is stated rather than implied. */}
-          {memory.agentId === null && (
-            <Badge tone="neutral">
-              <Users className="h-3 w-3" strokeWidth={1.75} />
-              Shared
-            </Badge>
-          )}
         </span>
         <p className="mt-2 text-body leading-relaxed text-foreground">{memory.content}</p>
         <p className="mt-1 text-micro text-muted">

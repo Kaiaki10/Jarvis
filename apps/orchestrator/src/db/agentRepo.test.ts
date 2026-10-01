@@ -155,52 +155,9 @@ describe("agentRepo", () => {
     expect(getAgent(agent.id)?.brainLane).toBe("local");
   });
 
-  it("applies a lane preset to every active agent without touching specifics it didn't set", async () => {
-    const { createAgent, getAgent, setBrainPreset } = await import("./agentRepo.js");
-    const pinned = createAgent({ name: "Pinned", brainLane: "local", brainModel: "llama3.2:latest" });
-    const fresh = createAgent({ name: "Fresh" });
-
-    const updated = setBrainPreset("opencode", "mimo-v2.6-flash-free");
-    expect(updated.length).toBeGreaterThanOrEqual(2);
-    // The preset model wins only where the agent has none for the lane...
-    expect(getAgent(fresh.id)?.brainLane).toBe("opencode");
-    expect(getAgent(fresh.id)?.brainModel).toBe("mimo-v2.6-flash-free");
-    // ...but an existing specific model survives the flip.
-    expect(getAgent(pinned.id)?.brainLane).toBe("opencode");
-    expect(getAgent(pinned.id)?.brainModel).toBe("llama3.2:latest");
-
-    // Null model means no opinion: every agent keeps whatever it has.
-    setBrainPreset("local", null);
-    expect(getAgent(pinned.id)?.brainLane).toBe("local");
-    expect(getAgent(pinned.id)?.brainModel).toBe("llama3.2:latest");
-    expect(getAgent(fresh.id)?.brainModel).toBe("mimo-v2.6-flash-free");
-  });
-
   it("returns undefined rather than throwing for an unknown agent", async () => {
     const { getAgent, updateAgent } = await import("./agentRepo.js");
     expect(getAgent("nope")).toBeUndefined();
     expect(updateAgent("nope", { name: "x" })).toBeUndefined();
-  });
-
-  it("archives an agent instead of deleting it", async () => {
-    const { createAgent, archiveAgent, getAgent, listAgents } = await import("./agentRepo.js");
-    const agent = createAgent({ name: "Retiring" });
-    const outcome = archiveAgent(agent.id);
-
-    expect(outcome.ok).toBe(true);
-    // The row survives, so its missions and runs stay attributable.
-    expect(getAgent(agent.id)?.status).toBe("archived");
-    expect(listAgents("active").some((a) => a.id === agent.id)).toBe(false);
-  });
-
-  it("refuses to archive the last active agent", async () => {
-    const { listAgents, archiveAgent } = await import("./agentRepo.js");
-    const active = listAgents("active");
-    for (const agent of active.slice(1)) archiveAgent(agent.id);
-
-    const last = listAgents("active");
-    expect(last.length).toBe(1);
-    const outcome = archiveAgent(last[0].id);
-    expect(outcome).toEqual({ ok: false, reason: "last_active_agent" });
   });
 });
