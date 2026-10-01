@@ -431,7 +431,7 @@ function BrandDetail({ brand, prompts, runs, campaigns, publishedContent, artlis
                 </div>
                 <div className="mt-0.5 line-clamp-1 text-label text-muted">{campaign.objective}</div>
               </div>
-              <Link href="/under-the-hood/workflows" className="text-label text-accent-foreground hover:text-white">Open campaign →</Link>
+              <Link href="/campaigns" className="text-label text-accent-foreground hover:text-white">Open campaign →</Link>
             </div>
           ))}
           <div><Button variant="secondary" size="sm" onClick={onNewCampaign}><Plus className="h-3.5 w-3.5" /> New campaign</Button></div>

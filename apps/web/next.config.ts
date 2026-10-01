@@ -14,7 +14,8 @@ const MOVED_ROUTES: Array<[from: string, to: string]> = [
   ["/agents", "/under-the-hood/brain/agents"],
   ["/evolution", "/under-the-hood/brain/evolution"],
   ["/sessions", "/under-the-hood/brain/runs"],
-  ["/campaigns", "/under-the-hood/workflows"],
+  // Jarvis 2.0 moved campaigns back to the top level.
+  ["/under-the-hood/workflows", "/campaigns"],
 ];
 
 const nextConfig: NextConfig = {
