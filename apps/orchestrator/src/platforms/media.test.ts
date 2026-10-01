@@ -92,6 +92,46 @@ describe("resolveImagePath", () => {
   });
 });
 
+describe("saveImage", () => {
+  it("saves bytes under a sanitized filename", async () => {
+    const { saveImage, readImage } = await load();
+    const stored = saveImage("My Campaign Image!.png", Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    expect(stored).toMatch(/^[a-z0-9.-]+\.png$/i);
+    expect(readImage(stored).bytes.length).toBe(4);
+  });
+
+  it("suffixes rather than overwriting on collision", async () => {
+    const { saveImage } = await load();
+    const first = saveImage("banner.png", Buffer.from([1, 2, 3]));
+    const second = saveImage("banner.png", Buffer.from([4, 5, 6]));
+    expect(first).toBe("banner.png");
+    expect(second).toBe("banner-1.png");
+  });
+
+  it("refuses non-image extensions", async () => {
+    const { saveImage } = await load();
+    expect(() => saveImage("clip.mp4", Buffer.from([1, 2, 3]))).toThrow(/not an image/);
+    expect(() => saveImage("noextension", Buffer.from([1, 2, 3]))).toThrow(/not an image/);
+  });
+
+  it("refuses path structure and oversize bytes", async () => {
+    const { saveImage } = await load();
+    expect(() => saveImage("../evil.png", Buffer.from([1]))).toThrow();
+    expect(() => saveImage("big.png", Buffer.alloc(6 * 1024 * 1024))).toThrow(/5 MB/);
+    expect(() => saveImage("empty.png", Buffer.alloc(0))).toThrow();
+  });
+});
+
+describe("extensionForMimeType", () => {
+  it("maps image MIME types to extensions", async () => {
+    const { extensionForMimeType } = await load();
+    expect(extensionForMimeType("image/png")).toBe(".png");
+    expect(extensionForMimeType("image/jpeg; charset=binary")).toBe(".jpg");
+    expect(extensionForMimeType("text/html")).toBeNull();
+    expect(extensionForMimeType(null)).toBeNull();
+  });
+});
+
 describe("readImage", () => {
   it("returns the bytes of a valid image", async () => {
     const { readImage } = await load();

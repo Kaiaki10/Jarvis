@@ -54,6 +54,7 @@ const NAV_GROUPS: Array<{ label: string | null; items: NavItem[] }> = [
     items: [
       { href: "/operate", label: "Operate", icon: Orbit },
       { href: "/missions", label: "Missions", icon: Flag },
+      { href: "/marketing", label: "Marketing", icon: Megaphone },
       
       { href: "/paid-growth", label: "Paid growth", icon: BadgeDollarSign },
       { href: "/customers", label: "Customers", icon: Headphones },

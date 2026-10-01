@@ -371,7 +371,7 @@ export interface PlatformDefinition {
   id: string;
   name: string;
   tagline: string;
-  category: "social" | "messaging" | "email" | "advertising" | "notifications" | "finance";
+  category: "social" | "messaging" | "email" | "advertising" | "notifications" | "finance" | "creative";
   docsUrl: string;
   steps: SetupStepDefinition[];
   fields: CredentialFieldDefinition[];
@@ -795,6 +795,8 @@ export interface WorkflowRecord {
    */
   autopilotPublish: boolean;
   missionId: string | null;
+  /** The brand this campaign markets. Null for campaigns created before brands. */
+  brandId: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -807,6 +809,8 @@ export interface ContentItemRecord {
   body: string;
   format: ContentFormat;
   channel: MarketingChannel;
+  /** Attached visual from the images folder. Null means text-only. */
+  imageFile: string | null;
   status: ContentStatus;
   scheduledFor: string | null;
   publishedAt: string | null;
@@ -870,6 +874,7 @@ export interface CreateWorkflowRequest {
   primaryMetric: string;
   approvalPolicy?: WorkflowApprovalPolicy;
   missionId?: string;
+  brandId?: string;
 }
 
 export interface UpdateWorkflowRequest {
@@ -881,6 +886,7 @@ export interface UpdateWorkflowRequest {
   primaryMetric?: string;
   approvalPolicy?: WorkflowApprovalPolicy;
   status?: WorkflowStatus;
+  brandId?: string | null;
   /** Schedules approved content on a cadence. Never bypasses the approval gate. */
   autopilot?: boolean;
   autopilotIntervalHours?: number;
@@ -895,6 +901,7 @@ export interface CreateContentItemRequest {
   format: ContentFormat;
   channel: MarketingChannel;
   status?: Extract<ContentStatus, "idea" | "draft">;
+  imageFile?: string | null;
 }
 
 export interface UpdateContentItemRequest {
@@ -905,6 +912,15 @@ export interface UpdateContentItemRequest {
   status?: ContentStatus;
   scheduledFor?: string | null;
   performanceSummary?: string | null;
+  imageFile?: string | null;
+}
+
+export interface SendVisualToCampaignRequest {
+  workflowId: string;
+  title?: string;
+  body?: string;
+  format: ContentFormat;
+  channel: MarketingChannel;
 }
 
 export interface GenerateWorkflowContentRequest {
@@ -1558,6 +1574,232 @@ export interface SaveWorkflowCharacterRequest {
 export const CHANNEL_BODY_LIMITS: Partial<Record<MarketingChannel, number>> = {
   x: 280,
 };
+
+// ---- Brands + visual prompts (approval-gated Artlist generation) ----
+
+/**
+ * A business Jarvis markets. Owns campaigns (workflows) and the visual
+ * prompts generated against them. One brand, many campaigns over time — a
+ * launch push and a holiday push share one voice and one logo rather than
+ * reinventing either.
+ */
+export interface BrandRecord {
+  id: string;
+  agentId: string | null;
+  name: string;
+  /** What the business does, who it serves, how it sounds. Seeds generation. */
+  description: string;
+  /** Plain filename in the Jarvis images folder. Null until one is picked. */
+  logoFile: string | null;
+  website: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBrandRequest {
+  name: string;
+  description: string;
+  /** Plain filename from the images folder. Validated server-side. */
+  logoFile?: string | null;
+  website?: string;
+}
+
+export interface UpdateBrandRequest {
+  name?: string;
+  description?: string;
+  logoFile?: string | null;
+  website?: string | null;
+}
+
+/** What kind of Artlist generation a prompt drives. */
+export type VisualPromptKind = "image" | "video" | "voiceover";
+
+/**
+ * Lifecycle of a visual prompt. Generation (which spends Artlist credits and
+ * LLM tokens) happens only from `approved` — the server refuses to start it
+ * from any other state, so an unreviewed script can never burn money.
+ */
+export type VisualPromptStatus = "draft" | "approved" | "generating" | "generated" | "rejected";
+
+/** Human judgement on a finished prompt, feeding the next generation round. */
+export type VisualPromptRating = "keep" | "needs_work";
+
+export interface VisualPromptRecord {
+  id: string;
+  brandId: string;
+  workflowId: string | null;
+  title: string;
+  /** The Artlist prompt/script, in full. Approved verbatim — never rewritten at run time. */
+  body: string;
+  kind: VisualPromptKind;
+  status: VisualPromptStatus;
+  /** Which Artlist model to generate with, when known. Null means the default. */
+  model: string | null;
+  /** Locked visual references (e.g. logo, turnaround) this was generated against. */
+  referenceImageIds: string[];
+  /** Iteration chain: the kept prompt this was forked from, if any. */
+  parentId: string | null;
+  rating: VisualPromptRating | null;
+  /** Stored filename of the finished file, once imported via import_media_url. */
+  resultFile: string | null;
+  sessionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVisualPromptRequest {
+  title: string;
+  body: string;
+  kind: VisualPromptKind;
+  workflowId?: string;
+  model?: string;
+  referenceImageIds?: string[];
+  parentId?: string;
+}
+
+export interface UpdateVisualPromptRequest {
+  title?: string;
+  body?: string;
+  kind?: VisualPromptKind;
+  model?: string | null;
+  referenceImageIds?: string[];
+  /** Approve, reject, or send back to draft. Only `approved` can generate. */
+  status?: Extract<VisualPromptStatus, "draft" | "approved" | "rejected">;
+  rating?: VisualPromptRating | null;
+  resultFile?: string | null;
+}
+
+export interface GenerateVisualPromptsRequest {
+  count: number;
+  kinds: VisualPromptKind[];
+  direction?: string;
+}
+
+export type VisualPromptRunKind = "scripts" | "execute";
+export type VisualPromptRunStatus = "running" | "completed" | "failed";
+
+export interface VisualPromptRunRecord {
+  id: string;
+  kind: VisualPromptRunKind;
+  brandId: string;
+  /** Set for execute runs: the approved prompt being generated. */
+  visualPromptId: string | null;
+  sessionId: string;
+  status: VisualPromptRunStatus;
+  requestedCount: number;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface BrandsOverview {
+  brands: BrandRecord[];
+  prompts: VisualPromptRecord[];
+  runs: VisualPromptRunRecord[];
+}
+
+export type BrandStageKey = "setup" | "artlist" | "scripts" | "visuals" | "publish";
+
+export interface BrandStageStatus {
+  key: BrandStageKey;
+  /** 1–5, shown in the rail. */
+  number: number;
+  label: string;
+  state: WorkflowStageState;
+  /** What is true right now, or why the stage cannot proceed. */
+  detail: string;
+}
+
+export interface BrandStageInput {
+  hasDescription: boolean;
+  hasLogo: boolean;
+  artlistConnected: boolean;
+  draftCount: number;
+  /** Approved plus currently generating — both passed the money gate. */
+  approvedCount: number;
+  generatedCount: number;
+  /** Published or measured content in this brand's campaigns. */
+  publishedContent: number;
+  /** Campaigns linked to this brand. */
+  campaignCount: number;
+}
+
+/**
+ * The guided marketing path, computed from data like workflowStages.
+ * A blocked stage explains itself and never gates the others — drafting
+ * needs no account, and scripts need no Artlist connection, only generation
+ * does.
+ */
+export function brandStages(input: BrandStageInput): BrandStageStatus[] {
+  const setupDone = input.hasDescription && input.hasLogo;
+  const scriptsDone = input.draftCount + input.approvedCount + input.generatedCount > 0;
+  return [
+    {
+      key: "setup",
+      number: 1,
+      label: "Brand",
+      state: setupDone ? "done" : "ready",
+      detail: setupDone
+        ? "Description and logo set"
+        : !input.hasDescription && !input.hasLogo
+          ? "Describe the business and pick a logo"
+          : !input.hasDescription
+            ? "Add a description so scripts have something to stand on"
+            : "Pick a logo from the images folder",
+    },
+    {
+      key: "artlist",
+      number: 2,
+      label: "Artlist",
+      state: input.artlistConnected ? "done" : "ready",
+      detail: input.artlistConnected
+        ? "Connected — generation can spend credits"
+        : "Connect Artlist before anything generates",
+    },
+    {
+      key: "scripts",
+      number: 3,
+      label: "Scripts",
+      state: scriptsDone ? "done" : "ready",
+      detail: scriptsDone
+        ? `${input.draftCount + input.approvedCount + input.generatedCount} script${input.draftCount + input.approvedCount + input.generatedCount === 1 ? "" : "s"}, ${input.approvedCount} approved`
+        : "Generate the first AI scripts",
+    },
+    {
+      key: "visuals",
+      number: 4,
+      label: "Visuals",
+      state: input.generatedCount > 0 ? "done" : input.approvedCount > 0 ? "ready" : "blocked",
+      detail:
+        input.generatedCount > 0
+          ? `${input.generatedCount} visual${input.generatedCount === 1 ? "" : "s"} generated`
+          : input.approvedCount > 0
+            ? `${input.approvedCount} approved script${input.approvedCount === 1 ? "" : "s"} ready to generate`
+            : "Approve a script first — nothing generates unapproved",
+    },
+    {
+      key: "publish",
+      number: 5,
+      label: "Publish",
+      state:
+        input.publishedContent > 0
+          ? "done"
+          : input.generatedCount > 0
+            ? input.campaignCount > 0
+              ? "ready"
+              : "blocked"
+            : "blocked",
+      detail:
+        input.publishedContent > 0
+          ? `${input.publishedContent} published with this brand`
+          : input.generatedCount > 0
+            ? input.campaignCount > 0
+              ? "Send a visual to a campaign"
+              : "Create the brand's first campaign"
+            : "Generate a visual first",
+    },
+  ];
+}
 
 // ---- Spend envelopes ----
 

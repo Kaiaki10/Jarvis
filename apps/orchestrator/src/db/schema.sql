@@ -396,6 +396,8 @@ CREATE TABLE IF NOT EXISTS workflows (
   autopilot_interval_hours INTEGER NOT NULL DEFAULT 24,
   autopilot_publish INTEGER NOT NULL DEFAULT 0,
   mission_id TEXT REFERENCES missions(id) ON DELETE SET NULL,
+  -- The brand this campaign markets. Null for pre-brand campaigns.
+  brand_id TEXT REFERENCES brands(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   completed_at TEXT
@@ -412,6 +414,9 @@ CREATE TABLE IF NOT EXISTS content_items (
   scheduled_for TEXT,
   published_at TEXT,
   performance_summary TEXT,
+  -- Attached visual from the images folder. Null means text-only. Validated at
+  -- write time, so publishing never discovers a missing file mid-run.
+  image_file TEXT,
   -- Which version of the workflow's character wrote this. Null when none was
   -- set. Stage 5 needs it to tell a voice change from a topic change.
   character_version INTEGER,
@@ -869,6 +874,72 @@ CREATE TABLE IF NOT EXISTS workflow_character_versions (
   created_at TEXT NOT NULL,
   PRIMARY KEY (workflow_id, version)
 );
+
+-- A business Jarvis markets. Owns campaigns and visual prompts. agent_id is
+-- declared inline: this table ships with v2, so no backfill migration needed —
+-- CREATE TABLE IF NOT EXISTS covers existing installs, and the adoption loop
+-- in db.ts assigns the default agent to any row that arrives without one.
+CREATE TABLE IF NOT EXISTS brands (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  -- Plain filename in the Jarvis images folder. Validated at write time
+  -- (resolveImagePath), never a path, so a brand logo cannot escape the folder.
+  logo_file TEXT,
+  website TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_brands_agent ON brands(agent_id, updated_at DESC);
+
+-- An AI-written Artlist prompt/script for one brand. Generation (which spends
+-- Artlist credits) starts only from `approved` — enforced in the HTTP layer,
+-- so this column is the money gate, not a label.
+CREATE TABLE IF NOT EXISTS visual_prompts (
+  id TEXT PRIMARY KEY,
+  brand_id TEXT NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  workflow_id TEXT REFERENCES workflows(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  -- image | video | voiceover
+  kind TEXT NOT NULL,
+  -- draft | approved | generating | generated | rejected
+  status TEXT NOT NULL DEFAULT 'draft',
+  model TEXT,
+  -- JSON array of locked visual reference filenames.
+  reference_image_ids TEXT NOT NULL DEFAULT '[]',
+  -- The kept prompt this was forked from, if any. Reaches its agent through
+  -- the brand, like content_items reach theirs through the workflow.
+  parent_id TEXT REFERENCES visual_prompts(id) ON DELETE SET NULL,
+  -- keep | needs_work | NULL (unrated)
+  rating TEXT,
+  result_file TEXT,
+  session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_visual_prompts_brand ON visual_prompts(brand_id, status, updated_at DESC);
+
+-- A generation or execution run behind a visual prompt, so a session's output
+-- reconciles into drafts exactly like workflow generation runs do.
+CREATE TABLE IF NOT EXISTS visual_prompt_runs (
+  id TEXT PRIMARY KEY,
+  -- scripts (AI writes prompts) | execute (approved prompt runs on Artlist)
+  kind TEXT NOT NULL,
+  brand_id TEXT NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  visual_prompt_id TEXT REFERENCES visual_prompts(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'running',
+  requested_count INTEGER NOT NULL DEFAULT 1,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_visual_prompt_runs_session ON visual_prompt_runs(session_id);
 
 -- A money limit on one rail (see UNDER_THE_HOOD_PLAN.md).
 --

@@ -30,7 +30,10 @@ comparison closed below is real today. Tracked links remain a deliberate non-goa
 The publication worker is adapter-based, but LinkedIn, Instagram, Facebook, and blog
 connections do not exist yet, and email campaigns need audience/list semantics rather than
 a single-recipient send tool. Those channels can still use the content calendar and manual
-published state, but only X has confirmed automatic dispatch today.
+published state, but only X has confirmed automatic dispatch today. Update 2026-10-01:
+content items can now carry an attached visual (`image_file`, set from brand visuals or
+the editor) through the approval-gated X path, and autopilot deliberately skips visual
+items rather than publishing them text-only — but the per-channel gap above is unchanged.
 
 ### low — Credentials are entered by hand
 Every platform requires manually copying tokens. Proper OAuth flows would be friendlier

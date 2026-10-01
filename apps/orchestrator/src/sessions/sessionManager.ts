@@ -34,6 +34,7 @@ import {
   reconcileMissionTurn,
 } from "../missions/missionReconciler.js";
 import { reconcileWorkflowGeneration } from "../workflows/contentGeneration.js";
+import { reconcileVisualPromptExecution, reconcileVisualPromptScripts } from "../workflows/visualPrompts.js";
 import { reconcileContentPublication } from "../workflows/publicationReconciler.js";
 import { reconcileCustomerReplyDraft } from "../customers/replyDraft.js";
 
@@ -678,6 +679,20 @@ export async function startSession(params: StartSessionParams): Promise<void> {
           console.error("[workflows] could not reconcile publication:", err);
         }
         try {
+          const scriptsChanged = reconcileVisualPromptScripts({
+            sessionId: params.id,
+            result,
+            ok: !message.is_error,
+          });
+          const executionChanged = reconcileVisualPromptExecution({
+            sessionId: params.id,
+            ok: !message.is_error,
+          });
+          if (scriptsChanged || executionChanged) globalBus.emit("brands_changed");
+        } catch (err) {
+          console.error("[brands] could not reconcile visual prompts:", err);
+        }
+        try {
           if (await reconcileCustomerReplyDraft({ sessionId: params.id, result, ok: !message.is_error })) {
             globalBus.emit("customers_changed");
           }
@@ -752,6 +767,13 @@ export async function startSession(params: StartSessionParams): Promise<void> {
         }
       } catch (reconcileError) {
         console.error("[workflows] could not record failed publication:", reconcileError);
+      }
+      try {
+        const scriptsChanged = reconcileVisualPromptScripts({ sessionId: params.id, result: null, ok: false });
+        const executionChanged = reconcileVisualPromptExecution({ sessionId: params.id, ok: false });
+        if (scriptsChanged || executionChanged) globalBus.emit("brands_changed");
+      } catch (reconcileError) {
+        console.error("[brands] could not record failed visual prompts:", reconcileError);
       }
       try {
         if (await reconcileCustomerReplyDraft({ sessionId: params.id, result: null, ok: false })) {

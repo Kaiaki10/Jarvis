@@ -30,6 +30,7 @@ interface CampaignRow {
   autopilot_interval_hours: number;
   autopilot_publish: number;
   mission_id: string | null;
+  brand_id: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -52,6 +53,7 @@ function mapCampaign(row: CampaignRow): WorkflowRecord {
     autopilotIntervalHours: row.autopilot_interval_hours,
     autopilotPublish: row.autopilot_publish === 1,
     missionId: row.mission_id,
+    brandId: row.brand_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -67,14 +69,15 @@ export function createWorkflow(input: {
   primaryMetric: string;
   approvalPolicy: WorkflowApprovalPolicy;
   missionId?: string;
+  brandId?: string | null;
   agentId?: string | null;
 }): WorkflowRecord {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO workflows (id, agent_id, name, objective, audience, offer, channels, primary_metric, approval_policy, status, onboarding_stage, mission_id, created_at, updated_at, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, NULL)`
-  ).run(id, input.agentId ?? DEFAULT_AGENT_ID, input.name, input.objective, input.audience, input.offer, JSON.stringify(input.channels), input.primaryMetric, input.approvalPolicy, 0, input.missionId ?? null, now, now);
+    `INSERT INTO workflows (id, agent_id, name, objective, audience, offer, channels, primary_metric, approval_policy, status, onboarding_stage, mission_id, brand_id, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, NULL)`
+  ).run(id, input.agentId ?? DEFAULT_AGENT_ID, input.name, input.objective, input.audience, input.offer, JSON.stringify(input.channels), input.primaryMetric, input.approvalPolicy, 0, input.missionId ?? null, input.brandId ?? null, now, now);
   return getWorkflow(id, input.agentId ?? DEFAULT_AGENT_ID)!;
 }
 
@@ -107,6 +110,7 @@ export function updateWorkflow(id: string, patch: Partial<{
   autopilotIntervalHours: number;
   autopilotPublish?: boolean;
   missionId: string | null;
+  brandId?: string | null;
 }>): WorkflowRecord | undefined {
   const current = getWorkflow(id);
   if (!current) return undefined;
@@ -116,7 +120,7 @@ export function updateWorkflow(id: string, patch: Partial<{
     ? now
     : status === "completed" ? current.completedAt : null;
   db.prepare(
-    `UPDATE workflows SET name = ?, objective = ?, audience = ?, offer = ?, channels = ?, primary_metric = ?, approval_policy = ?, status = ?, onboarding_stage = ?, autopilot = ?, autopilot_interval_hours = ?, autopilot_publish = ?, mission_id = ?, updated_at = ?, completed_at = ? WHERE id = ?`
+    `UPDATE workflows SET name = ?, objective = ?, audience = ?, offer = ?, channels = ?, primary_metric = ?, approval_policy = ?, status = ?, onboarding_stage = ?, autopilot = ?, autopilot_interval_hours = ?, autopilot_publish = ?, mission_id = ?, brand_id = ?, updated_at = ?, completed_at = ? WHERE id = ?`
   ).run(
     patch.name ?? current.name,
     patch.objective ?? current.objective,
@@ -131,6 +135,7 @@ export function updateWorkflow(id: string, patch: Partial<{
     patch.autopilotIntervalHours !== undefined ? patch.autopilotIntervalHours : current.autopilotIntervalHours,
     (patch.autopilotPublish !== undefined ? patch.autopilotPublish : current.autopilotPublish) ? 1 : 0,
     patch.missionId !== undefined ? patch.missionId : current.missionId,
+    patch.brandId !== undefined ? patch.brandId : current.brandId,
     now,
     completedAt,
     id
@@ -140,6 +145,14 @@ export function updateWorkflow(id: string, patch: Partial<{
 
 export function deleteWorkflow(id: string): void {
   db.prepare(`DELETE FROM workflows WHERE id = ?`).run(id);
+}
+
+/** Campaigns running under one brand. */
+export function listWorkflowsByBrand(brandId: string, agentId?: string): WorkflowRecord[] {
+  const rows = agentId
+    ? db.prepare(`SELECT * FROM workflows WHERE brand_id = ? AND agent_id = ? ORDER BY updated_at DESC`).all(brandId, agentId)
+    : db.prepare(`SELECT * FROM workflows WHERE brand_id = ? ORDER BY updated_at DESC`).all(brandId);
+  return (rows as unknown as CampaignRow[]).map(mapCampaign);
 }
 
 interface ContentItemRow {
@@ -153,6 +166,7 @@ interface ContentItemRow {
   scheduled_for: string | null;
   published_at: string | null;
   performance_summary: string | null;
+  image_file: string | null;
   character_version: number | null;
   session_id: string | null;
   created_at: string;
@@ -167,6 +181,7 @@ function mapContentItem(row: ContentItemRow): ContentItemRecord {
     body: row.body,
     format: row.format as ContentFormat,
     channel: row.channel as MarketingChannel,
+    imageFile: row.image_file,
     status: row.status as ContentStatus,
     scheduledFor: row.scheduled_for,
     publishedAt: row.published_at,
@@ -203,6 +218,7 @@ export function createContentItem(input: {
   format: ContentFormat;
   channel: MarketingChannel;
   status?: Extract<ContentStatus, "idea" | "draft">;
+  imageFile?: string | null;
   /** Which character version wrote this, when one did. */
   characterVersion?: number | null;
   sessionId?: string;
@@ -210,9 +226,9 @@ export function createContentItem(input: {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO content_items (id, workflow_id, title, body, format, channel, status, scheduled_for, published_at, performance_summary, character_version, session_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?)`
-  ).run(id, input.workflowId, input.title, input.body, input.format, input.channel, input.status ?? "draft", input.characterVersion ?? null, input.sessionId ?? null, now, now);
+    `INSERT INTO content_items (id, workflow_id, title, body, format, channel, status, scheduled_for, published_at, performance_summary, image_file, character_version, session_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?)`
+  ).run(id, input.workflowId, input.title, input.body, input.format, input.channel, input.status ?? "draft", input.imageFile ?? null, input.characterVersion ?? null, input.sessionId ?? null, now, now);
   return getContentItem(id)!;
 }
 
@@ -224,6 +240,7 @@ export function updateContentItem(id: string, patch: Partial<{
   status: ContentStatus;
   scheduledFor: string | null;
   performanceSummary: string | null;
+  imageFile: string | null;
 }>): ContentItemRecord | undefined {
   const current = getContentItem(id);
   if (!current) return undefined;
@@ -233,7 +250,7 @@ export function updateContentItem(id: string, patch: Partial<{
     ? current.publishedAt ?? now
     : null;
   db.prepare(
-    `UPDATE content_items SET title = ?, body = ?, format = ?, channel = ?, status = ?, scheduled_for = ?, published_at = ?, performance_summary = ?, updated_at = ? WHERE id = ?`
+    `UPDATE content_items SET title = ?, body = ?, format = ?, channel = ?, status = ?, scheduled_for = ?, published_at = ?, performance_summary = ?, image_file = ?, updated_at = ? WHERE id = ?`
   ).run(
     patch.title ?? current.title,
     patch.body ?? current.body,
@@ -243,6 +260,7 @@ export function updateContentItem(id: string, patch: Partial<{
     patch.scheduledFor !== undefined ? patch.scheduledFor : current.scheduledFor,
     publishedAt,
     patch.performanceSummary !== undefined ? patch.performanceSummary : current.performanceSummary,
+    patch.imageFile !== undefined ? patch.imageFile : current.imageFile,
     now,
     id
   );

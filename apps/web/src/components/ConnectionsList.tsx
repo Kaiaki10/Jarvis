@@ -18,6 +18,7 @@ const CATEGORY_LABEL: Record<PlatformDefinition["category"], string> = {
   advertising: "Advertising",
   notifications: "Notifications",
   finance: "Finance",
+  creative: "Creative",
 };
 
 /**
@@ -30,6 +31,7 @@ const CATEGORY_ORDER: Array<PlatformDefinition["category"]> = [
   "advertising",
   "finance",
   "social",
+  "creative",
   "messaging",
   "email",
   "notifications",
@@ -49,6 +51,7 @@ const CATEGORY_BLURB: Record<PlatformDefinition["category"], string> = {
   advertising: "Live evidence for Jarvis's guarded investment decisions.",
   finance: "Cards, wallets, and the rails Jarvis can move value over.",
   social: "Where Jarvis publishes and builds an audience.",
+  creative: "Where Jarvis makes the images and video it publishes with.",
   messaging: "Real-time conversations, inbound and outbound.",
   email: "Sending and receiving mail on your behalf.",
   notifications: "How Jarvis reaches you when something needs a human.",

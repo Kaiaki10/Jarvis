@@ -95,6 +95,16 @@ import type {
   SetSpendEnvelopeRequest,
   WorkflowCharacterRecord,
   SaveWorkflowCharacterRequest,
+  BrandsOverview,
+  BrandRecord,
+  VisualPromptRecord,
+  VisualPromptRunRecord,
+  CreateBrandRequest,
+  UpdateBrandRequest,
+  SendVisualToCampaignRequest,
+  CreateVisualPromptRequest,
+  UpdateVisualPromptRequest,
+  GenerateVisualPromptsRequest,
 } from "@jarvis/shared";
 
 /**
@@ -478,6 +488,52 @@ getSpend: () =>
 
   getPaidGrowth: () => request<PaidGrowthOverview>(scoped("/paid-growth")),
   getTrends: () => request<TrendsOverview>(scoped("/insights/trends")),
+
+  getBrands: () => request<BrandsOverview>(scoped("/brands")),
+  getBrand: (id: string) => request<{ brand: BrandRecord; prompts: VisualPromptRecord[]; runs: VisualPromptRunRecord[]; campaigns: WorkflowRecord[] }>(scoped(`/brands/${id}`)),
+  sendVisualToCampaign: (id: string, body: SendVisualToCampaignRequest) => request<ContentItemRecord>(scoped(`/visual-prompts/${id}/send-to-campaign`), {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  createBrand: (body: CreateBrandRequest) => request<BrandRecord>(scoped("/brands"), {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  updateBrand: (id: string, patch: UpdateBrandRequest) => request<BrandRecord>(scoped(`/brands/${id}`), {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }),
+  deleteBrand: (id: string) => request<void>(scoped(`/brands/${id}`), { method: "DELETE" }),
+  createVisualPrompt: (brandId: string, body: CreateVisualPromptRequest) => request<VisualPromptRecord>(scoped(`/brands/${brandId}/prompts`), {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  updateVisualPrompt: (id: string, patch: UpdateVisualPromptRequest) => request<VisualPromptRecord>(scoped(`/visual-prompts/${id}`), {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }),
+  deleteVisualPrompt: (id: string) => request<void>(scoped(`/visual-prompts/${id}`), { method: "DELETE" }),
+  generateVisualPrompts: (brandId: string, body: GenerateVisualPromptsRequest) => request<{ brand: BrandRecord; session: SessionRecord; run: VisualPromptRunRecord }>(scoped(`/brands/${brandId}/prompts/generate`), {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  executeVisualPrompt: (id: string) => request<{ prompt: VisualPromptRecord; session: SessionRecord; run: VisualPromptRunRecord }>(scoped(`/visual-prompts/${id}/generate`), {
+    method: "POST",
+  }),
+  getImages: () => request<{ folder: string; images: Array<{ fileName: string; sizeBytes: number; modifiedAt: string }> }>(scoped("/images")),
+  /**
+   * Fetches one image with the orchestrator bearer token (an <img> tag cannot
+   * set headers) and returns an object URL for display. Callers should revoke
+   * it on unmount.
+   */
+  fetchImageObjectUrl: async (fileName: string) => {
+    const token = await ensureApiToken();
+    const res = await fetch(`${BASE_URL}/images/${encodeURIComponent(fileName)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Image unavailable (${res.status})`);
+    return URL.createObjectURL(await res.blob());
+  },
   createPaidGrowthCampaign: (body: CreatePaidGrowthCampaignRequest) =>
     request<PaidGrowthCampaignRecord>(scoped("/paid-growth/workflows"), { method: "POST", body: JSON.stringify(body) }),
   updatePaidGrowthCampaign: (id: string, patch: UpdatePaidGrowthCampaignRequest) =>

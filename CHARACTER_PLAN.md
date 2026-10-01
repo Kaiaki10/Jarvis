@@ -100,11 +100,21 @@ business it is on-message.
    The general lesson, worth keeping: **an exemplar teaches everything about
    itself, length included.** A voice sample that breaks a constraint teaches
    the model to break it too. Sample quality is not only about tone.
-3. **Gemini connection.** New platform definition, credentials, test call.
-   Blocked on a Google API key with billing — image output has no free tier.
+3. **Generation connection.** *(Shipped via Artlist, 2026-10-01.)* The Artlist
+   platform (`creative` category) connects with a pasted token, verified by a
+   side-effect-free MCP handshake. Sessions reach Artlist's generation tools
+   as a remote MCP server, and `import_media_url` lands finished files in the
+   images folder for `post_to_x` to attach. Generation spends Artlist credits,
+   so it stays behind the approval gate — and brand visual prompts
+   (`visual_prompts`, `draft → approved → generating → generated`) add a
+   review step *before* generation, so an unapproved script can never burn
+   money. A direct Gemini connection remains unbuilt and optional.
 4. **Turnaround sheet capture.** Curate once, store as locked references.
-5. **`generate_image` tool.** Nano Banana Pro against the locked references,
-   behind a hard per-workflow cap.
+   Partly covered: brand logos and `reference_image_ids` on visual prompts
+   carry the references; a formal multi-angle sheet is still manual.
+5. **`generate_image` tool.** Covered by Artlist's own tools through the
+   remote MCP server rather than a bespoke Jarvis tool, under the same caps,
+   locks, and ledger as every other billable action.
 
 ## What this deliberately does not do
 

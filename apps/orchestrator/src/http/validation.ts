@@ -217,6 +217,7 @@ export const createWorkflowSchema = z.object({
   primaryMetric: z.string().trim().min(1).max(500),
   approvalPolicy: z.enum(["each_item", "campaign"]).optional(),
   missionId: z.string().uuid().optional(),
+  brandId: z.string().uuid().optional(),
 }).strict();
 
 export const updateWorkflowSchema = z.object({
@@ -233,6 +234,7 @@ export const updateWorkflowSchema = z.object({
   autopilotIntervalHours: z.number().int().min(1).max(168).optional(),
   autopilotPublish: z.boolean().optional(),
   missionId: z.string().uuid().nullable().optional(),
+  brandId: z.string().uuid().nullable().optional(),
 }).strict();
 
 export const createContentItemSchema = z.object({
@@ -241,6 +243,7 @@ export const createContentItemSchema = z.object({
   format: contentFormat,
   channel: marketingChannel,
   status: z.enum(["idea", "draft"]).optional(),
+  imageFile: z.string().trim().min(1).max(200).nullable().optional(),
 }).strict();
 
 export const updateContentItemSchema = z.object({
@@ -251,6 +254,59 @@ export const updateContentItemSchema = z.object({
   status: z.enum(["idea", "draft", "review", "scheduled", "published", "measured"]).optional(),
   scheduledFor: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "must be a valid date and time").nullable().optional(),
   performanceSummary: z.string().max(20_000).nullable().optional(),
+  imageFile: z.string().trim().min(1).max(200).nullable().optional(),
+}).strict();
+
+export const sendVisualToCampaignSchema = z.object({
+  workflowId: z.string().uuid(),
+  title: z.string().trim().min(1).max(500).optional(),
+  body: z.string().trim().min(1).max(20_000).optional(),
+  format: contentFormat,
+  channel: marketingChannel,
+}).strict();
+
+const visualPromptKind = z.enum(["image", "video", "voiceover"]);
+
+export const createBrandSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(20_000).default(""),
+  logoFile: z.string().trim().min(1).max(200).nullable().optional(),
+  website: z.string().trim().max(2_000).optional(),
+}).strict();
+
+export const updateBrandSchema = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(20_000).optional(),
+  logoFile: z.string().trim().min(1).max(200).nullable().optional(),
+  website: z.string().trim().max(2_000).nullable().optional(),
+}).strict().refine((patch) => Object.keys(patch).length > 0, "at least one field is required");
+
+export const createVisualPromptSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(8_000),
+  kind: visualPromptKind,
+  workflowId: z.string().uuid().optional(),
+  model: z.string().trim().max(200).optional(),
+  referenceImageIds: z.array(z.string().trim().min(1).max(200)).max(14).optional(),
+  parentId: z.string().uuid().optional(),
+}).strict();
+
+export const updateVisualPromptSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  body: z.string().trim().min(1).max(8_000).optional(),
+  kind: visualPromptKind.optional(),
+  model: z.string().trim().max(200).nullable().optional(),
+  referenceImageIds: z.array(z.string().trim().min(1).max(200)).max(14).optional(),
+  status: z.enum(["draft", "approved", "rejected"]).optional(),
+  rating: z.enum(["keep", "needs_work"]).nullable().optional(),
+  resultFile: z.string().trim().min(1).max(200).nullable().optional(),
+}).strict().refine((patch) => Object.keys(patch).length > 0, "at least one field is required");
+
+export const generateVisualPromptsSchema = z.object({
+  count: z.number().int().min(1).max(12),
+  kinds: z.array(visualPromptKind).min(1).max(3)
+    .refine((kinds) => new Set(kinds).size === kinds.length, "kinds must be unique"),
+  direction: z.string().trim().max(10_000).optional(),
 }).strict();
 
 export const generateWorkflowContentSchema = z.object({

@@ -127,6 +127,7 @@ export const AGENT_SCOPED_TABLES = [
   "scheduled_tasks",
   "tasks",
   "missions",
+  "brands",
   "workflows",
   "paid_growth_campaigns",
   "customers",
@@ -162,6 +163,10 @@ for (const migration of [
   { table: "connections", column: "daily_action_cap", sql: "ALTER TABLE connections ADD COLUMN daily_action_cap INTEGER" },
   { table: "workflows", column: "autopilot", sql: "ALTER TABLE workflows ADD COLUMN autopilot INTEGER NOT NULL DEFAULT 0" },
   { table: "workflows", column: "autopilot_publish", sql: "ALTER TABLE workflows ADD COLUMN autopilot_publish INTEGER NOT NULL DEFAULT 0" },
+  // Brand marketing: which brand a campaign belongs to, and which visual a
+  // content item carries. Both nullable so pre-brand rows keep working.
+  { table: "workflows", column: "brand_id", sql: "ALTER TABLE workflows ADD COLUMN brand_id TEXT REFERENCES brands(id) ON DELETE SET NULL" },
+  { table: "content_items", column: "image_file", sql: "ALTER TABLE content_items ADD COLUMN image_file TEXT" },
   { table: "workflows", column: "autopilot_interval_hours", sql: "ALTER TABLE workflows ADD COLUMN autopilot_interval_hours INTEGER NOT NULL DEFAULT 24" },
   { table: "workflows", column: "onboarding_stage", sql: "ALTER TABLE workflows ADD COLUMN onboarding_stage INTEGER NOT NULL DEFAULT 0" },
   { table: "customer_reply_drafts", column: "confidence", sql: "ALTER TABLE customer_reply_drafts ADD COLUMN confidence REAL" },

@@ -26,6 +26,7 @@ import type {
   MissionUpdateRecord,
   EvolutionOverview,
   WorkflowOverview,
+  BrandsOverview,
   MemoryRecord,
   MemoryReflectionRecord,
   CustomerOperationsOverview,
@@ -73,6 +74,8 @@ interface StoreValue {
   refreshEvolution: () => Promise<void>;
   campaigns: WorkflowOverview | null;
   refreshWorkflows: () => Promise<void>;
+  brands: BrandsOverview | null;
+  refreshBrands: () => Promise<void>;
   customerOperations: CustomerOperationsOverview | null;
   refreshCustomerOperations: () => Promise<void>;
   paidGrowth: PaidGrowthOverview | null;
@@ -167,6 +170,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [missionUpdates, setMissionUpdates] = useState<MissionUpdateRecord[]>([]);
   const [evolution, setEvolution] = useState<EvolutionOverview | null>(null);
   const [campaigns, setCampaigns] = useState<WorkflowOverview | null>(null);
+  const [brands, setBrands] = useState<BrandsOverview | null>(null);
   const [customerOperations, setCustomerOperations] = useState<CustomerOperationsOverview | null>(null);
   const [paidGrowth, setPaidGrowth] = useState<PaidGrowthOverview | null>(null);
   const [campaignExperiments, setCampaignExperiments] = useState<CampaignExperimentsOverview | null>(null);
@@ -244,6 +248,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const refreshWorkflows = useCallback(async () => {
     setCampaigns(await api.getWorkflows());
+  }, []);
+
+  const refreshBrands = useCallback(async () => {
+    setBrands(await api.getBrands());
   }, []);
 
   const refreshCustomerOperations = useCallback(async () => {
@@ -372,6 +380,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshTrends().catch(() => {});
       });
 
+      source.addEventListener("brands-changed", () => {
+        refreshBrands().catch(() => {});
+      });
+
       source.addEventListener("memories-changed", () => {
         refreshMemories().catch(() => {});
       });
@@ -451,6 +463,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           refreshScheduledTasks(),
           refreshEvolution(),
           refreshWorkflows(),
+            refreshBrands(),
             refreshMemories(),
             refreshConversations(),
             refreshPrimaryChat(),
@@ -483,6 +496,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [
     refreshWorkflows,
+    refreshBrands,
     refreshCustomerOperations,
     refreshPaidGrowth,
     refreshCampaignExperiments,
@@ -527,6 +541,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshScheduledTasks(),
         refreshPrimaryChat(),
         refreshWorkflows(),
+        refreshBrands(),
         refreshCustomerOperations(),
         refreshPaidGrowth(),
         refreshCampaignExperiments(),
@@ -536,7 +551,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refreshNotifications(),
       ]);
     },
-    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat, refreshWorkflows, refreshCustomerOperations, refreshPaidGrowth, refreshCampaignExperiments, refreshTrends, refreshEvolution, refreshMemories, refreshNotifications]
+    [activeAgentId, refreshTasks, refreshMissions, refreshScheduledTasks, refreshPrimaryChat, refreshWorkflows, refreshBrands, refreshCustomerOperations, refreshPaidGrowth, refreshCampaignExperiments, refreshTrends, refreshEvolution, refreshMemories, refreshNotifications]
   );
 
   const removeSession = useCallback(async (id: string) => {
@@ -577,6 +592,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshEvolution,
       campaigns,
       refreshWorkflows,
+      brands,
+      refreshBrands,
       customerOperations,
       refreshCustomerOperations,
       paidGrowth,
@@ -626,6 +643,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshEvolution,
       campaigns,
       refreshWorkflows,
+      brands,
+      refreshBrands,
       customerOperations,
       refreshCustomerOperations,
       paidGrowth,
@@ -725,6 +744,11 @@ export function useEvolution() {
 export function useWorkflows() {
   const { campaigns, refreshWorkflows } = useStore();
   return { overview: campaigns, refresh: refreshWorkflows };
+}
+
+export function useBrands() {
+  const { brands, refreshBrands } = useStore();
+  return { overview: brands, refresh: refreshBrands };
 }
 
 export function useCustomerOperations() {

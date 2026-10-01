@@ -94,7 +94,27 @@ import {
 } from "../security/portableBackup.js";
 import { getPlatform, platformDefinitions } from "../platforms/definitions.js";
 import { getUsageToday } from "../platforms/spendGuard.js";
-import { listImages, imagesFolder, ensureImagesFolder } from "../platforms/media.js";
+import { listImages, imagesFolder, ensureImagesFolder, mimeTypeFor, resolveImagePath } from "../platforms/media.js";
+import {
+  createBrand,
+  createVisualPrompt,
+  createVisualPromptRun,
+  deleteBrand,
+  deleteVisualPrompt,
+  getBrand,
+  getVisualPrompt,
+  listBrands,
+  listVisualPromptRuns,
+  listVisualPrompts,
+  updateBrand,
+  updateVisualPrompt,
+} from "../db/brandRepo.js";
+import { listWorkflowsByBrand } from "../db/workflowRepo.js";
+import {
+  beginPromptExecution,
+  visualPromptExecutionPrompt,
+  visualPromptGenerationPrompt,
+} from "../workflows/visualPrompts.js";
 import {
   listNotifications,
   unreadCount,
@@ -142,6 +162,12 @@ import {
   setConnectionCapSchema,
   setSpendEnvelopeSchema,
   createWorkflowSchema,
+  createBrandSchema,
+  updateBrandSchema,
+  createVisualPromptSchema,
+  updateVisualPromptSchema,
+  generateVisualPromptsSchema,
+  sendVisualToCampaignSchema,
   updateWorkflowSchema,
   createContentItemSchema,
   updateContentItemSchema,
@@ -1412,6 +1438,8 @@ app.get("/events", (req: Request, res: Response) => {
   globalBus.on("evolution_changed", onEvolution);
   const onCampaigns = () => sseSend(res, "workflows-changed", {});
   globalBus.on("workflows_changed", onCampaigns);
+  const onBrands = () => sseSend(res, "brands-changed", {});
+  globalBus.on("brands_changed", onBrands);
   const onMemories = () => sseSend(res, "memories-changed", {});
   globalBus.on("memories_changed", onMemories);
   const onAutomations = () => sseSend(res, "automations-changed", {});
@@ -1440,6 +1468,7 @@ app.get("/events", (req: Request, res: Response) => {
     globalBus.off("missions_changed", onMissions);
     globalBus.off("evolution_changed", onEvolution);
     globalBus.off("workflows_changed", onCampaigns);
+    globalBus.off("brands_changed", onBrands);
     globalBus.off("memories_changed", onMemories);
     globalBus.off("automations_changed", onAutomations);
     globalBus.off("chat_changed", onChat);
@@ -1847,6 +1876,10 @@ app.post("/workflows", (req: Request, res: Response) => {
     res.status(400).json({ error: "Mission not found" });
     return;
   }
+  if (body.brandId && !getBrand(body.brandId, agentId)) {
+    res.status(400).json({ error: "Brand not found" });
+    return;
+  }
   const campaign = createWorkflow({
     ...body,
     approvalPolicy: body.approvalPolicy ?? "each_item",
@@ -1878,6 +1911,10 @@ app.patch("/workflows/:id", (req: Request, res: Response) => {
   if (!getWorkflow(req.params.id, agentId)) { res.status(404).json({ error: "Campaign not found" }); return; }
   if (body.missionId && getMission(body.missionId)?.agentId !== agentId) {
     res.status(400).json({ error: "Mission not found" });
+    return;
+  }
+  if (body.brandId && !getBrand(body.brandId, agentId)) {
+    res.status(400).json({ error: "Brand not found" });
     return;
   }
   const campaign = updateWorkflow(req.params.id, body);
@@ -1912,6 +1949,14 @@ app.post("/workflows/:id/content", (req: Request, res: Response) => {
   if (!campaign.channels.includes(body.channel)) {
     res.status(400).json({ error: `${body.channel} is not an approved channel for this campaign` });
     return;
+  }
+  if (body.imageFile) {
+    try {
+      resolveImagePath(body.imageFile);
+    } catch {
+      res.status(400).json({ error: `"${body.imageFile}" is not in the Jarvis images folder.` });
+      return;
+    }
   }
   const item = createContentItem({ workflowId: campaign.id, ...body });
   globalBus.emit("workflows_changed");
@@ -1953,6 +1998,14 @@ app.patch("/content/:id", (req: Request, res: Response) => {
   if (body.status === "scheduled" && nextChannel === "x" && nextBody.length > 280) {
     res.status(400).json({ error: `X posts must be 280 characters or fewer; this draft has ${nextBody.length}` });
     return;
+  }
+  if (body.imageFile) {
+    try {
+      resolveImagePath(body.imageFile);
+    } catch {
+      res.status(400).json({ error: `"${body.imageFile}" is not in the Jarvis images folder.` });
+      return;
+    }
   }
   const item = updateContentItem(req.params.id, {
     ...body,
@@ -2050,6 +2103,281 @@ app.post("/workflows/:id/generate", (req: Request, res: Response) => {
   });
 
   res.status(201).json({ campaign: getWorkflow(campaign.id), session, generationRun });
+});
+
+// ---- Brands + visual prompts (approval-gated Artlist generation) ----
+
+app.get("/brands", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  res.json({
+    brands: listBrands(agentId),
+    prompts: listVisualPrompts(undefined, agentId),
+    runs: listVisualPromptRuns(undefined, agentId),
+  });
+});
+
+app.post("/brands", (req: Request, res: Response) => {
+  const body = validatedBody(createBrandSchema, req, res);
+  if (!body) return;
+  if (body.logoFile) {
+    try {
+      resolveImagePath(body.logoFile);
+    } catch {
+      res.status(400).json({ error: `"${body.logoFile}" is not in the Jarvis images folder. Drop the logo there first, then pick it.` });
+      return;
+    }
+  }
+  const agentId = owningAgentId(req, res); if (agentId === null) return;
+  const brand = createBrand({ ...body, agentId });
+  globalBus.emit("brands_changed");
+  res.status(201).json(brand);
+});
+
+app.get("/brands/:id", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const brand = getBrand(req.params.id, agentId);
+  if (!brand) { res.status(404).json({ error: "Brand not found" }); return; }
+  res.json({
+    brand,
+    prompts: listVisualPrompts(brand.id, agentId),
+    runs: listVisualPromptRuns(brand.id, agentId),
+    campaigns: listWorkflowsByBrand(brand.id, agentId),
+  });
+});
+
+app.patch("/brands/:id", (req: Request, res: Response) => {
+  const body = validatedBody(updateBrandSchema, req, res);
+  if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getBrand(req.params.id, agentId)) { res.status(404).json({ error: "Brand not found" }); return; }
+  if (body.logoFile) {
+    try {
+      resolveImagePath(body.logoFile);
+    } catch {
+      res.status(400).json({ error: `"${body.logoFile}" is not in the Jarvis images folder. Drop the logo there first, then pick it.` });
+      return;
+    }
+  }
+  const brand = updateBrand(req.params.id, body);
+  globalBus.emit("brands_changed");
+  res.json(brand);
+});
+
+app.delete("/brands/:id", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getBrand(req.params.id, agentId)) { res.status(404).json({ error: "Brand not found" }); return; }
+  deleteBrand(req.params.id);
+  globalBus.emit("brands_changed");
+  res.status(204).send();
+});
+
+app.post("/brands/:id/prompts", (req: Request, res: Response) => {
+  const body = validatedBody(createVisualPromptSchema, req, res);
+  if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const brand = getBrand(req.params.id, agentId);
+  if (!brand) { res.status(404).json({ error: "Brand not found" }); return; }
+  if (body.workflowId && !getWorkflow(body.workflowId, agentId)) {
+    res.status(400).json({ error: "Campaign not found" });
+    return;
+  }
+  if (body.parentId) {
+    const parent = getVisualPrompt(body.parentId, agentId);
+    if (!parent || parent.brandId !== brand.id) {
+      res.status(400).json({ error: "That prompt does not belong to this brand." });
+      return;
+    }
+  }
+  const prompt = createVisualPrompt({ ...body, brandId: brand.id });
+  globalBus.emit("brands_changed");
+  res.status(201).json(prompt);
+});
+
+app.patch("/visual-prompts/:id", (req: Request, res: Response) => {
+  const body = validatedBody(updateVisualPromptSchema, req, res);
+  if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const current = getVisualPrompt(req.params.id, agentId);
+  if (!current) { res.status(404).json({ error: "Prompt not found" }); return; }
+  if (body.resultFile) {
+    try {
+      resolveImagePath(body.resultFile);
+    } catch {
+      res.status(400).json({ error: `"${body.resultFile}" is not in the Jarvis images folder.` });
+      return;
+    }
+  }
+  if (body.status === "approved" && !["draft", "rejected"].includes(current.status)) {
+    res.status(409).json({ error: `This prompt is ${current.status} and cannot be re-approved from here.` });
+    return;
+  }
+  const prompt = updateVisualPrompt(req.params.id, body);
+  globalBus.emit("brands_changed");
+  res.json(prompt);
+});
+
+app.delete("/visual-prompts/:id", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  if (!getVisualPrompt(req.params.id, agentId)) { res.status(404).json({ error: "Prompt not found" }); return; }
+  deleteVisualPrompt(req.params.id);
+  globalBus.emit("brands_changed");
+  res.status(204).send();
+});
+
+/**
+ * AI writes the scripts. Nothing generates here — output reconciles into
+ * draft prompts for human review, exactly like campaign content drafts.
+ */
+app.post("/brands/:id/prompts/generate", (req: Request, res: Response) => {
+  const body = validatedBody(generateVisualPromptsSchema, req, res);
+  if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const brand = getBrand(req.params.id, agentId);
+  if (!brand) { res.status(404).json({ error: "Brand not found" }); return; }
+  if (atConcurrencyLimit()) {
+    res.status(429).json({
+      error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}). Wait for one to finish.`,
+    });
+    return;
+  }
+  const session = createSession({
+    title: `Write visuals: ${brand.name}`,
+    cwd: process.cwd(),
+    permissionMode: "default",
+    allowedTools: [],
+    agentId,
+  });
+  const run = createVisualPromptRun({
+    kind: "scripts",
+    brandId: brand.id,
+    sessionId: session.id,
+    requestedCount: body.count,
+  });
+  globalBus.emit("session_updated", session.id);
+  globalBus.emit("brands_changed");
+  void startSession({
+    id: session.id,
+    prompt: visualPromptGenerationPrompt({ brand, count: body.count, kinds: body.kinds, direction: body.direction }),
+    cwd: session.cwd,
+    permissionMode: "default",
+    allowedTools: [],
+    title: session.title,
+    isolated: true,
+  });
+  res.status(201).json({ brand: getBrand(brand.id), session, run });
+});
+
+/**
+ * The money gate. Only an approved prompt starts generation, and the session
+ * is pinned to the Artlist connection alone — it can generate and import, but
+ * it has no publishing tool to reach for. The Artlist tool call itself still
+ * pauses for the spend confirmation: approving the prompt authorizes *what*
+ * to generate, the tap confirms *spending* on it.
+ */
+app.post("/visual-prompts/:id/generate", (req: Request, res: Response) => {
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const prompt = getVisualPrompt(req.params.id, agentId);
+  if (!prompt) { res.status(404).json({ error: "Prompt not found" }); return; }
+  const brand = getBrand(prompt.brandId, agentId);
+  if (!brand) { res.status(404).json({ error: "Brand not found" }); return; }
+  if (prompt.status !== "approved") {
+    res.status(409).json({ error: "Only approved prompts can generate. Approve this prompt first — generation spends Artlist credits." });
+    return;
+  }
+  const artlist = getConnection("artlist");
+  if (!artlist || artlist.status !== "connected") {
+    res.status(409).json({ error: "Connect and test Artlist before generating." });
+    return;
+  }
+  if (atConcurrencyLimit()) {
+    res.status(429).json({
+      error: `Too many sessions running at once (${activeSessionCount()}/${getSettings().maxConcurrentSessions}). Wait for one to finish.`,
+    });
+    return;
+  }
+  const started = beginPromptExecution(prompt.id);
+  if (!started) {
+    res.status(409).json({ error: "This prompt is no longer approved for generation." });
+    return;
+  }
+  const session = createSession({
+    title: `Generate visual: ${prompt.title}`,
+    cwd: process.cwd(),
+    permissionMode: "default",
+    allowedTools: [],
+    agentId,
+  });
+  const run = createVisualPromptRun({
+    kind: "execute",
+    brandId: brand.id,
+    visualPromptId: prompt.id,
+    sessionId: session.id,
+    requestedCount: 1,
+  });
+  globalBus.emit("session_updated", session.id);
+  globalBus.emit("brands_changed");
+  void startSession({
+    id: session.id,
+    prompt: visualPromptExecutionPrompt(prompt, brand),
+    cwd: session.cwd,
+    permissionMode: "default",
+    allowedTools: [],
+    title: session.title,
+    // The approved prompt already decided what to generate. Handing the
+    // session only the Artlist account means there is no second account for
+    // the model to reach — and no publishing tool at all.
+    connectionId: artlist.id,
+  });
+  res.status(201).json({ prompt: getVisualPrompt(prompt.id), session, run });
+});
+
+/**
+ * Sends a finished visual into a campaign as a draft content item with the
+ * file attached. Same-brand only: a visual from one business never lands in
+ * another's campaign, the same isolation rule the publishing path enforces.
+ * The draft still travels the normal review → schedule → approval-gated
+ * publish path — this moves the file, not the consent.
+ */
+app.post("/visual-prompts/:id/send-to-campaign", (req: Request, res: Response) => {
+  const body = validatedBody(sendVisualToCampaignSchema, req, res);
+  if (!body) return;
+  const agentId = scopedAgentId(req, res); if (agentId === null) return;
+  const prompt = getVisualPrompt(req.params.id, agentId);
+  if (!prompt) { res.status(404).json({ error: "Prompt not found" }); return; }
+  if (prompt.status !== "generated" || !prompt.resultFile) {
+    res.status(409).json({ error: "Generate this prompt first — only finished visuals can go to a campaign." });
+    return;
+  }
+  const brand = getBrand(prompt.brandId, agentId);
+  if (!brand) { res.status(404).json({ error: "Brand not found" }); return; }
+  const campaign = getWorkflow(body.workflowId, agentId);
+  if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
+  if (campaign.brandId !== brand.id) {
+    res.status(400).json({ error: `That campaign belongs to another brand, not ${brand.name}.` });
+    return;
+  }
+  if (!campaign.channels.includes(body.channel)) {
+    res.status(400).json({ error: `${body.channel} is not an approved channel for this campaign` });
+    return;
+  }
+  try {
+    resolveImagePath(prompt.resultFile);
+  } catch {
+    res.status(409).json({ error: `"${prompt.resultFile}" is no longer in the Jarvis images folder.` });
+    return;
+  }
+  const item = createContentItem({
+    workflowId: campaign.id,
+    title: body.title?.trim() || prompt.title,
+    body: body.body?.trim() || prompt.title,
+    format: body.format,
+    channel: body.channel,
+    status: "draft",
+    imageFile: prompt.resultFile,
+  });
+  globalBus.emit("workflows_changed");
+  globalBus.emit("brands_changed");
+  res.status(201).json(item);
 });
 
 // ---- Scheduled tasks ----
@@ -2910,6 +3238,22 @@ app.post("/billing/wallet/spend", async (req: Request, res: Response) => {
 
 app.get("/images", (_req: Request, res: Response) => {
   res.json({ folder: imagesFolder(), images: listImages() });
+});
+
+/**
+ * Serves one image file (brand logos, prompt results) to the dashboard.
+ * Read-only and path-safe: resolveImagePath refuses anything outside the
+ * folder, so this can never become a file reader.
+ */
+app.get("/images/:fileName", (req: Request, res: Response) => {
+  try {
+    const path = resolveImagePath(req.params.fileName);
+    res.setHeader("Content-Type", mimeTypeFor(path));
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.sendFile(path);
+  } catch {
+    res.status(404).json({ error: "Image not found" });
+  }
 });
 
 // ---- Storage ----

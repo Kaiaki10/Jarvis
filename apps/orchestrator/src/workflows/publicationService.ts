@@ -9,6 +9,7 @@ import {
   updateWorkflow,
 } from "../db/workflowRepo.js";
 import { getConnection, getConnectionById, getConnectionCredentialsById } from "../db/connectionsRepo.js";
+import { resolveImagePath } from "../platforms/media.js";
 import { workflowAccountIds } from "../db/workflowAccountsRepo.js";
 import { atConcurrencyLimit, startSession } from "../sessions/sessionManager.js";
 import { sendXPost } from "../platforms/actions.js";
@@ -79,6 +80,13 @@ export function contentPublishingReadiness(item: ContentItemRecord): {
   if (limit && item.body.length > limit) {
     return { ready: false, reason: `${item.channel.toUpperCase()} posts must be ${limit} characters or fewer; this draft has ${item.body.length}.` };
   }
+  if (item.imageFile) {
+    try {
+      resolveImagePath(item.imageFile);
+    } catch {
+      return { ready: false, reason: `"${item.imageFile}" is not in the Jarvis images folder, so it cannot be attached.` };
+    }
+  }
   const account = accountForContent(item, platformId);
   if (!account.connectionId) {
     return { ready: false, reason: account.reason ?? `Connect and test ${platformId.toUpperCase()} before publishing.` };
@@ -87,14 +95,17 @@ export function contentPublishingReadiness(item: ContentItemRecord): {
 }
 
 export function publicationPrompt(item: ContentItemRecord): string {
+  const imageInstruction = item.imageFile
+    ? `\nRequired image: attach "${item.imageFile}" via the imageFile argument. If list_available_images does not list it, stop and report that plainly.\n`
+    : `\nDo not attach an image.\n`;
   return `Publish this approved campaign content to X using post_to_x exactly once.
 
 Required post text (preserve it exactly):
 ---
 ${item.body}
 ---
-
-Do not rewrite, shorten, add a link, attach an image, or use any other tool. The outbound tool will pause for the user's one-time approval. If approval is denied or the platform refuses the post, report that plainly and do not try an alternative.`;
+${imageInstruction}
+Do not rewrite, shorten, add a link, or use any other tool. The outbound tool will pause for the user's one-time approval. If approval is denied or the platform refuses the post, report that plainly and do not try an alternative.`;
 }
 
 export function startContentPublication(item: ContentItemRecord): { sessionId: string; runId: string } {
@@ -180,6 +191,13 @@ export async function autoPublishContent(item: ContentItemRecord, nowIso?: strin
   }
   if (previous?.status === "published") {
     return { published: false, tripped: false, reason: "This content already has a confirmed publication." };
+  }
+  // Autopilot is text-only by construction: there is nowhere to attach a file
+  // here, so an item carrying a visual stays scheduled until the manual,
+  // approval-gated path publishes it with the image. Skipping (not tripping)
+  // keeps the policy alive for the text posts it can handle.
+  if (item.imageFile) {
+    return { published: false, tripped: false, reason: "This content has an attached visual and needs the manual publish path." };
   }
   const creds = getConnectionCredentialsById(readiness.connectionId);
   if (!creds) {

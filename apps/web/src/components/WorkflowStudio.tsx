@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -11,6 +11,7 @@ import {
   CircleDashed,
   FileText,
   Gift,
+  ImagePlus,
   LoaderCircle,
   Megaphone,
   MessageSquareText,
@@ -35,7 +36,7 @@ import type {
   MarketingChannel,
 } from "@jarvis/shared";
 import { api } from "@/lib/api";
-import { useWorkflows, useConnections, useMissionsList } from "@/lib/store";
+import { useWorkflows, useConnections, useMissionsList, useBrands } from "@/lib/store";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { WorkflowStageRail } from "@/components/WorkflowStageRail";
@@ -81,6 +82,8 @@ export function WorkflowStudio() {
   const { overview, refresh } = useWorkflows();
   const { missions } = useMissionsList();
   const { connections } = useConnections();
+  const { overview: brands } = useBrands();
+  const brandName = (brandId: string | null) => brands?.brands.find((brand) => brand.id === brandId)?.name ?? null;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const createDialog = useDialog();
   const generateDialog = useDialog();
@@ -158,6 +161,7 @@ export function WorkflowStudio() {
                       <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${item.status === "active" ? "bg-success" : item.status === "paused" ? "bg-warning" : "bg-muted"}`} />
                       <div className="min-w-0 flex-1">
                         <div className={`truncate text-body font-medium ${selected ? "text-foreground" : "text-foreground-secondary"}`}>{item.name}</div>
+                        {brandName(item.brandId) && <div className="mt-0.5 truncate text-micro text-accent-foreground">{brandName(item.brandId)}</div>}
                         <div className="mt-1 line-clamp-2 text-micro text-muted">{item.objective}</div>
                         <div className="mt-2 flex items-center justify-between text-micro text-muted">
                           <span className="capitalize">{item.status}</span><span>{count} assets</span>
@@ -177,8 +181,11 @@ export function WorkflowStudio() {
           <div className="min-w-0 space-y-5">
             <WorkflowHeader
               workflow={workflow}
+              brandName={brandName(workflow.brandId)}
+              brands={brands?.brands ?? []}
               contentCount={content.length}
               onStatus={(status) => mutate(() => api.updateWorkflow(workflow.id, { status }))}
+              onBrand={(brandId) => mutate(() => api.updateWorkflow(workflow.id, { brandId: brandId || null }))}
               onGenerate={generateDialog.show}
               onAdd={addDialog.show}
             />
@@ -231,7 +238,7 @@ export function WorkflowStudio() {
           can see. `key` remounts each form on open, which conditional rendering
           used to do for free — without it a cancelled draft would still be
           sitting there next time. */}
-      <WorkflowForm key={createDialog.key} open={createDialog.open} missions={missions} onClose={createDialog.hide} onCreated={async (created) => { await refresh(); setSelectedId(created.id); createDialog.hide(); }} />
+      <WorkflowForm key={createDialog.key} open={createDialog.open} missions={missions} brands={brands?.brands ?? []} onClose={createDialog.hide} onCreated={async (created) => { await refresh(); setSelectedId(created.id); createDialog.hide(); }} />
       {workflow && <GenerationForm key={generateDialog.key} open={generateDialog.open} workflow={workflow} onClose={generateDialog.hide} onGenerate={async (body) => { await mutate(() => api.generateWorkflowContent(workflow.id, body)); generateDialog.hide(); }} />}
       {workflow && <ContentForm key={addDialog.key} open={addDialog.open} workflow={workflow} onClose={addDialog.hide} onSave={async (body) => { await mutate(() => api.createContentItem(workflow.id, body)); addDialog.hide(); }} />}
       {editing && workflow && <ContentEditor key={editDialog.key} open={editDialog.open} item={editing} workflow={workflow} onClose={editDialog.hide} onSave={async (patch) => { await mutate(() => api.updateContentItem(editing.id, patch)); editDialog.hide(); }} onDelete={async () => { await mutate(() => api.deleteContentItem(editing.id)); editDialog.hide(); }} />}
@@ -262,10 +269,13 @@ function PulseStat({ value, label, tone }: { value: number; label: string; tone?
   return <div className="min-w-20 border-l border-border pl-5"><div className={`text-title text-xl tabular-nums ${color}`}>{value}</div><div className="text-micro text-muted">{label}</div></div>;
 }
 
-function WorkflowHeader({ workflow, contentCount, onStatus, onGenerate, onAdd }: {
+function WorkflowHeader({ workflow, brandName, brands, contentCount, onStatus, onBrand, onGenerate, onAdd }: {
   workflow: WorkflowRecord;
+  brandName: string | null;
+  brands: Array<{ id: string; name: string }>;
   contentCount: number;
   onStatus: (status: WorkflowStatus) => Promise<unknown>;
+  onBrand: (brandId: string | null) => Promise<unknown>;
   onGenerate: () => void;
   onAdd: () => void;
 }) {
@@ -273,13 +283,16 @@ function WorkflowHeader({ workflow, contentCount, onStatus, onGenerate, onAdd }:
     <Card elevation={2} className="overflow-hidden">
       <div className="flex flex-wrap items-start gap-4 p-5">
         <div className="min-w-[260px] flex-1">
-          <div className="flex flex-wrap items-center gap-2"><Badge tone={STATUS_TONE[workflow.status]} dot>{workflow.status}</Badge><Badge>{contentCount} assets</Badge></div>
+          <div className="flex flex-wrap items-center gap-2"><Badge tone={STATUS_TONE[workflow.status]} dot>{workflow.status}</Badge><Badge>{contentCount} assets</Badge>{brandName && <Badge tone="accent">{brandName}</Badge>}</div>
           <h2 className="mt-3 text-title text-xl text-foreground">{workflow.name}</h2>
           <p className="mt-1 max-w-3xl text-body text-foreground-secondary">{workflow.objective}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Select aria-label="Workflow status" className="h-9 py-1.5 capitalize" value={workflow.status} onChange={(event) => void onStatus(event.target.value as WorkflowStatus)}>
             <option value="draft">Draft</option><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option><option value="archived">Archived</option>
+          </Select>
+          <Select aria-label="Brand" className="h-9 max-w-44 py-1.5" value={workflow.brandId ?? ""} onChange={(event) => void onBrand(event.target.value || null)}>
+            <option value="">No brand</option>{brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}
           </Select>
           <Button variant="secondary" onClick={onAdd}><PenLine className="h-4 w-4" /> Add content</Button>
           <Button onClick={onGenerate}><Sparkles className="h-4 w-4" /> Generate with Jarvis</Button>
@@ -341,6 +354,7 @@ function ContentCard({ item, publicationRun, xConnected, onEdit, onAdvance, onPu
         <div className="flex items-center justify-between gap-2"><Badge>{CHANNELS.find((channel) => channel.id === item.channel)?.label}</Badge><span className="text-micro text-muted">{FORMAT_LABELS[item.format]}</span></div>
         <div className="mt-2 line-clamp-2 text-heading text-foreground">{item.title}</div>
         <div className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-micro text-muted">{item.body}</div>
+        {item.imageFile && <div className="mt-2 flex items-center gap-1 truncate text-micro text-accent-foreground"><ImagePlus className="h-3 w-3 shrink-0" /> {item.imageFile}</div>}
         {item.scheduledFor && <div className="mt-2 flex items-center gap-1 text-micro text-accent-foreground"><CalendarClock className="h-3 w-3" /> {new Date(item.scheduledFor).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>}
       </button>
       {publicationRun?.status === "running" && <Link href={`/under-the-hood/brain/runs/${publicationRun.sessionId}`} className="mt-2 flex items-center justify-end gap-1 border-t border-border pt-2 text-micro text-warning"><LoaderCircle className="h-3 w-3 animate-spin" /> Awaiting approval</Link>}
@@ -367,9 +381,9 @@ function Overlay({ open, children, onDismiss }: { open: boolean; children: React
   );
 }
 
-function WorkflowForm({ open, missions, onClose, onCreated }: { open: boolean; missions: ReturnType<typeof useMissionsList>["missions"]; onClose: () => void; onCreated: (workflow: WorkflowRecord) => Promise<void> }) {
+function WorkflowForm({ open, missions, brands, onClose, onCreated }: { open: boolean; missions: ReturnType<typeof useMissionsList>["missions"]; brands: Array<{ id: string; name: string }>; onClose: () => void; onCreated: (workflow: WorkflowRecord) => Promise<void> }) {
   const [name, setName] = useState(""); const [objective, setObjective] = useState(""); const [audience, setAudience] = useState(""); const [offer, setOffer] = useState(""); const [metric, setMetric] = useState("");
-  const [channels, setChannels] = useState<MarketingChannel[]>(["linkedin"]); const [policy, setPolicy] = useState<WorkflowApprovalPolicy>("each_item"); const [missionId, setMissionId] = useState(""); const [saving, setSaving] = useState(false);
+  const [channels, setChannels] = useState<MarketingChannel[]>(["linkedin"]); const [policy, setPolicy] = useState<WorkflowApprovalPolicy>("each_item"); const [missionId, setMissionId] = useState(""); const [brandId, setBrandId] = useState(""); const [saving, setSaving] = useState(false);
   const valid = name.trim() && objective.trim() && audience.trim() && offer.trim() && metric.trim() && channels.length;
   return <Overlay open={open} onDismiss={onClose}><Card elevation={2}><CardHeader title="Create a workflow" description="Define the strategy Jarvis must preserve across every asset" icon={<Target className="h-4 w-4" />} /><CardBody className="space-y-3">
     <Input autoFocus placeholder="Workflow name" value={name} onChange={(event) => setName(event.target.value)} className="w-full" />
@@ -378,7 +392,8 @@ function WorkflowForm({ open, missions, onClose, onCreated }: { open: boolean; m
     <Input placeholder="Primary success metric" value={metric} onChange={(event) => setMetric(event.target.value)} className="w-full" />
     <div><div className="mb-2 text-label text-muted">Approved channels</div><div className="flex flex-wrap gap-2">{CHANNELS.map((channel) => { const active = channels.includes(channel.id); return <button key={channel.id} onClick={() => setChannels(active ? channels.filter((id) => id !== channel.id) : [...channels, channel.id])} className={`rounded-lg border px-3 py-2 text-label transition-colors ${active ? "border-accent/40 bg-accent/15 text-accent-foreground" : "border-border text-muted hover:border-border-strong"}`}>{active && <Check className="mr-1 inline h-3 w-3" />}{channel.label}</button>; })}</div></div>
     <div className="grid gap-3 sm:grid-cols-2"><Select value={policy} onChange={(event) => setPolicy(event.target.value as WorkflowApprovalPolicy)}><option value="each_item">Approve every asset</option><option value="workflow">Approve workflow batches</option></Select><Select value={missionId} onChange={(event) => setMissionId(event.target.value)}><option value="">No linked mission</option>{missions.filter((mission) => !["archived", "completed"].includes(mission.status)).map((mission) => <option value={mission.id} key={mission.id}>{mission.title}</option>)}</Select></div>
-    <div className="flex justify-end gap-2 pt-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!valid || saving} onClick={async () => { setSaving(true); try { await onCreated(await api.createWorkflow({ name: name.trim(), objective: objective.trim(), audience: audience.trim(), offer: offer.trim(), channels, primaryMetric: metric.trim(), approvalPolicy: policy, missionId: missionId || undefined })); } finally { setSaving(false); } }}>{saving ? "Creating…" : "Create workflow"}</Button></div>
+    <Select value={brandId} onChange={(event) => setBrandId(event.target.value)} aria-label="Brand"><option value="">No brand — standalone campaign</option>{brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</Select>
+    <div className="flex justify-end gap-2 pt-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!valid || saving} onClick={async () => { setSaving(true); try { await onCreated(await api.createWorkflow({ name: name.trim(), objective: objective.trim(), audience: audience.trim(), offer: offer.trim(), channels, primaryMetric: metric.trim(), approvalPolicy: policy, missionId: missionId || undefined, brandId: brandId || undefined })); } finally { setSaving(false); } }}>{saving ? "Creating…" : "Create workflow"}</Button></div>
   </CardBody></Card></Overlay>;
 }
 
@@ -404,12 +419,17 @@ function ContentForm({ open, workflow, onClose, onSave }: { open: boolean; workf
   return <Overlay open={open} onDismiss={onClose}><Card elevation={2}><CardHeader title="Add content" description="Capture an idea or write a draft directly" icon={<PenLine className="h-4 w-4" />} /><CardBody className="space-y-3"><Input autoFocus className="w-full" placeholder="Internal title" value={title} onChange={(event) => setTitle(event.target.value)} /><div className="grid gap-3 sm:grid-cols-2"><Select value={channel} onChange={(event) => setChannel(event.target.value as MarketingChannel)}>{workflow.channels.map((id) => <option key={id} value={id}>{CHANNELS.find((item) => item.id === id)?.label}</option>)}</Select><Select value={format} onChange={(event) => setFormat(event.target.value as ContentFormat)}>{Object.entries(FORMAT_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select></div><Textarea rows={9} className="w-full" placeholder="Write the full content draft" value={body} onChange={(event) => setBody(event.target.value)} /><div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving || !title.trim() || !body.trim()} onClick={async () => { setSaving(true); try { await onSave({ title: title.trim(), body: body.trim(), format, channel }); } finally { setSaving(false); } }}>{saving ? "Saving…" : "Add draft"}</Button></div></CardBody></Card></Overlay>;
 }
 
-function ContentEditor({ open, item, workflow, onClose, onSave, onDelete }: { open: boolean; item: ContentItemRecord; workflow: WorkflowRecord; onClose: () => void; onSave: (patch: { title: string; body: string; format: ContentFormat; channel: MarketingChannel; status: ContentStatus; scheduledFor?: string | null; performanceSummary?: string | null }) => Promise<void>; onDelete: () => Promise<void> }) {
-  const [title, setTitle] = useState(item.title); const [body, setBody] = useState(item.body); const [channel, setChannel] = useState(item.channel); const [format, setFormat] = useState(item.format); const [status, setStatus] = useState(item.status); const [scheduledFor, setScheduledFor] = useState(item.scheduledFor ? new Date(item.scheduledFor).toISOString().slice(0, 16) : ""); const [performance, setPerformance] = useState(item.performanceSummary ?? ""); const [saving, setSaving] = useState(false);
+function ContentEditor({ open, item, workflow, onClose, onSave, onDelete }: { open: boolean; item: ContentItemRecord; workflow: WorkflowRecord; onClose: () => void; onSave: (patch: { title: string; body: string; format: ContentFormat; channel: MarketingChannel; status: ContentStatus; scheduledFor?: string | null; performanceSummary?: string | null; imageFile?: string | null }) => Promise<void>; onDelete: () => Promise<void> }) {
+  const [title, setTitle] = useState(item.title); const [body, setBody] = useState(item.body); const [channel, setChannel] = useState(item.channel); const [format, setFormat] = useState(item.format); const [status, setStatus] = useState(item.status); const [scheduledFor, setScheduledFor] = useState(item.scheduledFor ? new Date(item.scheduledFor).toISOString().slice(0, 16) : ""); const [performance, setPerformance] = useState(item.performanceSummary ?? ""); const [imageFile, setImageFile] = useState(item.imageFile ?? ""); const [images, setImages] = useState<Array<{ fileName: string }>>([]); const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    api.getImages().then((result) => setImages(result.images)).catch(() => {});
+  }, [open ]);
   const needsTime = status === "scheduled" && !scheduledFor;
   return <Overlay open={open} onDismiss={onClose}><Card elevation={2}><CardHeader title="Edit content" description="Refine the copy, approval state, schedule, and learning" icon={<MessageSquareText className="h-4 w-4" />} /><CardBody className="space-y-3"><Input className="w-full" value={title} onChange={(event) => setTitle(event.target.value)} /><div className="grid gap-3 sm:grid-cols-3"><Select value={channel} onChange={(event) => setChannel(event.target.value as MarketingChannel)}>{workflow.channels.map((id) => <option key={id} value={id}>{CHANNELS.find((entry) => entry.id === id)?.label}</option>)}</Select><Select value={format} onChange={(event) => setFormat(event.target.value as ContentFormat)}>{Object.entries(FORMAT_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select><Select value={status} onChange={(event) => setStatus(event.target.value as ContentStatus)}>{PIPELINE.map((stage) => <option key={stage.status} value={stage.status} disabled={(stage.status === "published" && channel === "x" && !["published", "measured"].includes(item.status)) || (stage.status === "measured" && !["published", "measured"].includes(item.status))}>{stage.status === "published" && channel === "x" ? "Published via Jarvis" : stage.label}</option>)}</Select></div><Textarea rows={10} className="w-full" value={body} onChange={(event) => setBody(event.target.value)} />
     {(status === "scheduled" || scheduledFor) && <label className="block"><span className="mb-1.5 block text-label text-muted">Publishing time</span><Input type="datetime-local" className="w-full" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} />{needsTime && <span className="mt-1 block text-micro text-warning">A scheduled asset needs a publishing time.</span>}</label>}
     {(status === "published" || status === "measured" || performance) && <Textarea rows={3} className="w-full" placeholder="Performance summary — result, signal, and what Jarvis should learn" value={performance} onChange={(event) => setPerformance(event.target.value)} />}
-    <div className="flex items-center justify-between pt-2"><Button variant="destructive" size="sm" onClick={() => void onDelete()}><Trash2 className="h-3.5 w-3.5" /> Delete</Button><div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving || needsTime || !title.trim() || !body.trim()} onClick={async () => { setSaving(true); try { await onSave({ title: title.trim(), body: body.trim(), format, channel, status, scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : null, performanceSummary: performance.trim() || null }); } finally { setSaving(false); } }}>{saving ? "Saving…" : "Save changes"}</Button></div></div>
+    <label className="block"><span className="mb-1.5 flex items-center gap-1.5 text-label text-muted"><ImagePlus className="h-3.5 w-3.5" /> Attached visual — publishes with the post on the manual path</span><Select value={imageFile} onChange={(event) => setImageFile(event.target.value)} className="w-full"><option value="">Text only</option>{images.map((image) => <option key={image.fileName} value={image.fileName}>{image.fileName}</option>)}{imageFile && !images.some((image) => image.fileName === imageFile) && <option value={imageFile}>{imageFile} (missing)</option>}</Select></label>
+    <div className="flex items-center justify-between pt-2"><Button variant="destructive" size="sm" onClick={() => void onDelete()}><Trash2 className="h-3.5 w-3.5" /> Delete</Button><div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving || needsTime || !title.trim() || !body.trim()} onClick={async () => { setSaving(true); try { await onSave({ title: title.trim(), body: body.trim(), format, channel, status, scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : null, performanceSummary: performance.trim() || null, imageFile: imageFile || null }); } finally { setSaving(false); } }}>{saving ? "Saving…" : "Save changes"}</Button></div></div>
   </CardBody></Card></Overlay>;
 }

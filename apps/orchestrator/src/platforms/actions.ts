@@ -6,10 +6,10 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import { oauth1Header } from "./oauth1.js";
 import { listConnections, getConnectionCredentialsById } from "../db/connectionsRepo.js";
-import { getPlatform } from "./definitions.js";
+import { ARTLIST_MCP_URL, getPlatform } from "./definitions.js";
 import { checkDailyCap, recordAction, isDuplicate, contentHash } from "./spendGuard.js";
 import { notify } from "../notifications/notifier.js";
-import { listImages, imagesFolder, readImage, mimeTypeFor } from "./media.js";
+import { MAX_IMAGE_BYTES, extensionForMimeType, listImages, imagesFolder, readImage, mimeTypeFor, saveImage } from "./media.js";
 import { basename } from "node:path";
 import { withPlatformLock } from "./platformLock.js";
 import { drawFromWallet } from "../billing/walletFunding.js";
@@ -697,6 +697,87 @@ function buildStripeTools(_creds: Creds, _sessionId?: string, _connectionId?: st
   ]);
 }
 
+/**
+ * Hosts that must never be fetched by import_media_url. The URL arrives from a
+ * model whose input may have been influenced by whatever it just read, so
+ * loopback, private ranges, and cloud metadata endpoints are refused by
+ * construction rather than by the model behaving well.
+ */
+function isBlockedMediaHost(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host || host === "localhost" || host === "::1" || host === "0.0.0.0") return true;
+  if (host === "169.254.169.254" || host === "metadata.google.internal") return true;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return true;
+  const du = host.match(/^172\.(\d+)\./);
+  if (du && Number(du[1]) >= 16 && Number(du[1]) <= 31) return true;
+  if (/^fc00:|^fd00:|^fe80:/i.test(host)) return true;
+  return false;
+}
+
+/**
+ * Downloads a finished generation (e.g. from the Artlist Toolkit) into the
+ * Jarvis images folder and returns the stored filename, ready for
+ * list_available_images / post_to_x's imageFile.
+ *
+ * Images only in this increment: the images folder and the X upload path
+ * accept stills, so a video URL is refused plainly rather than saved
+ * somewhere nothing can attach it from.
+ */
+export async function importMediaUrl(url: string, fileName?: string): Promise<string> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("That is not a valid URL.");
+  }
+  if (parsed.protocol !== "https:") throw new Error("Only https URLs can be imported.");
+  if (isBlockedMediaHost(parsed.hostname)) throw new Error("That address is not importable.");
+  let res: Response;
+  try {
+    res = await fetch(parsed.toString(), { signal: AbortSignal.timeout(60_000) });
+  } catch {
+    throw new Error("The download failed. Check the link and try again.");
+  }
+  if (!res.ok) throw new Error(`The download failed (HTTP ${res.status}).`);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (bytes.length === 0) throw new Error("The download was empty.");
+  if (bytes.length > MAX_IMAGE_BYTES) {
+    throw new Error(`The download is ${(bytes.length / 1024 / 1024).toFixed(1)} MB. The limit is 5 MB.`);
+  }
+  const fromPath = decodeURIComponent(parsed.pathname.split("/").pop() ?? "");
+  const fromType = extensionForMimeType(res.headers.get("content-type"));
+  const suggested =
+    fileName?.trim() ||
+    (/\.[a-z0-9]+$/i.test(fromPath) ? fromPath : fromPath ? `${fromPath}${fromType ?? ""}` : `generated${fromType ?? ""}`);
+  return saveImage(suggested, bytes);
+}
+
+function buildArtlistTools(_creds: Creds, sessionId?: string, connectionId?: string): AnyTool[] {
+  return erase([
+    tool(
+      "import_media_url",
+      "Save a finished Artlist generation into the Jarvis images folder so it can be attached to a post. " +
+        "Use it for the file Artlist just produced (paste its https download link). " +
+        "Images only — video cannot be attached to posts yet. Returns the stored filename to use as imageFile.",
+      {
+        url: z.string().describe("The https download link for the finished Artlist image."),
+        fileName: z
+          .string()
+          .optional()
+          .describe("Optional preferred filename. Plain filename only; must end in .png, .jpg, .jpeg, .gif, or .webp."),
+      },
+      async (args) => guarded("artlist", "import_media_url", connectionId, async () => {
+        try {
+          const stored = await importMediaUrl(args.url, args.fileName);
+          return ok(`Saved as ${stored}. Pass it as imageFile when posting.`);
+        } catch (err) {
+          return fail(err instanceof Error ? err.message : String(err));
+        }
+      }, undefined, sessionId)
+    ),
+  ]);
+}
+
 const BUILDERS: Record<string, (creds: Creds, sessionId?: string, connectionId?: string) => AnyTool[]> = {
   x: buildXTools,
   slack: buildSlackTools,
@@ -704,10 +785,11 @@ const BUILDERS: Record<string, (creds: Creds, sessionId?: string, connectionId?:
   resend: buildResendTools,
   coinbase: buildWalletTools,
   stripe: buildStripeTools,
+  artlist: buildArtlistTools,
 };
 
 export interface PlatformToolset {
-  mcpServers?: Record<string, McpSdkServerConfigWithInstance>;
+  mcpServers?: Record<string, McpSdkServerConfigWithInstance | { type: "http"; url: string; headers?: Record<string, string> }>;
   /** Plain-English list of what's available, for the system prompt. */
   capabilitySummary: string;
   /**
@@ -750,6 +832,7 @@ export function buildPlatformToolset(
     ? listConnections().filter((connection) => connection.id === scope.connectionId)
     : listConnections(scope.agentId ?? undefined);
 
+  let artlistToken: string | null = null;
   for (const connection of available) {
     if (connection.status !== "connected") continue;
     const builder = BUILDERS[connection.platformId];
@@ -758,9 +841,21 @@ export function buildPlatformToolset(
     tools.push(...builder(creds, sessionId, connection.id));
     const platformName = getPlatform(connection.platformId)?.definition.name ?? connection.platformId;
     names.push(connection.label ? `${platformName} (${connection.label})` : platformName);
+    if (connection.platformId === "artlist" && creds.apiToken?.trim()) {
+      artlistToken = creds.apiToken.trim();
+    }
   }
 
-  if (!tools.length) {
+  // Artlist's own generation tools arrive as a remote MCP server, authenticated
+  // with the stored token. Its tools spend Artlist credits, so like every
+  // other non-read tool they pause for approval via canUseTool — the only
+  // control here is that gate plus the daily cap on the import step, since a
+  // remote tool cannot be wrapped in guarded() the way local ones are.
+  const remoteServers: PlatformToolset["mcpServers"] = artlistToken
+    ? { artlist: { type: "http", url: ARTLIST_MCP_URL, headers: { Authorization: `Bearer ${artlistToken}` } } }
+    : undefined;
+
+  if (!tools.length && !remoteServers) {
     return {
       capabilitySummary:
         "No external platforms are connected yet, so you cannot post or send anything. If asked to, explain that the platform needs connecting on the Connections page first.",
@@ -768,11 +863,16 @@ export function buildPlatformToolset(
     };
   }
 
+  const artlistNote = remoteServers
+    ? " Artlist visual generation is available: write the image prompt against the workflow's character and channel limits, generate through Artlist (approval required, spends Artlist credits), then save the finished file with import_media_url and attach it as imageFile when posting."
+    : "";
+
   return {
     mcpServers: {
-      jarvis: createSdkMcpServer({ name: "jarvis", version: "1.0.0", tools }),
+      ...(tools.length ? { jarvis: createSdkMcpServer({ name: "jarvis", version: "1.0.0", tools }) } : {}),
+      ...remoteServers,
     },
-    capabilitySummary: `Connected platforms you can act on: ${names.join(", ")}. Use the provided tools to post or send. Every outbound action requires the user's approval before it goes out, so draft carefully — assume what you send is final. To attach an image, call list_available_images first and use one of the filenames it returns.`,
+    capabilitySummary: `Connected platforms you can act on: ${names.join(", ")}. Use the provided tools to post or send. Every outbound action requires the user's approval before it goes out, so draft carefully — assume what you send is final. To attach an image, call list_available_images first and use one of the filenames it returns.${artlistNote}`,
     autoAllowTools: READ_ONLY_TOOLS,
   };
 }

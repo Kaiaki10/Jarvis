@@ -888,7 +888,102 @@ const coinbase: Platform = {
   },
 };
 
-export const PLATFORMS: Platform[] = [x, facebook, instagram, slack, discord, resend, googleAds, metaAds, xAds, push, stripe, coinbase];
+/**
+ * Artlist MCP endpoint (Streamable HTTP). Sessions reach it as a remote MCP
+ * server when an Artlist connection is saved — see buildPlatformToolset in
+ * actions.ts. The token below is pasted after signing in, the same way every
+ * other platform here takes a pasted credential rather than an interactive
+ * OAuth flow the headless orchestrator cannot complete unattended.
+ */
+export const ARTLIST_MCP_URL = "https://mcp.artlist.io/mcp";
+
+const artlist: Platform = {
+  definition: {
+    id: "artlist",
+    name: "Artlist",
+    tagline: "Generate campaign images, video, voiceover, and music from Jarvis.",
+    category: "creative",
+    docsUrl: "https://artlist.io/mcp",
+    fields: [
+      {
+        key: "apiToken",
+        label: "Artlist API token",
+        help: "Sign in at Artlist, connect the Artlist MCP, and paste the token it issues for your account. Generations spend your Artlist credits, so every generation tool still pauses for approval.",
+        placeholder: "Bearer token from your Artlist account",
+        secret: true,
+      },
+    ],
+    capabilities: ["AI images", "AI video", "Voiceover", "Music"],
+    dataFreshness: "On-demand generation against your Artlist credits",
+    steps: [
+      {
+        title: "Get an Artlist subscription",
+        body: [
+          "Artlist generation is paid and credit-based, with only a small trial for new accounts. Sign up and choose a plan that includes the AI Toolkit.",
+          "Jarvis cannot generate anything against Artlist until this exists — there is no free production tier.",
+        ],
+        linkUrl: "https://artlist.io/ai",
+        linkLabel: "Open Artlist AI",
+      },
+      {
+        title: "Connect the Artlist MCP",
+        body: [
+          "In Claude, ChatGPT, or VS Code, add a custom connector with the server URL https://mcp.artlist.io/mcp.",
+          "Sign in with your Artlist account and approve the connection.",
+          "Paste the token it issues for your account into the field below, then save and test.",
+        ],
+        linkUrl: "https://artlist.io/mcp",
+        linkLabel: "Open Artlist MCP setup",
+      },
+      {
+        title: "Generate, then import",
+        body: [
+          "Ask Jarvis for a visual (it writes the prompt against your workflow's character and channel limits).",
+          "Generation runs through your Artlist credits and pauses for your approval first.",
+          "Finished files land in the Jarvis images folder via import_media_url, ready to attach to a post.",
+        ],
+        warning:
+          "Video files cannot be attached to posts yet — the images folder and the X upload path accept still images only. Stills work end to end today.",
+      },
+    ],
+  },
+  async test(creds) {
+    const token = creds.apiToken?.trim();
+    if (!token) return failure("Paste the API token from your Artlist account first.");
+    let res: Response;
+    try {
+      // A JSON-RPC initialize handshake: side-effect free, and the status
+      // distinguishes "endpoint live, token rejected" (401/403) from success.
+      res = await fetch(ARTLIST_MCP_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: {},
+            clientInfo: { name: "jarvis", version: "1.0.0" },
+          },
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch {
+      return failure("Could not reach the Artlist MCP endpoint. Check your network and try again.");
+    }
+    if (res.status === 401 || res.status === 403) {
+      return failure("Artlist rejected the token (unauthorized). Sign in again and paste a fresh token.");
+    }
+    return { ok: true, detail: "Artlist MCP reachable — generation will spend your Artlist credits" };
+  },
+};
+
+export const PLATFORMS: Platform[] = [x, facebook, instagram, slack, discord, resend, googleAds, metaAds, xAds, push, stripe, coinbase, artlist];
 
 export function getPlatform(id: string): Platform | undefined {
   return PLATFORMS.find((p) => p.definition.id === id);
