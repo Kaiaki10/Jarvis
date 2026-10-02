@@ -150,3 +150,20 @@ describe("HTTP validation", () => {
     expect(updateAgentSchema.safeParse({ status: "archived" }).success).toBe(false);
   });
 });
+
+describe("website chat validation", () => {
+  it("accepts absent source fields sent as null, as widget builds from 2026-09-24 did", async () => {
+    const { createWebsiteConversationSchema } = await import("./validation.js");
+    const parsed = createWebsiteConversationSchema.safeParse({
+      customerName: "Robin", customerEmail: "", body: "Hi",
+      referrer: null, utmSource: null, utmMedium: null, utmCampaign: null,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts the search channel", async () => {
+    const { updateCustomerSchema } = await import("./validation.js");
+    expect(updateCustomerSchema.safeParse({ acquisitionChannel: "search" }).success).toBe(true);
+    expect(updateCustomerSchema.safeParse({ acquisitionChannel: "tiktok" }).success).toBe(false);
+  });
+});

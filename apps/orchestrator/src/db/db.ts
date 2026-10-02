@@ -183,6 +183,7 @@ for (const migration of [
   { table: "customers", column: "utm_medium", sql: "ALTER TABLE customers ADD COLUMN utm_medium TEXT" },
   { table: "customers", column: "utm_campaign", sql: "ALTER TABLE customers ADD COLUMN utm_campaign TEXT" },
   { table: "customers", column: "revenue_minor", sql: "ALTER TABLE customers ADD COLUMN revenue_minor INTEGER" },
+  { table: "customers", column: "referrer", sql: "ALTER TABLE customers ADD COLUMN referrer TEXT" },
   // v2: which agent owns the row. Only root tables carry it — everything else
   // (deliverables, content_items, customer_messages, …) reaches its agent
   // through an existing foreign key, so ten columns cover full isolation.

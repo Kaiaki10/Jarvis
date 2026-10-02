@@ -333,7 +333,8 @@ export const abandonCampaignExperimentSchema = z.object({
 
 const customerChannel = z.enum(["website", "email", "x", "instagram", "facebook"]);
 const customerPriority = z.enum(["low", "normal", "high", "urgent"]);
-const acquisitionChannel = z.enum(["website", "email", "x", "instagram", "facebook", "referral", "direct"]).nullable().optional();
+const ACQUISITION_CHANNELS = ["website", "email", "x", "instagram", "facebook", "search", "referral", "direct"] as const;
+const acquisitionChannel = z.enum(ACQUISITION_CHANNELS).nullable().optional();
 
 export const attributionChannelSchema = z.object({
   channel: acquisitionChannel,
@@ -374,7 +375,7 @@ export const updateCustomerSchema = z.object({
   email: z.union([z.literal(""), z.string().email().max(320)]).nullable().optional(),
   company: z.string().trim().max(300).nullable().optional(),
   notes: z.string().trim().max(20_000).nullable().optional(),
-  acquisitionChannel: z.enum(["website", "email", "x", "instagram", "facebook", "referral", "direct"]).nullable().optional(),
+  acquisitionChannel: z.enum(ACQUISITION_CHANNELS).nullable().optional(),
   utmSource: z.string().trim().max(200).nullable().optional(),
   utmMedium: z.string().trim().max(200).nullable().optional(),
   utmCampaign: z.string().trim().max(200).nullable().optional(),
@@ -402,11 +403,13 @@ export const createWebsiteConversationSchema = z.object({
   customerEmail: z.union([z.literal(""), z.string().email().max(320)]).optional(),
   subject: z.string().trim().max(500).optional(),
   body: z.string().trim().min(1).max(20_000),
-  acquisitionChannel: z.enum(["website", "email", "x", "instagram", "facebook", "referral", "direct"]).optional(),
-  utmSource: z.string().trim().max(200).optional(),
-  utmMedium: z.string().trim().max(200).optional(),
-  utmCampaign: z.string().trim().max(200).optional(),
-  referrer: z.string().max(2000).optional(),
+  acquisitionChannel: z.enum(ACQUISITION_CHANNELS).optional(),
+  // Nullable: widget builds from 2026-09-24 to 2026-10-01 sent null for any
+  // absent field, and a rejected request means a lost customer conversation.
+  utmSource: z.string().trim().max(200).nullable().optional(),
+  utmMedium: z.string().trim().max(200).nullable().optional(),
+  utmCampaign: z.string().trim().max(200).nullable().optional(),
+  referrer: z.string().max(2000).nullable().optional(),
 }).strict();
 
 export const websiteMessageSchema = z.object({

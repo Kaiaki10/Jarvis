@@ -995,9 +995,10 @@ export type CustomerMessageDirection = "inbound" | "outbound" | "internal";
 export type CustomerMessageSender = "customer" | "jarvis" | "operator" | "system";
 export type CustomerReplyDraftStatus = "running" | "ready" | "used" | "failed";
 
-/** Where a customer first entered the funnel. Populated by the inbound
- * path (widget/webhook) when available; filled manually otherwise. */
-export type AcquisitionChannel = "website" | "email" | "x" | "instagram" | "facebook" | "referral" | "direct" | null;
+/** Where a customer first entered the funnel. Inferred from UTM tags, the
+ * referrer, or the platform they messaged on (see customers/acquisition.ts);
+ * can be corrected manually. First touch wins: it is never overwritten. */
+export type AcquisitionChannel = "website" | "email" | "x" | "instagram" | "facebook" | "search" | "referral" | "direct" | null;
 
 export interface CustomerRecord {
   id: string;
@@ -1010,6 +1011,8 @@ export interface CustomerRecord {
   utmSource: string | null;
   utmMedium: string | null;
   utmCampaign: string | null;
+  /** The external page that sent them, when the browser reported one. */
+  referrer: string | null;
   revenueMinor: number | null;
   createdAt: string;
   updatedAt: string;

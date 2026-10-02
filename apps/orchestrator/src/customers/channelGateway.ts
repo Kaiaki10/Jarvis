@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { AcquisitionChannel, CustomerChannel, CustomerMessageRecord } from "@jarvis/shared";
+import { inferAcquisitionChannel } from "./acquisition.js";
 import { getConnection, getConnectionCredentials } from "../db/connectionsRepo.js";
 import {
   bindCustomerChannelThread,
@@ -57,7 +58,7 @@ export function ingestCustomerMessage(input: InboundCustomerMessage): {
       channel: input.provider,
       subject: input.subject.trim() || "Customer conversation",
       message: input.body,
-      acquisitionChannel: input.acquisitionChannel,
+      acquisitionChannel: input.acquisitionChannel ?? inferAcquisitionChannel({ conversationChannel: input.provider, ...input }),
       utmSource: input.utmSource,
       utmMedium: input.utmMedium,
       utmCampaign: input.utmCampaign,
@@ -109,7 +110,7 @@ export function createWebsiteConversation(input: {
     channel: "website",
     subject: input.subject?.trim() || "Website chat",
     message: input.body,
-    acquisitionChannel: input.acquisitionChannel,
+    acquisitionChannel: input.acquisitionChannel ?? inferAcquisitionChannel({ conversationChannel: "website", ...input }),
     utmSource: input.utmSource,
     utmMedium: input.utmMedium,
     utmCampaign: input.utmCampaign,

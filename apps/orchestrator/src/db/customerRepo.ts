@@ -35,6 +35,7 @@ interface CustomerRow {
   utm_source: string | null;
   utm_medium: string | null;
   utm_campaign: string | null;
+  referrer: string | null;
   revenue_minor: number | null;
   created_at: string;
   updated_at: string;
@@ -111,6 +112,7 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
     utmSource: row.utm_source,
     utmMedium: row.utm_medium,
     utmCampaign: row.utm_campaign,
+    referrer: row.referrer,
     revenueMinor: row.revenue_minor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -313,8 +315,25 @@ function findOrCreateCustomer(input: Pick<CreateCustomerConversationRequest, "cu
       : db.prepare(`SELECT * FROM customers WHERE lower(email) = lower(?) LIMIT 1`).get(email)) as unknown as CustomerRow | undefined;
     if (existing) {
       const now = new Date().toISOString();
-      db.prepare(`UPDATE customers SET name = ?, company = COALESCE(?, company), updated_at = ? WHERE id = ?`)
-        .run(input.customerName.trim(), input.company?.trim() || null, now, existing.id);
+      // First touch wins: source fields only fill in while still empty, so a
+      // customer created by a Stripe payment (no source) picks one up when they
+      // first chat, but a known source is never overwritten by a later visit.
+      // The UTM/referrer set moves as one unit so two visits never mix on a row.
+      const hasTouch = existing.acquisition_channel !== null || existing.utm_source !== null || existing.referrer !== null;
+      db.prepare(
+        `UPDATE customers SET name = ?, company = COALESCE(?, company),
+           acquisition_channel = COALESCE(acquisition_channel, ?),
+           utm_source = ?, utm_medium = ?, utm_campaign = ?, referrer = ?,
+           updated_at = ? WHERE id = ?`
+      ).run(
+        input.customerName.trim(), input.company?.trim() || null,
+        input.acquisitionChannel ?? null,
+        hasTouch ? existing.utm_source : input.utmSource ?? null,
+        hasTouch ? existing.utm_medium : input.utmMedium ?? null,
+        hasTouch ? existing.utm_campaign : input.utmCampaign ?? null,
+        hasTouch ? existing.referrer : input.referrer ?? null,
+        now, existing.id,
+      );
       return getCustomer(existing.id)!;
     }
   }
@@ -326,9 +345,9 @@ function findOrCreateCustomer(input: Pick<CreateCustomerConversationRequest, "cu
   const utmMed = input.utmMedium ?? null;
   const utmCamp = input.utmCampaign ?? null;
   db.prepare(
-    `INSERT INTO customers (id, agent_id, name, email, company, notes, acquisition_channel, utm_source, utm_medium, utm_campaign, revenue_minor, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?)`
-  ).run(id, input.agentId ?? null, input.customerName.trim(), email, input.company?.trim() || null, acq, utmSrc, utmMed, utmCamp, now, now);
+    `INSERT INTO customers (id, agent_id, name, email, company, notes, acquisition_channel, utm_source, utm_medium, utm_campaign, referrer, revenue_minor, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, ?, ?)`
+  ).run(id, input.agentId ?? null, input.customerName.trim(), email, input.company?.trim() || null, acq, utmSrc, utmMed, utmCamp, input.referrer ?? null, now, now);
   return getCustomer(id)!;
 }
 
@@ -578,24 +597,28 @@ export function countAutomaticReplies(conversationId: string): number {
 
 // ---- Attribution reads ----
 
-/** Aggregate attribution counts by acquisition channel, for the dashboard */
+/**
+ * Customers and revenue per acquisition channel, for the dashboard. Customers
+ * with no recorded source are returned as channel `null` rather than dropped,
+ * so the share of revenue that can't be attributed yet stays visible instead
+ * of making the attributed channels look like the whole picture.
+ */
 export function attributionByChannel(agentId?: string): Array<{
-  channel: string;
+  channel: AcquisitionChannel;
   count: number;
+  revenueMinor: number;
 }> {
-  if (agentId) {
-    const rows = db.prepare(
-      `SELECT acquisition_channel AS channel, COUNT(*) AS count FROM customers WHERE agent_id = ? AND acquisition_channel IS NOT NULL GROUP BY acquisition_channel ORDER BY count DESC`
-    ).all(agentId) as unknown as Array<{ channel: string; count: number }>;
-    return rows;
-  }
+  const where = agentId ? "WHERE agent_id = ?" : "";
   const rows = db.prepare(
-    `SELECT acquisition_channel AS channel, COUNT(*) AS count FROM customers WHERE acquisition_channel IS NOT NULL GROUP BY acquisition_channel ORDER BY count DESC`
-  ).all() as unknown as Array<{ channel: string; count: number }>;
-  return rows;
+    `SELECT acquisition_channel AS channel, COUNT(*) AS count, COALESCE(SUM(revenue_minor), 0) AS revenueMinor
+     FROM customers ${where}
+     GROUP BY acquisition_channel
+     ORDER BY revenueMinor DESC, count DESC`
+  ).all(...(agentId ? [agentId] : [])) as unknown as Array<{ channel: string | null; count: number; revenueMinor: number }>;
+  return rows.map((row) => ({ ...row, channel: row.channel as AcquisitionChannel }));
 }
 
-/** Customers with any attribution data, paginated */
+/** Customers with any attribution data, most recently active first. */
 export function listCustomersWithAttribution(
   agentId?: string,
   limit = 50,
@@ -604,55 +627,59 @@ export function listCustomersWithAttribution(
   id: string;
   name: string;
   email: string | null;
-  acquisitionChannel: string | null;
+  acquisitionChannel: AcquisitionChannel;
   utmSource: string | null;
   utmMedium: string | null;
   utmCampaign: string | null;
+  referrer: string | null;
   revenueMinor: number | null;
 }> {
+  // Parenthesized so the agent filter applies to every branch of the OR, not
+  // only the last one.
   const agentWhere = agentId ? "AND agent_id = ?" : "";
   const params: Array<string | number> = agentId ? [agentId, limit, offset] : [limit, offset];
   const rows = db.prepare(
-    `SELECT id, name, email, acquisition_channel, utm_source, utm_medium, utm_campaign, revenue_minor
-     FROM customers
-     WHERE acquisition_channel IS NOT NULL OR utm_source IS NOT NULL OR revenue_minor IS NOT NULL
+    `SELECT * FROM customers
+     WHERE (acquisition_channel IS NOT NULL OR utm_source IS NOT NULL OR referrer IS NOT NULL OR revenue_minor IS NOT NULL)
      ${agentWhere}
      ORDER BY updated_at DESC
      LIMIT ? OFFSET ?`
-  ).all(...params) as unknown as Array<{
-    id: string;
-    name: string;
-    email: string | null;
-    acquisitionChannel: string | null;
-    utmSource: string | null;
-    utmMedium: string | null;
-    utmCampaign: string | null;
-    revenueMinor: number | null;
-  }>;
-  return rows;
+  ).all(...params) as unknown as CustomerRow[];
+  return rows.map((row) => {
+    const customer = mapCustomer(row);
+    return {
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      acquisitionChannel: customer.acquisitionChannel,
+      utmSource: customer.utmSource,
+      utmMedium: customer.utmMedium,
+      utmCampaign: customer.utmCampaign,
+      referrer: customer.referrer,
+      revenueMinor: customer.revenueMinor,
+    };
+  });
 }
 
-/** Revenue totals across customers, optionally filtered by agent */
+/** Revenue totals across customers, optionally filtered by agent. */
 export function attributionRevenueTotals(agentId?: string): {
   totalRevenueMinor: number;
   customerCount: number;
   customersWithRevenue: number;
+  /** Revenue from customers whose acquisition channel is known. */
+  attributedRevenueMinor: number;
 } {
-  const agentWhere = agentId ? "AND agent_id = ?" : "";
-  const rows = agentId
-    ? db.prepare(
-        `SELECT COUNT(DISTINCT id) AS customerCount,
-                COUNT(revenue_minor) AS customersWithRevenue,
-                COALESCE(SUM(revenue_minor), 0) AS totalRevenueMinor
-         FROM customers
-         WHERE revenue_minor IS NOT NULL AND agent_id = ?`
-      ).all(agentId)
-    : db.prepare(
-        `SELECT COUNT(DISTINCT id) AS customerCount,
-                COUNT(revenue_minor) AS customersWithRevenue,
-                COALESCE(SUM(revenue_minor), 0) AS totalRevenueMinor
-         FROM customers
-         WHERE revenue_minor IS NOT NULL`
-      ).all();
-  return rows as unknown as { customerCount: number; customersWithRevenue: number; totalRevenueMinor: number };
+  const where = agentId ? "WHERE agent_id = ?" : "";
+  return db.prepare(
+    `SELECT COUNT(*) AS customerCount,
+            COUNT(revenue_minor) AS customersWithRevenue,
+            COALESCE(SUM(revenue_minor), 0) AS totalRevenueMinor,
+            COALESCE(SUM(CASE WHEN acquisition_channel IS NOT NULL THEN revenue_minor END), 0) AS attributedRevenueMinor
+     FROM customers ${where}`
+  ).get(...(agentId ? [agentId] : [])) as unknown as {
+    customerCount: number;
+    customersWithRevenue: number;
+    totalRevenueMinor: number;
+    attributedRevenueMinor: number;
+  };
 }

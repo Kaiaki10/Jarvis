@@ -27,6 +27,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import type {
+  AcquisitionChannel,
   CreateCustomerConversationRequest,
   CustomerChannel,
   CustomerPriority,
@@ -40,6 +41,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { ACQUISITION_LABELS, CustomerSources, referrerHost } from "@/components/CustomerSources";
 
 const EMPTY_FORM: CreateCustomerConversationRequest = {
   customerName: "",
@@ -278,6 +280,8 @@ export function CustomerOperationsCenter() {
         <Stat icon={<Bot className="h-4 w-4" strokeWidth={1.75} />} value={jarvisCount} label="Owned by Jarvis" tone="text-success" />
       </div>
 
+      <CustomerSources customers={overview.customers} />
+
       <Card elevation={1} className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="flex items-center gap-3">
@@ -478,6 +482,14 @@ export function CustomerOperationsCenter() {
               {customer && selected ? (
                 <>
                   <div><div className="text-title text-foreground">{customer.name}</div><div className="mt-1 text-label text-muted">{customer.company || "No company"}</div>{customer.email && <div className="mt-1 truncate text-label text-foreground-secondary">{customer.email}</div>}</div>
+                  <div>
+                    <label className="block text-micro text-muted">Came from<Select className="mt-1 w-full" value={customer.acquisitionChannel ?? ""} onChange={(event) => act("source", () => api.updateCustomer(customer.id, { acquisitionChannel: (event.target.value || null) as AcquisitionChannel }), "Source updated.")}><option value="">Unknown</option>{Object.entries(ACQUISITION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
+                    {(customer.utmCampaign || customer.utmSource || referrerHost(customer.referrer)) && (
+                      <div className="mt-1.5 truncate text-micro text-muted">
+                        {[customer.utmCampaign && `Campaign: ${customer.utmCampaign}`, customer.utmSource && `Source: ${customer.utmSource}`, referrerHost(customer.referrer) && `Via ${referrerHost(customer.referrer)}`].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
+                  </div>
                   <div className="rule-fade" />
                   <div className="grid grid-cols-2 gap-3">
                     <label className="text-micro text-muted">Priority<Select className="mt-1 w-full" value={selected.priority} onChange={(event) => act("priority", () => api.updateCustomerConversation(selected.id, { priority: event.target.value as CustomerPriority }), "Priority updated.")}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></Select></label>

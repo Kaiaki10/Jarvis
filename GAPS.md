@@ -13,18 +13,20 @@ Severity: **critical** (data loss or silent failure) · **high** (blocks real us
 
 ## Open
 
-### high — Cross-channel attribution (organic + leads + revenue) still has no evidence to work from
-Paid Growth now has a real measurement ledger and a declared-experiment mechanism for
-comparing paid campaigns against each other, but Campaign Studio still has
-no structured organic engagement data — `social_metrics` exists but is unpopulated, blocked
-on X's metrics API returning HTTP 402 "credits depleted" rather than a code gap — and no
-customer or lead ever carries an acquisition channel or revenue figure; `customers` has no
-such column and no inbound path (webhook or website widget) captures a referrer or UTM.
-Until at least one of those exists, "shift the full marketing allocation toward what's
-winning" has no organic or lead-revenue evidence to act on — only the paid-vs-paid
-comparison is real today. Tracked links remain a deliberate non-goal per
-`WORKFLOW_PLAN.md`; whether that still holds is worth reconfirming against the live
-`BUSINESS_CONTEXT.md` before anyone builds click tracking to close this the rest of the way.
+### medium — Attribution covers leads and revenue, but not organic engagement
+Lead-source attribution now works end to end (2026-10-02). Every inbound customer gets a
+first-touch `acquisition_channel`, inferred in `customers/acquisition.ts` from UTM tags,
+then the referrer, then the platform they messaged on. The website widget remembers the
+landing page's UTM tags and external referrer, so they survive until chat opens. Stripe
+revenue accumulates on the matched customer. The Customers page shows customers and
+revenue per channel, with unattributed customers kept visible as "Unknown".
+
+Still missing is structured organic engagement data. `social_metrics` exists but is
+unpopulated, blocked on X's metrics API returning HTTP 402 "credits depleted", not on code.
+Known limits of what's there: a Stripe payer who never chats has no source (Payment Links
+carry no UTM through to the webhook), and "direct" also covers stripped referrers, so read
+it as "unknown, probably not a campaign". Tracked links remain a deliberate non-goal per
+`WORKFLOW_PLAN.md`.
 
 ### medium — Automatic publishing currently supports X only
 The publication worker is adapter-based, but LinkedIn, Instagram, Facebook, and blog
