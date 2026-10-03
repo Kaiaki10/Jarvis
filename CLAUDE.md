@@ -67,6 +67,15 @@ sheets, and the signup-email watcher were removed in 2.0. Keep it that way unles
   `platforms/actions.ts` from connected credentials and deliberately left unallowed, so
   every one of them hits the approval gate.
 
+## Public edge
+
+The orchestrator listens on loopback. Only `/widget/*` and `/webhooks/*` are public, at
+`https://jarvis.husslesol.com`, via Jarvis's own Cloudflare tunnel (`scripts/install-tunnel.ps1`,
+task "Jarvis Tunnel"; separate from the HussleSol site's tunnel). The tunnel's ingress
+enforces this, and so does `http/publicEdge.ts`: anything arriving with `CF-Connecting-IP`
+outside those prefixes gets a 404. Keep both locks. `/shutdown` is unauthenticated and must
+never be reachable from outside. Public widget POSTs are rate-limited per visitor.
+
 ## Credentials
 
 Platform credentials are AES-256-GCM encrypted in SQLite via `security/secretStore.ts`,

@@ -198,6 +198,8 @@ import { startPaidGrowthMonitor } from "../paidGrowth/monitor.js";
 import { trendsOverview } from "../insights/trendsService.js";
 import { apiToken, isValidToken, tokenFromRequest } from "../security/apiToken.js";
 import { isAllowedOrigin, isUnauthenticatedPath } from "./authGuard.js";
+import { clientKey, isPublicPath, requestOrigin, viaTunnel } from "./publicEdge.js";
+import { SlidingWindowLimiter } from "../security/rateLimit.js";
 import {
   beginAuthentication,
   beginRegistration,
@@ -343,9 +345,33 @@ if (!PASSIVE_FALLBACK) markInterruptedIfActive();
 recoverInterruptedWorkflowRuns();
 
 const app = express();
+// Second lock behind the tunnel's own ingress rules: from the internet, only
+// the widget and webhooks exist. Everything else, /shutdown included, is a 404
+// rather than a 401 or 403, so the tunnel reveals nothing about what else runs here.
+app.use((req: Request, res: Response, next) => {
+  if (viaTunnel(req.headers) && !isPublicPath(req.path)) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  next();
+});
+
+// Per visitor. A real customer starts one or two conversations and sends
+// messages at typing speed; these leave plenty of room for that.
+const widgetConversationLimit = new SlidingWindowLimiter(5, 60 * 60_000);
+const widgetConversationGlobalLimit = new SlidingWindowLimiter(60, 60 * 60_000);
+const widgetMessageLimit = new SlidingWindowLimiter(30, 10 * 60_000);
+
+function withinLimit(limiter: SlidingWindowLimiter, key: string, res: Response): boolean {
+  if (limiter.take(key)) return true;
+  res.setHeader("Retry-After", String(limiter.retryAfterSeconds(key)));
+  res.status(429).json({ error: "Too many messages. Please wait a moment and try again." });
+  return false;
+}
+
 app.use("/widget", (req: Request, res: Response, next) => {
   const origin = req.headers.origin;
-  const ownOrigin = `${req.protocol}://${req.get("host")}`;
+  const ownOrigin = requestOrigin(req.headers, req.protocol, req.get("host"));
   const allowed = getCustomerServicePolicy().allowedOrigins;
   if (origin && origin !== ownOrigin && !allowed.includes("*") && !allowed.includes(origin)) {
     res.status(403).json({ error: "This website origin is not allowed to use the Jarvis chat widget." });
@@ -853,7 +879,7 @@ app.get("/widget/customer-chat.js", (_req: Request, res: Response) => {
 });
 
 app.get("/widget/demo", (req: Request, res: Response) => {
-  res.type("html").send(customerWidgetDemo(`${req.protocol}://${req.get("host")}`));
+  res.type("html").send(customerWidgetDemo(requestOrigin(req.headers, req.protocol, req.get("host"))));
 });
 
 app.get("/widget/config", (_req: Request, res: Response) => {
@@ -864,6 +890,9 @@ app.get("/widget/config", (_req: Request, res: Response) => {
 app.post("/widget/conversations", (req: Request, res: Response) => {
   const body = validatedBody(createWebsiteConversationSchema, req, res);
   if (!body) return;
+  const visitor = clientKey(req.headers, req.socket.remoteAddress);
+  if (!withinLimit(widgetConversationLimit, visitor, res)) return;
+  if (!withinLimit(widgetConversationGlobalLimit, "all", res)) return;
   const created = createWebsiteConversation(body);
   globalBus.emit("customers_changed");
   handleCustomerInbound(created.conversationId, body.body);
@@ -882,6 +911,7 @@ app.get("/widget/conversations/:id", (req: Request, res: Response) => {
 app.post("/widget/conversations/:id/messages", (req: Request, res: Response) => {
   const body = validatedBody(websiteMessageSchema, req, res);
   if (!body) return;
+  if (!withinLimit(widgetMessageLimit, clientKey(req.headers, req.socket.remoteAddress), res)) return;
   if (!authorizeWebsiteConversation(req.params.id, body.token)) {
     res.status(404).json({ error: "Conversation not found." });
     return;
